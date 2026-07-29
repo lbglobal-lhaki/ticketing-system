@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { canAccessBooking } from "@/lib/documentAccess";
 import { prisma } from "@/lib/db";
 import { getOrCreateInvoicePdf } from "@/lib/documents/invoiceBlob";
+import { renderAirfareInvoiceHtml } from "@/lib/documents/templates";
 import { loadBookingDocumentData } from "@/lib/email/bookingMail";
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 export async function GET(
   request: Request,
@@ -46,14 +47,26 @@ export async function GET(
       return new NextResponse("Airfare invoice not found", { status: 404 });
     }
 
-    const pdf = await getOrCreateInvoicePdf(data);
-    return new NextResponse(new Uint8Array(pdf), {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="Airfare-Invoice-${data.invoice.invoiceNumber}.pdf"`,
-        "Cache-Control": "private, no-store",
-      },
-    });
+    try {
+      const pdf = await getOrCreateInvoicePdf(data);
+      return new NextResponse(new Uint8Array(pdf), {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `inline; filename="Airfare-Invoice-${data.invoice.invoiceNumber}.pdf"`,
+          "Cache-Control": "private, no-store",
+        },
+      });
+    } catch (pdfError) {
+      // Chromium can fail on cold serverless starts — fall back to HTML so
+      // customers can still view / print the invoice.
+      console.error("airfare invoice pdf failed; serving HTML", pdfError);
+      return new NextResponse(renderAirfareInvoiceHtml(data), {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "private, no-store",
+        },
+      });
+    }
   } catch (error) {
     console.error("airfare invoice document failed", error);
     return new NextResponse("Could not render airfare invoice", {

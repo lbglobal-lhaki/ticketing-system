@@ -5,7 +5,7 @@ import { renderTravelDocumentHtml } from "@/lib/documents/templates";
 import { htmlToPdf } from "@/lib/documents/pdf";
 import { loadBookingDocumentData } from "@/lib/email/bookingMail";
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 export async function GET(
   request: Request,
@@ -43,15 +43,25 @@ export async function GET(
       return new NextResponse("Travel document not found", { status: 404 });
     }
 
-    // Unpaid bookings still get a reservation letter — boarding passes are omitted in the renderer.
-    const pdf = await htmlToPdf(renderTravelDocumentHtml(data));
-    return new NextResponse(new Uint8Array(pdf), {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="E-Ticket-Itinerary-${data.bookingRef}.pdf"`,
-        "Cache-Control": "private, no-store",
-      },
-    });
+    const html = renderTravelDocumentHtml(data);
+    try {
+      const pdf = await htmlToPdf(html);
+      return new NextResponse(new Uint8Array(pdf), {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `inline; filename="E-Ticket-Itinerary-${data.bookingRef}.pdf"`,
+          "Cache-Control": "private, no-store",
+        },
+      });
+    } catch (pdfError) {
+      console.error("eticket pdf failed; serving HTML", pdfError);
+      return new NextResponse(html, {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "private, no-store",
+        },
+      });
+    }
   } catch (error) {
     console.error("eticket document failed", error);
     return new NextResponse("Could not render travel document", {

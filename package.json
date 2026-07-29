@@ -16,7 +16,7 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.0",
     "@prisma/client": "^7.9.0",
-    "@sparticuz/chromium": "143.0.4",
+    "@sparticuz/chromium-min": "143.0.4",
     "@stripe/react-stripe-js": "^3.1.1",
     "@stripe/stripe-js": "^5.5.0",
     "@vercel/blob": "^2.6.1",

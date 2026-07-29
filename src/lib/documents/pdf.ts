@@ -6,6 +6,14 @@ const isServerless = Boolean(
   process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME,
 );
 
+/**
+ * Remote Chromium pack for serverless (downloaded + extracted to /tmp on first use).
+ * Must match the installed @sparticuz/chromium-min major version.
+ */
+const CHROMIUM_PACK_URL =
+  process.env.CHROMIUM_PACK_URL?.trim() ||
+  "https://github.com/Sparticuz/chromium/releases/download/v143.0.4/chromium-v143.0.4-pack.x64.tar";
+
 const LOCAL_CHROME_CANDIDATES = [
   process.env.PUPPETEER_EXECUTABLE_PATH,
   process.env.CHROME_PATH,
@@ -37,14 +45,22 @@ function findLocalChromePath(): string | null {
 
 let browserPromise: Promise<Browser> | null = null;
 
-/** Launches (or reuses, on a warm serverless instance) a headless Chromium instance. */
 async function getBrowser(): Promise<Browser> {
-  if (!browserPromise) {
-    browserPromise = launchBrowser().catch((error) => {
-      browserPromise = null;
-      throw error;
-    });
+  if (browserPromise) {
+    try {
+      const existing = await browserPromise;
+      // Serverless freezes can leave a dead browser handle behind.
+      if (existing.connected) return existing;
+    } catch {
+      /* relaunch below */
+    }
+    browserPromise = null;
   }
+
+  browserPromise = launchBrowser().catch((error) => {
+    browserPromise = null;
+    throw error;
+  });
   return browserPromise;
 }
 
@@ -52,10 +68,14 @@ async function launchBrowser(): Promise<Browser> {
   const puppeteer = (await import("puppeteer-core")).default;
 
   if (isServerless) {
-    const chromium = (await import("@sparticuz/chromium")).default;
+    const chromium = (await import("@sparticuz/chromium-min")).default;
+    chromium.setGraphicsMode = false;
     return puppeteer.launch({
-      args: chromium.args,
-      executablePath: await chromium.executablePath(),
+      args: puppeteer.defaultArgs({
+        args: chromium.args,
+        headless: "shell",
+      }),
+      executablePath: await chromium.executablePath(CHROMIUM_PACK_URL),
       headless: "shell",
     });
   }
@@ -74,7 +94,10 @@ export async function htmlToPdf(html: string): Promise<Buffer> {
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
-    await page.setContent(html, { waitUntil: "load" });
+    await page.setContent(html, {
+      waitUntil: "domcontentloaded",
+      timeout: 30_000,
+    });
     const pdf = await page.pdf({
       format: "A4",
       printBackground: true,
@@ -83,5 +106,10 @@ export async function htmlToPdf(html: string): Promise<Buffer> {
     return Buffer.from(pdf);
   } finally {
     await page.close().catch(() => {});
+    // Close after each render on serverless — warm instances often kill Chrome.
+    if (isServerless) {
+      await browser.close().catch(() => {});
+      browserPromise = null;
+    }
   }
 }
