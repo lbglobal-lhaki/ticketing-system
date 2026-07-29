@@ -228,7 +228,11 @@ export default async function AdminPage({
                                   ? "Charter fare product saved."
                                   : params.saved === "cargo-updated"
                                     ? "Cargo submission updated."
-                                    : null;
+                                    : params.saved === "cargo-created"
+                                      ? "Cargo enquiry created."
+                                      : params.saved === "cargo-deleted"
+                                        ? "Cargo enquiry deleted."
+                                        : null;
 
   const initialTab =
     parseTab(params.tab) ??
@@ -247,7 +251,9 @@ export default async function AdminPage({
           ? "bookings"
           : params.saved === "fare-updated"
             ? "fares"
-            : params.saved === "cargo-updated"
+            : params.saved === "cargo-updated" ||
+                params.saved === "cargo-created" ||
+                params.saved === "cargo-deleted"
               ? "cargo"
               : "analytics");
 

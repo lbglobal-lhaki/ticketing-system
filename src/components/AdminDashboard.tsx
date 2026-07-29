@@ -163,6 +163,12 @@ export function AdminDashboard({
 
   const activeCount = flights.filter((f) => f.active).length;
 
+  function selectTab(next: Tab) {
+    setTab(next);
+    // Keep ?tab= in the URL so refresh / back stays on the same section.
+    router.replace(`/admin?tab=${next}`, { scroll: false });
+  }
+
   useEffect(() => {
     if (initialTab) setTab(initialTab);
   }, [initialTab]);
@@ -182,12 +188,12 @@ export function AdminDashboard({
     setEditingId(null);
     setCabinClass("business");
     setFareRows(templateToRows("business"));
-    setTab("form");
+    selectTab("form");
   }
 
   function openEdit(id: string) {
     setEditingId(id);
-    setTab("form");
+    selectTab("form");
   }
 
   function onCabinChange(next: CabinClass) {
@@ -215,7 +221,7 @@ export function AdminDashboard({
                 type="button"
                 onClick={() => {
                   if (item.id === "form" && !editingId) openAdd();
-                  else setTab(item.id);
+                  else selectTab(item.id);
                 }}
                 className={`relative px-4 py-3 text-sm font-medium transition ${
                   active ? "text-foreground" : "text-muted hover:text-foreground"
@@ -662,8 +668,7 @@ export function AdminDashboard({
                 type="button"
                 onClick={() => {
                   setEditingId(null);
-                  setTab("flights");
-                  router.replace("/admin?tab=flights");
+                  selectTab("flights");
                 }}
                 className="border border-line px-5 py-3 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground"
               >

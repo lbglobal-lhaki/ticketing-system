@@ -88,3 +88,13 @@ curl -X POST "http://localhost:3000/api/cargo/submit" ^
 ```
 
 Then open `/admin?tab=cargo`.
+
+## Admin dashboard (Cargo tab)
+
+Admins can also:
+
+- **Add cargo form** — create an enquiry manually (no Google Form needed)
+- **View / Edit / Delete** submissions
+- **Preview PDF** — opens `/documents/cargo/[id]` as an A4 PDF (admin login required)
+
+Google Form submissions and manual entries share the same list.
