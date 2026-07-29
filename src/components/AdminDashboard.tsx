@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   createFlightAction,
   deleteFlightAction,
@@ -112,6 +112,13 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "cargo", label: "Cargo" },
 ];
 
+const TAB_IDS = new Set<string>(TABS.map((t) => t.id));
+
+function parseClientTab(value: string | null | undefined): Tab | undefined {
+  if (value && TAB_IDS.has(value)) return value as Tab;
+  return undefined;
+}
+
 const fieldClass =
   "w-full border-0 border-b border-line bg-transparent py-3 text-sm text-foreground outline-none transition focus:border-accent";
 
@@ -149,7 +156,13 @@ export function AdminDashboard({
   errorMessage?: string | null;
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>(initialTab ?? "analytics");
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // URL ?tab= is the source of truth so refresh / back always stays put.
+  const tab =
+    parseClientTab(searchParams.get("tab")) ?? initialTab ?? "analytics";
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [cabinClass, setCabinClass] = useState<CabinClass>("business");
   const [fareRows, setFareRows] = useState<FareRow[]>(() =>
@@ -164,14 +177,24 @@ export function AdminDashboard({
   const activeCount = flights.filter((f) => f.active).length;
 
   function selectTab(next: Tab) {
-    setTab(next);
-    // Keep ?tab= in the URL so refresh / back stays on the same section.
-    router.replace(`/admin?tab=${next}`, { scroll: false });
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", next);
+    // Drop one-shot flash params so a refresh doesn't jump tabs / re-toast.
+    params.delete("saved");
+    params.delete("error");
+    params.delete("ref");
+    params.delete("focus");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
+  // Ensure the address bar always has ?tab= (covers /admin with no query).
   useEffect(() => {
-    if (initialTab) setTab(initialTab);
-  }, [initialTab]);
+    if (searchParams.get("tab")) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", tab);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [pathname, router, searchParams, tab]);
 
   useEffect(() => {
     if (editing) {

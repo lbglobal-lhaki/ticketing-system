@@ -1,12 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { BrandLogo } from "@/components/BrandLogo";
 
 export function SiteHeader({ cartCount = 0 }: { cartCount?: number }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const onCart = pathname === "/cart";
+  const onAdmin = pathname.startsWith("/admin");
+  const adminHref = onAdmin
+    ? `/admin?${(() => {
+        const params = new URLSearchParams(searchParams.toString());
+        if (!params.get("tab")) params.set("tab", "analytics");
+        return params.toString();
+      })()}`
+    : "/admin?tab=analytics";
 
   return (
     <header className="sticky top-0 z-30 border-b border-white/30 bg-[rgba(255,255,255,0.75)] pt-[env(safe-area-inset-top,0px)] shadow-[0_4px_24px_rgba(15,23,42,0.06)] backdrop-blur-xl">
@@ -34,11 +43,9 @@ export function SiteHeader({ cartCount = 0 }: { cartCount?: number }) {
             Search
           </Link>
           <Link
-            href="/admin"
+            href={adminHref}
             className={`btn-secondary inline-flex min-h-11 items-center gap-2 px-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 ${
-              pathname.startsWith("/admin")
-                ? "border-accent text-accent-deep"
-                : ""
+              onAdmin ? "border-accent text-accent-deep" : ""
             }`}
           >
             <SignInIcon />

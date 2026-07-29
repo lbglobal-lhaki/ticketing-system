@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "crypto";
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { AdminDashboard } from "@/components/AdminDashboard";
 import {
@@ -238,30 +239,9 @@ export default async function AdminPage({
                                             ? "Cargo marked as unpaid."
                                             : null;
 
-  const initialTab =
-    parseTab(params.tab) ??
-    (params.saved === "added" ||
-    params.saved === "updated" ||
-    params.saved === "price" ||
-    params.saved === "removed" ||
-    params.saved === "restored" ||
-    params.saved === "deleted"
-      ? "flights"
-      : params.saved?.startsWith("invoice")
-        ? "invoices"
-        : params.saved === "booking-paid" ||
-            params.saved === "booking-unpaid" ||
-            params.saved === "walk-in"
-          ? "bookings"
-          : params.saved === "fare-updated"
-            ? "fares"
-            : params.saved === "cargo-updated" ||
-                params.saved === "cargo-created" ||
-                params.saved === "cargo-deleted" ||
-                params.saved === "cargo-paid" ||
-                params.saved === "cargo-unpaid"
-              ? "cargo"
-              : "analytics");
+  // Prefer explicit ?tab= — action redirects already include the right tab.
+  // Do not infer tab from leftover ?saved= (that caused refresh jumps).
+  const initialTab = parseTab(params.tab) ?? "analytics";
 
   return (
     <main className="relative min-h-[calc(100svh-4rem)] overflow-hidden">
@@ -312,6 +292,11 @@ export default async function AdminPage({
         </div>
 
         <div className="pt-8">
+          <Suspense
+            fallback={
+              <p className="text-sm text-muted">Loading dashboard…</p>
+            }
+          >
           <AdminDashboard
             initialTab={initialTab}
             savedMessage={savedMessage}
@@ -470,6 +455,7 @@ export default async function AdminPage({
               };
             })}
           />
+          </Suspense>
         </div>
       </div>
     </main>
