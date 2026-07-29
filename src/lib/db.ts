@@ -7,7 +7,7 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 /** Bump when Prisma models change so hot-reload drops a stale client. */
-const PRISMA_SCHEMA_VERSION = "security-holds-tokens-v1";
+const PRISMA_SCHEMA_VERSION = "cargo-submissions-v1";
 
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;
@@ -24,13 +24,15 @@ function getPrisma(): PrismaClient {
     | (PrismaClient & {
         invoice?: unknown;
         charterFareProduct?: unknown;
+        cargoSubmission?: unknown;
       })
     | undefined;
   const stale =
     !client ||
     globalForPrisma.prismaSchemaVersion !== PRISMA_SCHEMA_VERSION ||
     typeof client.invoice === "undefined" ||
-    typeof client.charterFareProduct === "undefined";
+    typeof client.charterFareProduct === "undefined" ||
+    typeof client.cargoSubmission === "undefined";
 
   if (stale) {
     globalForPrisma.prisma = createPrismaClient();

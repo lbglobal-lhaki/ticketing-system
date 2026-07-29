@@ -35,6 +35,7 @@ function parseTab(
   | "fares"
   | "bookings"
   | "invoices"
+  | "cargo"
   | undefined {
   if (
     value === "analytics" ||
@@ -42,7 +43,8 @@ function parseTab(
     value === "form" ||
     value === "fares" ||
     value === "bookings" ||
-    value === "invoices"
+    value === "invoices" ||
+    value === "cargo"
   ) {
     return value;
   }
@@ -157,7 +159,7 @@ export default async function AdminPage({
     console.error("expire stale holds on admin load failed", err);
   }
 
-  const [flights, bookings, invoices, analytics, charterFares] =
+  const [flights, bookings, invoices, cargoSubmissions, analytics, charterFares] =
     await Promise.all([
       prisma.flight.findMany({
         orderBy: [{ active: "desc" }, { departureAt: "asc" }],
@@ -184,6 +186,10 @@ export default async function AdminPage({
             },
           },
         },
+      }),
+      prisma.cargoSubmission.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 100,
       }),
       getFlightPriceAnalytics(),
       listAllCharterFareProductsAdmin(),
@@ -220,7 +226,9 @@ export default async function AdminPage({
                                 ? "Walk-in booking created."
                                 : params.saved === "fare-updated"
                                   ? "Charter fare product saved."
-                                  : null;
+                                  : params.saved === "cargo-updated"
+                                    ? "Cargo submission updated."
+                                    : null;
 
   const initialTab =
     parseTab(params.tab) ??
@@ -239,7 +247,9 @@ export default async function AdminPage({
           ? "bookings"
           : params.saved === "fare-updated"
             ? "fares"
-            : "analytics");
+            : params.saved === "cargo-updated"
+              ? "cargo"
+              : "analytics");
 
   return (
     <main className="relative min-h-[calc(100svh-4rem)] overflow-hidden">
@@ -422,6 +432,29 @@ export default async function AdminPage({
               bookingRef: invoice.booking.bookingRef,
               bookingId: invoice.bookingId,
             }))}
+            cargoSubmissions={cargoSubmissions.map((row) => {
+              const answers =
+                row.answers &&
+                typeof row.answers === "object" &&
+                !Array.isArray(row.answers)
+                  ? (row.answers as Record<
+                      string,
+                      string | number | boolean | string[]
+                    >)
+                  : {};
+              return {
+                id: row.id,
+                status: row.status,
+                submitterName: row.submitterName,
+                email: row.email,
+                phone: row.phone,
+                answers,
+                notes: row.notes,
+                googleResponseId: row.googleResponseId,
+                submittedAt: row.submittedAt?.toISOString() ?? null,
+                createdAt: row.createdAt.toISOString(),
+              };
+            })}
           />
         </div>
       </div>

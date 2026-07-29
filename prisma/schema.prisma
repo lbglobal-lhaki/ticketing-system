@@ -54,6 +54,12 @@ enum InvoiceStatus {
   failed
 }
 
+enum CargoSubmissionStatus {
+  new
+  reviewed
+  closed
+}
+
 model Flight {
   id             String     @id @default(cuid())
   airline        String
@@ -307,4 +313,24 @@ model CharterFareProduct {
 
   @@index([cabinClass, sortOrder])
   @@index([active])
+}
+
+/// Google Form cargo enquiry — ingested via /api/cargo/submit.
+model CargoSubmission {
+  id               String                @id @default(cuid())
+  status           CargoSubmissionStatus @default(new)
+  submitterName    String?
+  email            String?
+  phone            String?
+  /// Full map of form question title → answer
+  answers          Json
+  googleResponseId String?               @unique
+  notes            String?
+  submittedAt      DateTime?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([email])
 }

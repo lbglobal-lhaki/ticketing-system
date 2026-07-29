@@ -24,6 +24,10 @@ import {
   CharterFaresAdmin,
   type AdminCharterFare,
 } from "@/components/CharterFaresAdmin";
+import {
+  CargoAdminPanel,
+  type AdminCargoRow,
+} from "@/components/CargoAdminPanel";
 import { PricingAnalyticsSection } from "@/components/PricingAnalyticsSection";
 import { toDateTimeLocalValue } from "@/lib/datetime";
 import {
@@ -95,7 +99,8 @@ type Tab =
   | "form"
   | "fares"
   | "bookings"
-  | "invoices";
+  | "invoices"
+  | "cargo";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "analytics", label: "Analytics" },
@@ -104,6 +109,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "fares", label: "Charter fares" },
   { id: "bookings", label: "Bookings" },
   { id: "invoices", label: "Invoices" },
+  { id: "cargo", label: "Cargo" },
 ];
 
 const fieldClass =
@@ -125,6 +131,7 @@ export function AdminDashboard({
   flights,
   bookings,
   invoices,
+  cargoSubmissions,
   analytics,
   charterFares,
   initialTab,
@@ -134,6 +141,7 @@ export function AdminDashboard({
   flights: FlightRow[];
   bookings: BookingRow[];
   invoices: InvoiceRow[];
+  cargoSubmissions: AdminCargoRow[];
   analytics: GroupedPriceAnalytics;
   charterFares: AdminCharterFare[];
   initialTab?: Tab;
@@ -907,6 +915,8 @@ export function AdminDashboard({
       )}
 
       {tab === "invoices" && <InvoiceAdminPanel invoices={invoices} />}
+
+      {tab === "cargo" && <CargoAdminPanel submissions={cargoSubmissions} />}
     </div>
   );
 }
