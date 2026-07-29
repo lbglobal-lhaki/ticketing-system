@@ -19,7 +19,7 @@ import {
   markBookingPaidAction,
   markBookingUnpaidAction,
 } from "@/lib/actions/walkIn";
-import type { GroupedPriceAnalytics } from "@/lib/analytics/pricingAnalytics";
+import type { SystemAnalytics } from "@/lib/analytics/systemAnalytics";
 import {
   CharterFaresAdmin,
   type AdminCharterFare,
@@ -28,7 +28,7 @@ import {
   CargoAdminPanel,
   type AdminCargoRow,
 } from "@/components/CargoAdminPanel";
-import { PricingAnalyticsSection } from "@/components/PricingAnalyticsSection";
+import { SystemAnalyticsSection } from "@/components/SystemAnalyticsSection";
 import { toDateTimeLocalValue } from "@/lib/datetime";
 import {
   BUSINESS_FARE_TEMPLATE,
@@ -142,7 +142,7 @@ export function AdminDashboard({
   bookings: BookingRow[];
   invoices: InvoiceRow[];
   cargoSubmissions: AdminCargoRow[];
-  analytics: GroupedPriceAnalytics;
+  analytics: SystemAnalytics;
   charterFares: AdminCharterFare[];
   initialTab?: Tab;
   savedMessage?: string | null;
@@ -239,7 +239,7 @@ export function AdminDashboard({
         <div className="flex flex-wrap items-center gap-4 text-sm text-muted">
           <p>
             <span className="font-semibold text-foreground">{activeCount}</span>{" "}
-            live · {flights.length} total
+            active · {flights.length} total
           </p>
           <p>
             <span className="font-semibold text-foreground">
@@ -268,7 +268,7 @@ export function AdminDashboard({
       )}
 
       {tab === "analytics" && (
-        <PricingAnalyticsSection analytics={analytics} />
+        <SystemAnalyticsSection analytics={analytics} />
       )}
 
       {tab === "flights" && (
@@ -280,7 +280,8 @@ export function AdminDashboard({
               </h2>
               <p className="mt-1 max-w-xl text-sm text-muted">
                 Each flight sells in order: Early Bird → Standard → Final
-                Release. Set prices per release — nothing is hardcoded.
+                Release. Prices are fixed as you set them — no automatic
+                increases.
               </p>
             </div>
             <button

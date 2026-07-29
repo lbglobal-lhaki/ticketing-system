@@ -66,11 +66,13 @@ export function extractCargoContacts(input: {
     pick(
       "name",
       "full name",
+      "fullname",
       "your name",
       "submitter name",
       "contact name",
       "sender name",
       "shipper name",
+      "receiver name",
     );
 
   const emailRaw =
@@ -83,7 +85,13 @@ export function extractCargoContacts(input: {
 
   const phone =
     input.phone?.trim() ||
-    pick("phone", "phone number", "mobile", "mobile number", "contact number");
+    pick(
+      "phone",
+      "phone number",
+      "mobile",
+      "mobile number",
+      "contact number",
+    );
 
   return {
     submitterName: name || null,

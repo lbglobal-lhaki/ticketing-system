@@ -5,8 +5,6 @@ import { SelectedFlightSummary } from "@/components/fares/SelectedFlightSummary"
 import { getBrand } from "@/lib/branding";
 import { prisma } from "@/lib/db";
 import { buildCharterFareProducts } from "@/lib/fares/charter";
-import { recordDemandEvent } from "@/lib/pricing/service";
-import { getSessionId } from "@/lib/session";
 
 export default async function TripReviewPage({
   searchParams,
@@ -28,10 +26,6 @@ export default async function TripReviewPage({
     }),
   ]);
   if (!outbound || !returnFlight) notFound();
-
-  const sessionId = await getSessionId();
-  await recordDemandEvent(outbound.id, "view", sessionId);
-  await recordDemandEvent(returnFlight.id, "view", sessionId);
 
   const soldOut =
     outbound.remainingSeats < 1 || returnFlight.remainingSeats < 1;

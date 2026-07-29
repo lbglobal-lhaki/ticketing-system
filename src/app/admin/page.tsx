@@ -6,7 +6,7 @@ import {
   isAdminAuthed,
   setAdminSessionCookie,
 } from "@/lib/adminAuth";
-import { getFlightPriceAnalytics } from "@/lib/analytics/pricingAnalytics";
+import { getSystemAnalytics } from "@/lib/analytics/systemAnalytics";
 import {
   expireStaleBankHolds,
   expireStaleQuotes,
@@ -116,7 +116,7 @@ export default async function AdminPage({
             Operations
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-muted">
-            Sign in to manage flights, ticket prices, and live fare analytics.
+            Sign in to manage flights, fixed ticket prices, bookings, and cargo.
           </p>
           <form
             action={login}
@@ -191,7 +191,7 @@ export default async function AdminPage({
         orderBy: { createdAt: "desc" },
         take: 100,
       }),
-      getFlightPriceAnalytics(),
+      getSystemAnalytics(),
       listAllCharterFareProductsAdmin(),
     ]);
 
@@ -232,7 +232,11 @@ export default async function AdminPage({
                                       ? "Cargo enquiry created."
                                       : params.saved === "cargo-deleted"
                                         ? "Cargo enquiry deleted."
-                                        : null;
+                                        : params.saved === "cargo-paid"
+                                          ? "Cargo marked as paid."
+                                          : params.saved === "cargo-unpaid"
+                                            ? "Cargo marked as unpaid."
+                                            : null;
 
   const initialTab =
     parseTab(params.tab) ??
@@ -253,7 +257,9 @@ export default async function AdminPage({
             ? "fares"
             : params.saved === "cargo-updated" ||
                 params.saved === "cargo-created" ||
-                params.saved === "cargo-deleted"
+                params.saved === "cargo-deleted" ||
+                params.saved === "cargo-paid" ||
+                params.saved === "cargo-unpaid"
               ? "cargo"
               : "analytics");
 
@@ -451,6 +457,8 @@ export default async function AdminPage({
               return {
                 id: row.id,
                 status: row.status,
+                paid: row.paid,
+                paidAt: row.paidAt?.toISOString() ?? null,
                 submitterName: row.submitterName,
                 email: row.email,
                 phone: row.phone,

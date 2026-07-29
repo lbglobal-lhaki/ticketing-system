@@ -1,10 +1,6 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
-import {
-  DEFAULT_DEMAND_BANDS,
-  DEFAULT_SCARCITY_BANDS,
-} from "../src/lib/pricing/defaults";
 import { fareTemplateForCabin } from "../src/lib/fares/templates";
 
 const connectionString = process.env.DATABASE_URL;
@@ -45,19 +41,20 @@ async function main() {
   await prisma.flight.deleteMany();
   await prisma.pricingConfig.deleteMany();
 
+  // Legacy PricingConfig row kept for schema compatibility (unused by app).
   await prisma.pricingConfig.create({
     data: {
       name: "default",
-      baseMarkup: 0.08,
+      baseMarkup: 0,
       demandWindowMinutes: 45,
       quoteTtlMinutes: 15,
-      maxUplift: 0.25,
-      demandBands: DEFAULT_DEMAND_BANDS,
-      scarcityBands: DEFAULT_SCARCITY_BANDS,
+      maxUplift: 0,
+      demandBands: [{ maxScore: 9999, multiplier: 1 }],
+      scarcityBands: [{ maxRatio: 1, multiplier: 1 }],
     },
   });
 
-  // Inventory buckets (prices are overridden by CharterFareProduct at checkout).
+  // Inventory buckets — prices are fixed admin values (charter catalogue may override online).
   // Keep release prices > 0 so createPriceQuote gates pass.
   const businessReleasePrices = [129_900, 159_900, 189_900];
   const economyReleasePrices = [89_900, 109_900, 129_900];

@@ -70,7 +70,7 @@ model Flight {
   arrivalAt      DateTime
   cabinClass     CabinClass @default(business)
   currency       String     @default("AUD")
-  /// Sum of fare-release seat pools (kept in sync for search/scarcity)
+  /// Sum of fare-release seat pools (kept in sync for search / sold-out)
   totalSeats     Int
   remainingSeats Int
   active         Boolean    @default(true)
@@ -78,6 +78,7 @@ model Flight {
   updatedAt      DateTime   @updatedAt
 
   fareReleases   FareRelease[]
+  /// Legacy demand-tracking rows (no longer used for pricing).
   demandEvents   DemandEvent[]
   quotes         PriceQuote[]  @relation("OutboundQuotes")
   returnQuotes   PriceQuote[]  @relation("ReturnQuotes")
@@ -319,6 +320,9 @@ model CharterFareProduct {
 model CargoSubmission {
   id               String                @id @default(cuid())
   status           CargoSubmissionStatus @default(new)
+  /// Admin-marked payment state for the cargo enquiry.
+  paid             Boolean               @default(false)
+  paidAt           DateTime?
   submitterName    String?
   email            String?
   phone            String?
@@ -331,6 +335,7 @@ model CargoSubmission {
   updatedAt        DateTime              @updatedAt
 
   @@index([status])
+  @@index([paid])
   @@index([createdAt])
   @@index([email])
 }

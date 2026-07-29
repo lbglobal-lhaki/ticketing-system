@@ -29,7 +29,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: `${brand.issuingAgent} | ${brand.airlineName} Flight Bookings`,
-  description: `Book ${brand.airlineName} charter flights with ${brand.issuingAgent} — live fares, e-tickets, and tax invoices in AUD`,
+  description: `Book ${brand.airlineName} charter flights with ${brand.issuingAgent} — fixed fares, e-tickets, and tax invoices in AUD`,
   icons: {
     icon: brand.logoPath,
     apple: brand.logoPath,

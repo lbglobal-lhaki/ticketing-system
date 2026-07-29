@@ -16,12 +16,15 @@ function asAnswers(
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   try {
     if (!(await isAdminAuthed())) {
-      return new NextResponse("Unauthorized", { status: 401 });
+      return new NextResponse(
+        "Unauthorized — sign in to Admin first, then open the PDF again.",
+        { status: 401 },
+      );
     }
 
     const { id } = await context.params;
@@ -33,6 +36,8 @@ export async function GET(
     const data = {
       id: row.id,
       status: row.status,
+      paid: row.paid,
+      paidAt: row.paidAt,
       submitterName: row.submitterName,
       email: row.email,
       phone: row.phone,
@@ -43,17 +48,44 @@ export async function GET(
       createdAt: row.createdAt,
     };
 
-    const pdf = await htmlToPdf(renderCargoDocumentHtml(data));
-    const ref = row.id.slice(-10).toUpperCase();
-    return new NextResponse(new Uint8Array(pdf), {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="Cargo-${ref}.pdf"`,
-        "Cache-Control": "private, no-store",
-      },
-    });
+    const html = renderCargoDocumentHtml(data);
+    const wantHtml =
+      new URL(request.url).searchParams.get("format") === "html";
+
+    if (wantHtml) {
+      return new NextResponse(html, {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "private, no-store",
+        },
+      });
+    }
+
+    try {
+      const pdf = await htmlToPdf(html);
+      const ref = row.id.slice(-10).toUpperCase();
+      return new NextResponse(new Uint8Array(pdf), {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `inline; filename="Cargo-${ref}.pdf"`,
+          "Cache-Control": "private, no-store",
+        },
+      });
+    } catch (pdfError) {
+      console.error("cargo PDF render failed; serving HTML", pdfError);
+      // Dev / misconfigured Chromium: still let admin preview/print as HTML.
+      return new NextResponse(html, {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "private, no-store",
+          "X-Cargo-Pdf-Fallback": "1",
+        },
+      });
+    }
   } catch (error) {
     console.error("cargo document failed", error);
-    return new NextResponse("Could not render cargo PDF", { status: 500 });
+    return new NextResponse("Could not render cargo document", {
+      status: 500,
+    });
   }
 }

@@ -38,6 +38,11 @@ function parseContacts(formData: FormData, answers: Record<string, string>) {
   });
 }
 
+function parsePaid(formData: FormData) {
+  const raw = String(formData.get("paid") || "").trim().toLowerCase();
+  return raw === "on" || raw === "true" || raw === "1" || raw === "yes";
+}
+
 export async function createCargoSubmissionAction(formData: FormData) {
   await requireAdmin();
 
@@ -52,11 +57,14 @@ export async function createCargoSubmissionAction(formData: FormData) {
 
   const contacts = parseContacts(formData, answers);
   const notes = String(formData.get("notes") || "").trim();
+  const paid = parsePaid(formData);
 
   try {
     await prisma.cargoSubmission.create({
       data: {
         status: statusParsed.data,
+        paid,
+        paidAt: paid ? new Date() : null,
         answers: answers as Prisma.InputJsonValue,
         submitterName: contacts.submitterName,
         email: contacts.email,
@@ -93,12 +101,21 @@ export async function updateCargoSubmissionAction(formData: FormData) {
 
   const contacts = parseContacts(formData, answers);
   const notes = String(formData.get("notes") || "").trim();
+  const paid = parsePaid(formData);
 
   try {
+    const existing = await prisma.cargoSubmission.findUnique({
+      where: { id },
+      select: { paid: true, paidAt: true },
+    });
+    if (!existing) cargoFail("Cargo enquiry not found");
+
     await prisma.cargoSubmission.update({
       where: { id },
       data: {
         status: statusParsed.data,
+        paid,
+        paidAt: paid ? existing.paidAt ?? new Date() : null,
         answers: answers as Prisma.InputJsonValue,
         submitterName: contacts.submitterName,
         email: contacts.email,
@@ -115,6 +132,35 @@ export async function updateCargoSubmissionAction(formData: FormData) {
 
   revalidatePath("/admin");
   redirect("/admin?tab=cargo&saved=cargo-updated");
+}
+
+export async function setCargoPaidAction(formData: FormData) {
+  await requireAdmin();
+
+  const id = String(formData.get("id") || "").trim();
+  if (!id) cargoFail("Missing cargo id");
+
+  const paid = parsePaid(formData);
+
+  try {
+    await prisma.cargoSubmission.update({
+      where: { id },
+      data: {
+        paid,
+        paidAt: paid ? new Date() : null,
+      },
+    });
+  } catch (error) {
+    console.error("setCargoPaidAction", error);
+    cargoFail(
+      error instanceof Error ? error.message : "Could not update payment status",
+    );
+  }
+
+  revalidatePath("/admin");
+  redirect(
+    `/admin?tab=cargo&saved=${paid ? "cargo-paid" : "cargo-unpaid"}`,
+  );
 }
 
 export async function deleteCargoSubmissionAction(formData: FormData) {

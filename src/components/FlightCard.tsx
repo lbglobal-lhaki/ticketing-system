@@ -61,16 +61,9 @@ export function FlightCard(props: FlightCardProps) {
           {props.farePriced === false ? (
             <p className="text-lg font-semibold text-zinc-500">Price TBA</p>
           ) : (
-            <>
-              <p className="text-xl font-semibold text-zinc-900">
-                {formatAud(props.displayPriceCents)}
-              </p>
-              {props.displayPriceCents !== props.basePriceCents && (
-                <p className="text-xs text-zinc-500">
-                  Ticket {formatAud(props.basePriceCents)} · live fare
-                </p>
-              )}
-            </>
+            <p className="text-xl font-semibold text-zinc-900">
+              {formatAud(props.displayPriceCents)}
+            </p>
           )}
         </div>
         {soldOut ? (

@@ -5,8 +5,6 @@ import { SelectedFlightSummary } from "@/components/fares/SelectedFlightSummary"
 import { getBrand } from "@/lib/branding";
 import { prisma } from "@/lib/db";
 import { buildCharterFareProducts } from "@/lib/fares/charter";
-import { recordDemandEvent } from "@/lib/pricing/service";
-import { getSessionId } from "@/lib/session";
 
 export default async function FlightDetailPage({
   params,
@@ -23,13 +21,6 @@ export default async function FlightDetailPage({
     include: { fareReleases: { orderBy: { sortOrder: "asc" } } },
   });
   if (!flight) notFound();
-
-  const sessionId = await getSessionId();
-  try {
-    await recordDemandEvent(flight.id, "view", sessionId);
-  } catch (err) {
-    console.error("recordDemandEvent failed", err);
-  }
 
   const soldOut = flight.remainingSeats < 1;
   const products = await buildCharterFareProducts({

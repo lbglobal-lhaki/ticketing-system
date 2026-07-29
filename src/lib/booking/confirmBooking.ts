@@ -13,7 +13,7 @@ import {
   defaultInvoiceIdentity,
 } from "@/lib/documents/invoiceFields";
 import { getCurrentFareRelease } from "@/lib/fares/current";
-import { getPricingConfig, priceFlight } from "@/lib/pricing/service";
+import { getQuoteTtlMinutes, priceFlight } from "@/lib/pricing/service";
 import {
   decrementFareAndFlight,
   releaseQuoteHold,
@@ -87,7 +87,6 @@ export async function createPriceQuote(input: {
     }
   }
 
-  const config = getPricingConfig();
   const outboundPrice = await priceFlight(flight);
   const returnPrice = returnFlight ? await priceFlight(returnFlight) : null;
   if (!outboundPrice.farePriced) {
@@ -130,7 +129,7 @@ export async function createPriceQuote(input: {
   }
 
   const totalCents = outboundCents + returnCents;
-  const expiresAt = new Date(Date.now() + config.quoteTtlMinutes * 60 * 1000);
+  const expiresAt = new Date(Date.now() + getQuoteTtlMinutes() * 60 * 1000);
   const holdSeats = 1;
 
   // One active cart item per session — release any prior holds first.
@@ -177,9 +176,9 @@ export async function createPriceQuote(input: {
             returnPriceCents: returnCents,
             basePriceSnapshotCents:
               outboundCurrent.priceCents + (returnCurrent?.priceCents ?? 0),
-            demandMultiplier: outboundPrice.demandMultiplier,
-            scarcityMultiplier: outboundPrice.scarcityMultiplier,
-            baseMarkup: outboundPrice.baseMarkup,
+            demandMultiplier: 1,
+            scarcityMultiplier: 1,
+            baseMarkup: 0,
             expiresAt,
             status: "active",
             seatsBooked: holdSeats,
@@ -187,23 +186,6 @@ export async function createPriceQuote(input: {
             inventoryHeld: true,
           },
         });
-
-        await tx.demandEvent.create({
-          data: {
-            flightId: flight.id,
-            type: "hold",
-            sessionId: input.sessionId,
-          },
-        });
-        if (returnFlight) {
-          await tx.demandEvent.create({
-            data: {
-              flightId: returnFlight.id,
-              type: "hold",
-              sessionId: input.sessionId,
-            },
-          });
-        }
 
         return created;
       },
@@ -308,23 +290,6 @@ export async function confirmBooking(input: {
             seatsBooked: input.seatsBooked,
           },
         });
-
-        await tx.demandEvent.create({
-          data: {
-            flightId: flight.id,
-            type: "purchase",
-            sessionId: input.sessionId,
-          },
-        });
-        if (returnFlight) {
-          await tx.demandEvent.create({
-            data: {
-              flightId: returnFlight.id,
-              type: "purchase",
-              sessionId: input.sessionId,
-            },
-          });
-        }
 
         const bookingRef = makeBookingRef();
         const ticketNumber = makeTicketNumber();
