@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { canAccessBooking } from "@/lib/documentAccess";
 import { prisma } from "@/lib/db";
-import { renderAirfareInvoiceHtml } from "@/lib/documents/templates";
+import { getOrCreateInvoicePdf } from "@/lib/documents/invoiceBlob";
 import { loadBookingDocumentData } from "@/lib/email/bookingMail";
+
+export const maxDuration = 30;
 
 export async function GET(
   request: Request,
@@ -44,9 +46,11 @@ export async function GET(
       return new NextResponse("Airfare invoice not found", { status: 404 });
     }
 
-    return new NextResponse(renderAirfareInvoiceHtml(data), {
+    const pdf = await getOrCreateInvoicePdf(data);
+    return new NextResponse(new Uint8Array(pdf), {
       headers: {
-        "Content-Type": "text/html; charset=utf-8",
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="Airfare-Invoice-${data.invoice.invoiceNumber}.pdf"`,
         "Cache-Control": "private, no-store",
       },
     });

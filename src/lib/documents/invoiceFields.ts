@@ -126,3 +126,17 @@ export function defaultBaggageLabel(cabinClass: string, fareProductName?: string
   if (fareProductName?.toLowerCase().includes("full")) return "2 PIECES (23kg each)";
   return "1 PIECE (23kg)";
 }
+
+/**
+ * Flat white line-icons for the footer contact badges (phone/website/email).
+ * Plain SVG instead of emoji — emoji glyphs render as full-color pictures in
+ * Chrome's PDF export and look out of place inside a solid brand-colour badge.
+ */
+export const ICON_PHONE =
+  '<svg viewBox="0 0 20 20" width="12" height="12" fill="white"><path d="M2 3.5A1.5 1.5 0 0 1 3.5 2h1.148a1.5 1.5 0 0 1 1.465 1.175l.716 3.223a1.5 1.5 0 0 1-.54 1.435l-.822.822a11.03 11.03 0 0 0 4.994 4.994l.822-.822a1.5 1.5 0 0 1 1.435-.54l3.223.716A1.5 1.5 0 0 1 18 15.352V16.5a1.5 1.5 0 0 1-1.5 1.5h-1.25C7.545 18 2 12.455 2 5.75V4.5z"/></svg>';
+
+export const ICON_GLOBE =
+  '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="white" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><line x1="3" y1="12" x2="21" y2="12"/></svg>';
+
+export const ICON_MAIL =
+  '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="white" stroke-width="1.6" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>';

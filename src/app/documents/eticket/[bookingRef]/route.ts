@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { canAccessBooking } from "@/lib/documentAccess";
 import { prisma } from "@/lib/db";
 import { renderTravelDocumentHtml } from "@/lib/documents/templates";
+import { htmlToPdf } from "@/lib/documents/pdf";
 import { loadBookingDocumentData } from "@/lib/email/bookingMail";
+
+export const maxDuration = 30;
 
 export async function GET(
   request: Request,
@@ -41,9 +44,11 @@ export async function GET(
     }
 
     // Unpaid bookings still get a reservation letter — boarding passes are omitted in the renderer.
-    return new NextResponse(renderTravelDocumentHtml(data), {
+    const pdf = await htmlToPdf(renderTravelDocumentHtml(data));
+    return new NextResponse(new Uint8Array(pdf), {
       headers: {
-        "Content-Type": "text/html; charset=utf-8",
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="E-Ticket-Itinerary-${data.bookingRef}.pdf"`,
         "Cache-Control": "private, no-store",
       },
     });

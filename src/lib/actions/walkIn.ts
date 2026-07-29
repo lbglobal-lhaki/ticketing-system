@@ -296,6 +296,8 @@ export async function markBookingPaidAction(formData: FormData) {
           status: "paid",
           paidAt: new Date(),
           markedPaidByAdmin: true,
+          pdfBlobUrl: null,
+          pdfBlobPathname: null,
         },
       });
     }
@@ -349,6 +351,8 @@ export async function markBookingUnpaidAction(formData: FormData) {
         paidAt: null,
         dueAt: holdExpiresAt,
         markedPaidByAdmin: true,
+        pdfBlobUrl: null,
+        pdfBlobPathname: null,
       },
     });
   });

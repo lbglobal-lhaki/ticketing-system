@@ -53,6 +53,9 @@ export async function markInvoicePaidAction(formData: FormData) {
         status: "paid",
         paidAt: new Date(),
         markedPaidByAdmin: true,
+        // Paid status appears on the PDF — force regenerate on next send/view.
+        pdfBlobUrl: null,
+        pdfBlobPathname: null,
       },
     });
     await tx.booking.update({
@@ -112,6 +115,8 @@ export async function markInvoiceUnpaidAction(formData: FormData) {
         paidAt: null,
         dueAt: holdExpiresAt,
         markedPaidByAdmin: true,
+        pdfBlobUrl: null,
+        pdfBlobPathname: null,
       },
     });
     await tx.booking.update({
@@ -250,6 +255,9 @@ async function persistInvoiceDocument(formData: FormData) {
       gstIncluded: totals.gstIncluded,
       amountCents: totals.amountCents,
       dueAt,
+      // Line items / customer details changed — invalidate cached PDF.
+      pdfBlobUrl: null,
+      pdfBlobPathname: null,
     },
   });
 

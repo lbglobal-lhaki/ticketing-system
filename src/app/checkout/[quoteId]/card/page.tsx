@@ -12,6 +12,10 @@ import { passengerDraftFromQuote } from "@/lib/checkout/passengerDraft";
 import { calculateCardServiceFee } from "@/lib/payments/fees";
 import { createPaymentIntent, getStripePublicConfig } from "@/lib/payments/stripe";
 
+// Confirming a card payment also generates PDF e-ticket/invoice attachments
+// via headless Chromium, which can take longer than the platform default.
+export const maxDuration = 60;
+
 export default async function CardCheckoutPage({
   params,
 }: {

@@ -7,6 +7,10 @@ import { prisma } from "@/lib/db";
 import { airportLabel, formatFlightTime } from "@/lib/format";
 import { formatAud } from "@/lib/pricing";
 
+// Re-emailing the invoice generates a PDF attachment via headless Chromium,
+// which can take longer than the platform default.
+export const maxDuration = 60;
+
 export default async function ConfirmationPage({
   params,
   searchParams,

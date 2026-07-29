@@ -14,6 +14,10 @@ import {
   isBankTransferConfigured,
 } from "@/lib/payments/bank";
 
+// Confirming a bank-transfer booking also generates a PDF invoice attachment
+// via headless Chromium, which can take longer than the platform default.
+export const maxDuration = 60;
+
 export default async function BankCheckoutPage({
   params,
 }: {

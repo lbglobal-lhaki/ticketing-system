@@ -1,9 +1,8 @@
 import { prisma } from "@/lib/db";
 import type { BookingDocumentData } from "@/lib/documents/templates";
-import {
-  renderAirfareInvoiceHtml,
-  renderTravelDocumentHtml,
-} from "@/lib/documents/templates";
+import { renderTravelDocumentHtml } from "@/lib/documents/templates";
+import { getOrCreateInvoicePdf } from "@/lib/documents/invoiceBlob";
+import { htmlToPdf } from "@/lib/documents/pdf";
 import {
   bankTransferEmail,
   eTicketEmail,
@@ -96,7 +95,7 @@ export async function sendBookingConfirmationBundle(bookingId: string) {
   }
 
   const ticketEmail = eTicketEmail(data);
-  const travelDoc = renderTravelDocumentHtml(data);
+  const travelDocPdf = await htmlToPdf(renderTravelDocumentHtml(data));
   const ticketResult = await sendEmail({
     to: data.email,
     subject: ticketEmail.subject,
@@ -105,9 +104,9 @@ export async function sendBookingConfirmationBundle(bookingId: string) {
     mailbox: "ticketing",
     attachments: [
       {
-        filename: `E-Ticket-Itinerary-${data.bookingRef}.html`,
-        content: travelDoc,
-        contentType: "text/html",
+        filename: `E-Ticket-Itinerary-${data.bookingRef}.pdf`,
+        content: travelDocPdf,
+        contentType: "application/pdf",
       },
     ],
   });
@@ -115,7 +114,7 @@ export async function sendBookingConfirmationBundle(bookingId: string) {
   let invoiceResult: Awaited<ReturnType<typeof sendEmail>> | null = null;
   if (data.invoice) {
     const receiptEmail = invoiceReceiptEmail(data);
-    const airfareHtml = renderAirfareInvoiceHtml(data);
+    const airfarePdf = await getOrCreateInvoicePdf(data);
     invoiceResult = await sendEmail({
       to: data.email,
       subject: receiptEmail.subject,
@@ -124,9 +123,9 @@ export async function sendBookingConfirmationBundle(bookingId: string) {
       mailbox: "accounts",
       attachments: [
         {
-          filename: `Airfare-Invoice-${data.invoice.invoiceNumber}.html`,
-          content: airfareHtml,
-          contentType: "text/html",
+          filename: `Airfare-Invoice-${data.invoice.invoiceNumber}.pdf`,
+          content: airfarePdf,
+          contentType: "application/pdf",
         },
       ],
     });
@@ -157,7 +156,7 @@ export async function sendBankTransferBundle(bookingId: string) {
   }
 
   const email = bankTransferEmail(data);
-  const airfareHtml = renderAirfareInvoiceHtml(data);
+  const airfarePdf = await getOrCreateInvoicePdf(data);
 
   // Invoice only until payment is confirmed — do not attach boarding passes.
   const result = await sendEmail({
@@ -168,9 +167,9 @@ export async function sendBankTransferBundle(bookingId: string) {
     mailbox: "accounts",
     attachments: [
       {
-        filename: `Airfare-Invoice-${data.invoice.invoiceNumber}.html`,
-        content: airfareHtml,
-        contentType: "text/html",
+        filename: `Airfare-Invoice-${data.invoice.invoiceNumber}.pdf`,
+        content: airfarePdf,
+        contentType: "application/pdf",
       },
     ],
   });

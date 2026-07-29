@@ -4,6 +4,9 @@ import { getBrand } from "@/lib/branding";
 import {
   cityName,
   computeInvoiceTotals,
+  ICON_GLOBE,
+  ICON_MAIL,
+  ICON_PHONE,
 } from "@/lib/documents/invoiceFields";
 import type { BookingDocumentData } from "@/lib/documents/templates";
 
@@ -92,8 +95,8 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
   const routeOptions = [
     "Paro-Perth",
     "Perth-Paro",
-    "Perth-Paro-Perth",
     "Paro-Perth-Paro",
+    "Perth-Paro-Perth",
   ];
   const activeRoute = normalizeRoute(routeLabel);
 
@@ -184,7 +187,7 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     }
     .flight .row {
       display: grid;
-      grid-template-columns: 150px 1fr;
+      grid-template-columns: 175px 1fr;
       gap: 8px;
       margin: 4px 0;
       align-items: start;
@@ -194,6 +197,7 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       letter-spacing: 0.03em;
       text-transform: uppercase;
       font-size: 12px;
+      white-space: nowrap;
     }
     .routes {
       display: flex;
@@ -240,10 +244,16 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       vertical-align: middle;
     }
     table.items td:first-child { font-weight: 600; }
-    .totals {
-      width: 280px;
-      margin-left: auto;
+    .pay-totals-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 24px;
       margin-top: 14px;
+    }
+    .totals {
+      width: 260px;
+      flex-shrink: 0;
       font-size: 13px;
     }
     .totals .line {
@@ -265,10 +275,10 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       padding-top: 4px;
     }
     .pay {
-      margin-top: 28px;
       font-size: 13px;
       line-height: 1.7;
       max-width: 420px;
+      flex: 1;
     }
     .pay h3 {
       margin: 0 0 8px;
@@ -297,26 +307,25 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     .footer {
       position: absolute;
       left: 0; right: 0; bottom: 0;
-      border-top: 3px solid #f5c518;
-      padding: 12px 28px 0;
+      border-top: 2px solid #f5c518;
+      padding: 14px 28px 20px;
     }
     .footer-row {
       display: grid;
       grid-template-columns: 1.2fr 1fr 1.1fr;
       gap: 10px;
       font-size: 12px;
-      color: #0b2c5a;
-      font-weight: 700;
-      padding-bottom: 12px;
+      color: #333;
+      font-weight: 500;
     }
     .footer .item { display: flex; align-items: center; gap: 8px; }
     .footer .dot {
       width: 22px; height: 22px; border-radius: 50%;
-      background: #f5c518; color: #0b2c5a;
+      background: #f5c518; color: #fff;
       display: inline-flex; align-items: center; justify-content: center;
-      font-size: 11px; flex-shrink: 0;
+      flex-shrink: 0;
     }
-    .footer-bar { height: 14px; background: #f5c518; }
+    .footer .dot svg { display: block; }
     @media print {
       body { background: #fff; }
       .page { box-shadow: none; margin: 0; }
@@ -420,14 +429,7 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
         </tbody>
       </table>
 
-      <div class="totals">
-        <div class="line"><span>SUBTOTAL</span><span>${esc(money(totals.linesCents))}</span></div>
-        <div class="line tax"><span>Tax</span><span>${esc(taxPct)}%</span></div>
-        <div class="line"><span></span><span>${esc(money(totals.gstCents))}</span></div>
-        <div class="rule"></div>
-        <div class="grand"><span>Total</span><span>${esc(money(invoice.amountCents))}</span></div>
-      </div>
-
+      <div class="pay-totals-row">
       <div class="pay">
         <h3>Payment Information</h3>
         ${
@@ -460,15 +462,23 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
             : ""
         }
       </div>
+
+      <div class="totals">
+        <div class="line"><span>SUBTOTAL</span><span>${esc(money(totals.linesCents))}</span></div>
+        <div class="line tax"><span>Tax</span><span>${esc(taxPct)}%</span></div>
+        <div class="line"><span></span><span>${esc(money(totals.gstCents))}</span></div>
+        <div class="rule"></div>
+        <div class="grand"><span>Total</span><span>${esc(money(invoice.amountCents))}</span></div>
+      </div>
+      </div>
     </div>
 
     <div class="footer">
       <div class="footer-row">
-        <div class="item"><span class="dot">☎</span>${esc(brand.agentPhonePrimary)} | ${esc(brand.agentPhoneSecondary)}</div>
-        <div class="item"><span class="dot">🌐</span>${esc(brand.agentWebsite)}</div>
-        <div class="item"><span class="dot">✉</span>${esc(brand.agentEmail)}</div>
+        <div class="item"><span class="dot">${ICON_PHONE}</span>${esc(brand.agentPhonePrimary)} | ${esc(brand.agentPhoneSecondary)}</div>
+        <div class="item"><span class="dot">${ICON_GLOBE}</span>${esc(brand.agentWebsite)}</div>
+        <div class="item"><span class="dot">${ICON_MAIL}</span>${esc(brand.agentEmail)}</div>
       </div>
-      <div class="footer-bar"></div>
     </div>
   </section>
 </body>

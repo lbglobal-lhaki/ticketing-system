@@ -15,6 +15,10 @@ import { prisma } from "@/lib/db";
 import { listAllCharterFareProductsAdmin } from "@/lib/fares/charter";
 import { adminLoginSchema } from "@/lib/validation";
 
+// Walk-in confirmations and invoice resends generate PDF attachments via
+// headless Chromium, which can take longer than the platform default.
+export const maxDuration = 60;
+
 function passwordMatches(input: string, expected: string) {
   const a = Buffer.from(input);
   const b = Buffer.from(expected);

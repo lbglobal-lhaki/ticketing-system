@@ -243,6 +243,10 @@ model Invoice {
   sentAt            DateTime?
   paidAt            DateTime?
   markedPaidByAdmin Boolean        @default(false)
+  /// Private Vercel Blob URL for the generated PDF (null until first render/upload)
+  pdfBlobUrl        String?
+  /// Stable Blob pathname used for overwrite on regenerate (e.g. invoices/INV-….pdf)
+  pdfBlobPathname   String?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 

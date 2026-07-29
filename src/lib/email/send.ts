@@ -2,7 +2,8 @@ import { getBrand } from "@/lib/branding";
 
 export type EmailAttachment = {
   filename: string;
-  content: string;
+  /** String for text-based attachments (HTML), Buffer for binary ones (PDF). */
+  content: string | Buffer;
   contentType?: string;
 };
 
@@ -137,7 +138,9 @@ export async function sendEmail(
         text: input.text,
         attachments: input.attachments?.map((a) => ({
           filename: a.filename,
-          content: Buffer.from(a.content, "utf8"),
+          content: Buffer.isBuffer(a.content)
+            ? a.content
+            : Buffer.from(a.content, "utf8"),
           contentType: a.contentType || "text/html",
         })),
       });

@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Invoice" ADD COLUMN IF NOT EXISTS "pdfBlobUrl" TEXT;
+ALTER TABLE "Invoice" ADD COLUMN IF NOT EXISTS "pdfBlobPathname" TEXT;

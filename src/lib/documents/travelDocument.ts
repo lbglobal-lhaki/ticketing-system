@@ -7,6 +7,9 @@ import {
   computeInvoiceTotals,
   defaultBaggageLabel,
   displayTicketCode,
+  ICON_GLOBE,
+  ICON_MAIL,
+  ICON_PHONE,
 } from "@/lib/documents/invoiceFields";
 import type { BookingDocumentData } from "@/lib/documents/templates";
 
@@ -282,22 +285,23 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
     .p1-footer {
       position: absolute;
       left: 0; right: 0; bottom: 0;
-      border-top: 3px solid #f5c518;
+      border-top: 2px solid #f5c518;
       padding: 14px 28px 18px;
       display: grid;
       grid-template-columns: 1.2fr 1fr 1.1fr;
       gap: 10px;
       font-size: 12px;
-      color: #0b2c5a;
-      font-weight: 600;
+      color: #333;
+      font-weight: 500;
     }
     .p1-footer .item { display: flex; align-items: center; gap: 8px; }
     .p1-footer .dot {
       width: 22px; height: 22px; border-radius: 50%;
-      background: #f5c518; color: #0b2c5a;
+      background: #f5c518; color: #fff;
       display: inline-flex; align-items: center; justify-content: center;
-      font-size: 11px; flex-shrink: 0;
+      flex-shrink: 0;
     }
+    .p1-footer .dot svg { display: block; }
     .p2 { padding: 18px 18px 16px; }
     .p2-title {
       text-align: center;
@@ -729,9 +733,9 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
       </div>
     </div>
     <div class="p1-footer">
-      <div class="item"><span class="dot">☎</span>${esc(brand.agentPhonePrimary)} | ${esc(brand.agentPhoneSecondary)}</div>
-      <div class="item"><span class="dot">🌐</span>${esc(brand.agentWebsite)}</div>
-      <div class="item"><span class="dot">✉</span>${esc(brand.agentEmail)}</div>
+      <div class="item"><span class="dot">${ICON_PHONE}</span>${esc(brand.agentPhonePrimary)} | ${esc(brand.agentPhoneSecondary)}</div>
+      <div class="item"><span class="dot">${ICON_GLOBE}</span>${esc(brand.agentWebsite)}</div>
+      <div class="item"><span class="dot">${ICON_MAIL}</span>${esc(brand.agentEmail)}</div>
     </div>
   </section>
 
