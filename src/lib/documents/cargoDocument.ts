@@ -5,6 +5,7 @@ import { formatCargoAnswer } from "@/lib/cargo/submit";
 
 export type CargoDocumentData = {
   id: string;
+  parcelNumber: string;
   status: "new" | "reviewed" | "closed";
   paid: boolean;
   paidAt: Date | null;
@@ -182,6 +183,7 @@ export function renderCargoDocumentHtml(data: CargoDocumentData) {
   const relationship = take("Relationship to Sender", "Relationship");
 
   const bookingRef =
+    data.parcelNumber ||
     take("Reference Number", "Booking Reference", "Booking Ref") ||
     data.id.slice(-10).toUpperCase();
   const flightDate = take(
@@ -274,7 +276,7 @@ export function renderCargoDocumentHtml(data: CargoDocumentData) {
 
   const headerUri =
     assetDataUri("header-page1.png") || assetDataUri("logo-lb.png");
-  const ref = data.id.slice(-10).toUpperCase();
+  const ref = data.parcelNumber || data.id.slice(-10).toUpperCase();
 
   const packagingChecks = checkGrid([
     { label: "Carton", on: matchesAny(packaging, ["carton", "box"]) },

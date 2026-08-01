@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
-import { prisma } from "@/lib/db";
+import { allocateCargoParcelNumber } from "@/lib/cargo/parcelNumber";
 import {
   cargoSubmitSchema,
   extractCargoContacts,
 } from "@/lib/cargo/submit";
+import { prisma } from "@/lib/db";
 
 function authorize(request: Request): NextResponse | null {
   const secret = process.env.CARGO_FORM_SECRET?.trim();
@@ -64,9 +65,11 @@ export async function POST(request: Request) {
 
   try {
     if (data.googleResponseId) {
+      const parcelNumber = await allocateCargoParcelNumber();
       const row = await prisma.cargoSubmission.upsert({
         where: { googleResponseId: data.googleResponseId },
         create: {
+          parcelNumber,
           googleResponseId: data.googleResponseId,
           answers: answersJson,
           submitterName: contacts.submitterName,
@@ -81,22 +84,32 @@ export async function POST(request: Request) {
           phone: contacts.phone,
           ...(submittedAt ? { submittedAt } : {}),
         },
-        select: { id: true },
+        select: { id: true, parcelNumber: true },
       });
-      return NextResponse.json({ ok: true, id: row.id });
+      return NextResponse.json({
+        ok: true,
+        id: row.id,
+        parcelNumber: row.parcelNumber,
+      });
     }
 
+    const parcelNumber = await allocateCargoParcelNumber();
     const row = await prisma.cargoSubmission.create({
       data: {
+        parcelNumber,
         answers: answersJson,
         submitterName: contacts.submitterName,
         email: contacts.email,
         phone: contacts.phone,
         submittedAt,
       },
-      select: { id: true },
+      select: { id: true, parcelNumber: true },
     });
-    return NextResponse.json({ ok: true, id: row.id });
+    return NextResponse.json({
+      ok: true,
+      id: row.id,
+      parcelNumber: row.parcelNumber,
+    });
   } catch (error) {
     console.error("[cargo:submit]", error);
     return NextResponse.json(

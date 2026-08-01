@@ -35,6 +35,7 @@ export async function GET(
 
     const data = {
       id: row.id,
+      parcelNumber: row.parcelNumber,
       status: row.status,
       paid: row.paid,
       paidAt: row.paidAt,
@@ -63,7 +64,7 @@ export async function GET(
 
     try {
       const pdf = await htmlToPdf(html);
-      const ref = row.id.slice(-10).toUpperCase();
+      const ref = row.parcelNumber || row.id.slice(-10).toUpperCase();
       return new NextResponse(new Uint8Array(pdf), {
         headers: {
           "Content-Type": "application/pdf",

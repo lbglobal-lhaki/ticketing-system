@@ -7,10 +7,12 @@ import {
   setCargoPaidAction,
   updateCargoSubmissionAction,
 } from "@/lib/actions/cargo";
+import { CargoEmailNotices } from "@/components/CargoEmailNotices";
 import { formatCargoAnswer } from "@/lib/cargo/submit";
 
 export type AdminCargoRow = {
   id: string;
+  parcelNumber: string;
   status: "new" | "reviewed" | "closed";
   paid: boolean;
   paidAt: string | null;
@@ -25,7 +27,7 @@ export type AdminCargoRow = {
 };
 
 type AnswerPair = { key: string; value: string };
-type Mode = "closed" | "view" | "edit" | "create";
+type Mode = "closed" | "view" | "edit" | "create" | "emails";
 
 const fieldClass =
   "w-full min-w-0 border-0 border-b border-line bg-transparent py-2 text-sm text-foreground outline-none transition focus:border-accent";
@@ -167,6 +169,12 @@ export function CargoAdminPanel({
     setPairs(answersToPairs(row.answers));
   }
 
+  function openEmails(id: string) {
+    setLocalError(null);
+    setActiveId(id);
+    setMode("emails");
+  }
+
   function closeModal() {
     setMode("closed");
     setActiveId(null);
@@ -207,8 +215,8 @@ export function CargoAdminPanel({
             Cargo enquiries
           </h2>
           <p className="mt-1 text-sm text-muted">
-            Google Form submissions and manual entries. Mark paid when payment
-            is received.
+            Google Form submissions and manual entries. Each enquiry gets an
+            auto-assigned parcel number. Use Emails for sender/receiver notices.
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-3">
@@ -258,8 +266,8 @@ export function CargoAdminPanel({
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold text-foreground">
-                      {row.submitterName || row.email || "Untitled enquiry"}
+                    <p className="font-mono text-sm font-semibold tracking-wide text-accent-deep">
+                      {row.parcelNumber}
                     </p>
                     <span
                       className={`inline-block border px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${statusClass(row.status)}`}
@@ -276,6 +284,9 @@ export function CargoAdminPanel({
                       {row.paid ? "Paid" : "Unpaid"}
                     </span>
                   </div>
+                  <p className="font-semibold text-foreground">
+                    {row.submitterName || row.email || "Untitled enquiry"}
+                  </p>
                   <p className="text-sm text-muted">
                     {new Date(row.submittedAt || row.createdAt).toLocaleString(
                       "en-AU",
@@ -297,24 +308,23 @@ export function CargoAdminPanel({
                   <button
                     type="button"
                     className={btnClass}
-                    disabled={pending}
-                    onClick={() => handleSetPaid(row.id, !row.paid)}
+                    onClick={() => openView(row.id)}
                   >
-                    {row.paid ? "Mark unpaid" : "Mark paid"}
+                    View
+                  </button>
+                  <button
+                    type="button"
+                    className={`${btnClass} border-accent/40 text-accent-deep`}
+                    onClick={() => openEmails(row.id)}
+                  >
+                    Emails
                   </button>
                   <button
                     type="button"
                     className={btnClass}
                     onClick={() => openPreview(row.id)}
                   >
-                    Preview PDF
-                  </button>
-                  <button
-                    type="button"
-                    className={btnClass}
-                    onClick={() => openView(row.id)}
-                  >
-                    View
+                    PDF
                   </button>
                   <button
                     type="button"
@@ -322,6 +332,14 @@ export function CargoAdminPanel({
                     onClick={() => openEdit(row)}
                   >
                     Edit
+                  </button>
+                  <button
+                    type="button"
+                    className={btnClass}
+                    disabled={pending}
+                    onClick={() => handleSetPaid(row.id, !row.paid)}
+                  >
+                    {row.paid ? "Unpaid" : "Paid"}
                   </button>
                   <button
                     type="button"
@@ -338,7 +356,62 @@ export function CargoAdminPanel({
         </ul>
       )}
 
-      {mode !== "closed" && (mode === "create" || active) && (
+      {mode === "emails" && active && (
+        <div
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 p-3 sm:items-center sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cargo-email-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeModal();
+          }}
+        >
+          <div className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-xl">
+            <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 sm:px-6">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">
+                  Cargo emails
+                </p>
+                <h3
+                  id="cargo-email-title"
+                  className="mt-1 font-[family-name:var(--font-syne)] text-xl font-semibold"
+                >
+                  {active.parcelNumber}
+                </h3>
+                <p className="mt-1 truncate text-sm text-muted">
+                  {active.submitterName || active.email || "Untitled enquiry"}
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={btnClass}
+                  onClick={() => openView(active.id)}
+                >
+                  View enquiry
+                </button>
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="text-sm text-muted hover:text-foreground"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">
+              <CargoEmailNotices
+                cargoId={active.id}
+                parcelNumber={active.parcelNumber}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mode !== "closed" &&
+        mode !== "emails" &&
+        (mode === "create" || active) && (
         <div
           className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 p-4 sm:items-center"
           role="dialog"
@@ -364,10 +437,16 @@ export function CargoAdminPanel({
                 >
                   {mode === "create"
                     ? "Add enquiry"
-                    : active?.submitterName ||
+                    : active?.parcelNumber ||
+                      active?.submitterName ||
                       active?.email ||
                       "Untitled enquiry"}
                 </h3>
+                {mode !== "create" && active && (
+                  <p className="mt-1 text-sm text-muted">
+                    {active.submitterName || active.email || "Untitled enquiry"}
+                  </p>
+                )}
               </div>
               <button
                 type="button"
@@ -384,6 +463,13 @@ export function CargoAdminPanel({
                   <button
                     type="button"
                     className="btn-cta rounded-xl px-4 py-2.5 text-sm"
+                    onClick={() => openEmails(active.id)}
+                  >
+                    Emails
+                  </button>
+                  <button
+                    type="button"
+                    className={btnClass}
                     onClick={() => openPreview(active.id)}
                   >
                     Preview PDF
@@ -412,6 +498,14 @@ export function CargoAdminPanel({
                   </button>
                 </div>
                 <dl className="mt-5 space-y-3 border-t border-line pt-4">
+                  <div className="grid gap-1 sm:grid-cols-[10rem_1fr]">
+                    <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+                      Parcel number
+                    </dt>
+                    <dd className="font-mono text-sm font-semibold tracking-wide">
+                      {active.parcelNumber}
+                    </dd>
+                  </div>
                   <div className="grid gap-1 sm:grid-cols-[10rem_1fr]">
                     <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
                       Status
@@ -484,6 +578,25 @@ export function CargoAdminPanel({
               >
                 {mode === "edit" && active && (
                   <input type="hidden" name="id" value={active.id} />
+                )}
+
+                {mode === "edit" && active && (
+                  <p className="rounded-lg border border-line bg-slate-50 px-3 py-2 text-sm">
+                    <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+                      Parcel number{" "}
+                    </span>
+                    <span className="font-mono font-semibold tracking-wide text-accent-deep">
+                      {active.parcelNumber}
+                    </span>
+                    <span className="ml-2 text-xs text-muted">(auto-assigned)</span>
+                  </p>
+                )}
+                {mode === "create" && (
+                  <p className="text-sm text-muted">
+                    A parcel number like{" "}
+                    <span className="font-mono">CGO-YYYYMMDD-XXXXXX</span> will
+                    be assigned automatically when you create this enquiry.
+                  </p>
                 )}
 
                 <div className="grid gap-4 sm:grid-cols-2">

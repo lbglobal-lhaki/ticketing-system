@@ -441,6 +441,7 @@ export default async function AdminPage({
                   : {};
               return {
                 id: row.id,
+                parcelNumber: row.parcelNumber,
                 status: row.status,
                 paid: row.paid,
                 paidAt: row.paidAt?.toISOString() ?? null,

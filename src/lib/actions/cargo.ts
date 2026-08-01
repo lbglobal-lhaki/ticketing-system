@@ -4,8 +4,9 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@/generated/prisma/client";
 import { requireAdmin } from "@/lib/adminAuth";
-import { prisma } from "@/lib/db";
+import { allocateCargoParcelNumber } from "@/lib/cargo/parcelNumber";
 import { extractCargoContacts } from "@/lib/cargo/submit";
+import { prisma } from "@/lib/db";
 import { z } from "zod";
 
 const statusSchema = z.enum(["new", "reviewed", "closed"]);
@@ -60,8 +61,10 @@ export async function createCargoSubmissionAction(formData: FormData) {
   const paid = parsePaid(formData);
 
   try {
+    const parcelNumber = await allocateCargoParcelNumber();
     await prisma.cargoSubmission.create({
       data: {
+        parcelNumber,
         status: statusParsed.data,
         paid,
         paidAt: paid ? new Date() : null,

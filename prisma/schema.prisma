@@ -60,6 +60,16 @@ enum CargoSubmissionStatus {
   closed
 }
 
+enum CargoEmailRole {
+  sender
+  receiver
+}
+
+enum CargoEmailStatus {
+  draft
+  sent
+}
+
 model Flight {
   id             String     @id @default(cuid())
   airline        String
@@ -319,6 +329,8 @@ model CharterFareProduct {
 /// Google Form cargo enquiry — ingested via /api/cargo/submit.
 model CargoSubmission {
   id               String                @id @default(cuid())
+  /// Auto-assigned public cargo / parcel reference (e.g. CGO-20260801-A3F91C).
+  parcelNumber     String                @unique
   status           CargoSubmissionStatus @default(new)
   /// Admin-marked payment state for the cargo enquiry.
   paid             Boolean               @default(false)
@@ -334,8 +346,36 @@ model CargoSubmission {
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
 
+  emailNotices     CargoEmailNotice[]
+
   @@index([status])
   @@index([paid])
   @@index([createdAt])
   @@index([email])
+  @@index([parcelNumber])
+}
+
+/// Admin-controlled cargo email draft / send record (not auto-sent).
+model CargoEmailNotice {
+  id             String          @id @default(cuid())
+  cargoId        String
+  cargo          CargoSubmission @relation(fields: [cargoId], references: [id], onDelete: Cascade)
+  role           CargoEmailRole
+  toEmail        String
+  toName         String          @default("")
+  subject        String
+  bodyHtml       String
+  bodyText       String          @default("")
+  /// Admin notes for pickup / arrival (baked into template; editable in body after).
+  pickupLocation String          @default("")
+  arrivalNote    String          @default("")
+  status         CargoEmailStatus @default(draft)
+  sentAt         DateTime?
+  lastError      String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([cargoId, role])
+  @@index([cargoId, status])
+  @@index([createdAt])
 }
