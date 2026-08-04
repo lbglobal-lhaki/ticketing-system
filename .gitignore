@@ -36,6 +36,7 @@ yarn-error.log*
 .env
 .env*.local
 !.env.example
+.admin-password-rotated.txt
 
 # vercel
 .vercel

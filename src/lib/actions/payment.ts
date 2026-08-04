@@ -13,12 +13,8 @@ import {
   getBankTransferDetails,
   isBankTransferConfigured,
 } from "@/lib/payments/bank";
-import { calculateCardServiceFee } from "@/lib/payments/fees";
-import {
-  isStripeConfigured,
-  refundPaymentIntent,
-  retrievePaymentIntent,
-} from "@/lib/payments/stripe";
+import { fulfillCardPayment } from "@/lib/payments/fulfillCardPayment";
+import { isStripeConfigured } from "@/lib/payments/stripe";
 import { getSessionId } from "@/lib/session";
 import { bookingSchema } from "@/lib/validation";
 import { z } from "zod";
@@ -62,113 +58,32 @@ export async function payWithCardAction(input: {
       return { error: "Missing browser session — refresh and try again" };
     }
 
-    const { prisma } = await import("@/lib/db");
-    const quote = await prisma.priceQuote.findUnique({
-      where: { id: parsed.data.quoteId },
-      select: {
-        quotedPriceCents: true,
-        status: true,
-        expiresAt: true,
-        sessionId: true,
-        inventoryHeld: true,
-      },
-    });
-
-    if (!quote || quote.status !== "active") {
-      return { error: "Quote is no longer available" };
-    }
-    if (quote.sessionId !== sessionId) {
-      return { error: "Quote does not belong to this session" };
-    }
-    if (quote.expiresAt <= new Date()) {
-      return { error: "Quote has expired — please book again" };
-    }
-    if (!quote.inventoryHeld) {
-      return { error: "Seat hold expired — please select fares again" };
-    }
-
-    const fareCents =
-      quote.quotedPriceCents * parsed.data.seatsBooked;
-    const { totalCents, serviceFeeCents } = calculateCardServiceFee(fareCents);
-
-    // The card was already charged client-side via Stripe's Payment Element —
-    // verify the PaymentIntent server-side before trusting it (status, amount,
-    // currency, and that it belongs to this quote) rather than taking the
-    // client's word for it.
-    let paymentIntentId: string;
-    try {
-      const intent = await retrievePaymentIntent(parsed.data.paymentIntentId);
-      if (intent.status !== "succeeded") {
-        return { error: `Payment was not completed (status: ${intent.status}).` };
-      }
-      if (intent.currency !== "aud") {
-        return { error: "Payment currency mismatch — contact support." };
-      }
-      if (intent.amount !== totalCents) {
-        // Funds were captured but for an unexpected amount — refund immediately.
-        try {
-          await refundPaymentIntent({
-            paymentIntentId: intent.id,
-            idempotencyKey: `refund-mismatch-${intent.id}`,
-          });
-        } catch (refundError) {
-          console.error("mismatch auto-refund failed", refundError);
-        }
-        return {
-          error:
-            "Payment amount did not match the quote — your card was refunded. Please try again.",
-        };
-      }
-      if (intent.metadata?.quoteId && intent.metadata.quoteId !== parsed.data.quoteId) {
-        return { error: "Payment does not match this booking — contact support." };
-      }
-      paymentIntentId = intent.id;
-    } catch (error) {
-      return { error: toErrorMessage(error, "Could not verify card payment") };
-    }
-
-    const result = await confirmBooking({
+    const result = await fulfillCardPayment({
+      paymentIntentId: parsed.data.paymentIntentId,
       quoteId: parsed.data.quoteId,
       sessionId,
+      seatsBooked: parsed.data.seatsBooked,
       passengerName: parsed.data.passengerName,
       email: parsed.data.email,
       passengerPhone: parsed.data.passengerPhone || "",
       passportNumber: parsed.data.passportNumber || "",
       nationality: parsed.data.nationality || "",
-      seatsBooked: parsed.data.seatsBooked,
-      paymentMethod: "card",
-      invoiceStatus: "paid",
-      stripePaymentIntentId: paymentIntentId,
-      amountCentsOverride: totalCents,
-      serviceFeeCents,
     });
 
     if (!result.ok) {
-      try {
-        await refundPaymentIntent({
-          paymentIntentId,
-          idempotencyKey: `refund-${paymentIntentId}`,
-          amountCents: totalCents,
-        });
-      } catch (refundError) {
-        console.error("auto-refund failed", refundError);
-        return {
-          error: `${result.error}. Card was charged (${paymentIntentId}) but booking failed — contact support; refund may need manual processing.`,
-        };
-      }
-      return {
-        error: `${result.error}. Your card charge was automatically refunded.`,
-      };
+      return { error: result.error };
     }
 
-    const bookingId = result.booking.id;
-    after(async () => {
-      try {
-        await sendBookingConfirmationBundle(bookingId);
-      } catch (err) {
-        console.error("confirmation email failed", err);
-      }
-    });
+    if (!result.alreadyFulfilled) {
+      const bookingId = result.booking.id;
+      after(async () => {
+        try {
+          await sendBookingConfirmationBundle(bookingId);
+        } catch (err) {
+          console.error("confirmation email failed", err);
+        }
+      });
+    }
 
     redirect(
       withAccessToken(

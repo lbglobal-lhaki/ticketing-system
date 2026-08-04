@@ -9,7 +9,7 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 /** Bump when Prisma models change so hot-reload drops a stale client. */
-const PRISMA_SCHEMA_VERSION = "charter-pairing-v2-pool";
+const PRISMA_SCHEMA_VERSION = "admin-login-guard-pi-unique-v1";
 
 function isClosedConnectionError(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error);
@@ -77,6 +77,7 @@ function getPrisma(): PrismaClient {
         cargoSubmission?: unknown;
         cargoEmailNotice?: unknown;
         deletedRecord?: unknown;
+        adminLoginGuard?: unknown;
       })
     | undefined;
   const stale =
@@ -87,7 +88,8 @@ function getPrisma(): PrismaClient {
     typeof client.charterFareProduct === "undefined" ||
     typeof client.cargoSubmission === "undefined" ||
     typeof client.cargoEmailNotice === "undefined" ||
-    typeof client.deletedRecord === "undefined";
+    typeof client.deletedRecord === "undefined" ||
+    typeof client.adminLoginGuard === "undefined";
 
   if (stale) {
     resetPrismaClient();

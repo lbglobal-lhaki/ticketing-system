@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "crypto";
+import { createHash, timingSafeEqual } from "crypto";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { AdminDashboard } from "@/components/AdminDashboard";
@@ -8,6 +8,12 @@ import {
   isAdminAuthed,
   setAdminSessionCookie,
 } from "@/lib/adminAuth";
+import {
+  clearAdminLoginFailures,
+  getAdminLoginClientIp,
+  getAdminLoginThrottle,
+  recordAdminLoginFailure,
+} from "@/lib/adminLoginRateLimit";
 import { getSystemAnalytics } from "@/lib/analytics/systemAnalytics";
 import { expireStaleHoldsForAdminLoad } from "@/lib/booking/expireHolds";
 import { prisma } from "@/lib/db";
@@ -18,10 +24,10 @@ import { adminLoginSchema } from "@/lib/validation";
 // headless Chromium, which can take longer than the platform default.
 export const maxDuration = 60;
 
+/** Fixed-length digest compare — avoids leaking password length via early return. */
 function passwordMatches(input: string, expected: string) {
-  const a = Buffer.from(input);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
+  const a = createHash("sha256").update(`admin-pw:${input}`).digest();
+  const b = createHash("sha256").update(`admin-pw:${expected}`).digest();
   return timingSafeEqual(a, b);
 }
 
@@ -67,6 +73,14 @@ export default async function AdminPage({
 
   async function login(formData: FormData) {
     "use server";
+    const ip = await getAdminLoginClientIp();
+    const throttle = await getAdminLoginThrottle(ip);
+    if (!throttle.ok) {
+      redirect(
+        `/admin?error=${encodeURIComponent(throttle.message)}`,
+      );
+    }
+
     const parsed = adminLoginSchema.safeParse({
       password: formData.get("password"),
     });
@@ -75,8 +89,10 @@ export default async function AdminPage({
       redirect("/admin?error=ADMIN_PASSWORD+is+not+configured");
     }
     if (!parsed.success || !passwordMatches(parsed.data.password, expected)) {
+      await recordAdminLoginFailure(ip);
       redirect("/admin?error=Invalid+password");
     }
+    await clearAdminLoginFailures(ip);
     await setAdminSessionCookie();
     redirect("/admin?tab=flights");
   }

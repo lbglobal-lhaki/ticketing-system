@@ -11,6 +11,7 @@ import { getCheckoutQuoteState } from "@/lib/checkout/loadQuote";
 import { passengerDraftFromQuote } from "@/lib/checkout/passengerDraft";
 import { calculateCardServiceFee } from "@/lib/payments/fees";
 import { createPaymentIntent, getStripePublicConfig } from "@/lib/payments/stripe";
+import { getSessionId } from "@/lib/session";
 
 // Confirming a card payment also generates PDF e-ticket/invoice attachments
 // via headless Chromium, which can take longer than the platform default.
@@ -45,16 +46,22 @@ export default async function CardCheckoutPage({
     );
     const fareCents = state.quote.quotedPriceCents * seatsBooked;
     const fee = calculateCardServiceFee(fareCents);
+    const sessionId = await getSessionId();
     const idempotencyKey = createHash("sha256")
-      .update(`pi:${quoteId}:${seatsBooked}:${fee.totalCents}`)
+      .update(`pi:${quoteId}:${seatsBooked}:${fee.totalCents}:${sessionId}`)
       .digest("hex")
       .slice(0, 45);
 
     try {
+      if (!sessionId || sessionId === "anonymous") {
+        throw new Error("Missing browser session — refresh and try again");
+      }
       const intent = await createPaymentIntent({
         amountCents: fee.totalCents,
         idempotencyKey,
         quoteId,
+        sessionId,
+        seatsBooked,
         description: `Flight booking ${draft.passengerName || quoteId}`,
         receiptEmail: draft.email,
       });

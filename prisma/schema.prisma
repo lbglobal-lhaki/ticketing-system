@@ -266,7 +266,8 @@ model Invoice {
   endorsementText      String      @default("")
   fareCalculationLine  String      @default("")
   currency          String         @default("AUD")
-  stripePaymentIntentId String?
+  /// Unique when set — one Stripe PaymentIntent can only fulfill one invoice.
+  stripePaymentIntentId String?    @unique
   bankAccountName   String?
   bankBsb           String?
   bankAccountNumber String?
@@ -397,6 +398,15 @@ model CargoEmailNotice {
   @@index([cargoId, role])
   @@index([cargoId, status])
   @@index([createdAt])
+}
+
+/// Brute-force guard for /admin login (keyed by hashed client IP).
+model AdminLoginGuard {
+  key             String    @id
+  failedCount     Int       @default(0)
+  windowStartedAt DateTime  @default(now())
+  lockedUntil     DateTime?
+  updatedAt       DateTime  @updatedAt
 }
 
 /// Audit trail for admin deletions — Flights / Bookings / Invoices / Cargo.

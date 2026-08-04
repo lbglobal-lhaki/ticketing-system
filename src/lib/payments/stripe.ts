@@ -37,6 +37,8 @@ export async function createPaymentIntent(input: {
   amountCents: number;
   idempotencyKey: string;
   quoteId: string;
+  sessionId: string;
+  seatsBooked: number;
   description: string;
   receiptEmail?: string;
 }) {
@@ -49,7 +51,11 @@ export async function createPaymentIntent(input: {
         payment_method_types: ["card"],
         description: input.description.slice(0, 500),
         receipt_email: input.receiptEmail || undefined,
-        metadata: { quoteId: input.quoteId },
+        metadata: {
+          quoteId: input.quoteId,
+          sessionId: input.sessionId,
+          seatsBooked: String(Math.max(1, Math.round(input.seatsBooked))),
+        },
       },
       { idempotencyKey: input.idempotencyKey },
     );
@@ -63,6 +69,17 @@ export async function createPaymentIntent(input: {
     }
     throw error;
   }
+}
+
+export function constructStripeWebhookEvent(
+  payload: string | Buffer,
+  signature: string,
+) {
+  const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
+  if (!secret) {
+    throw new Error("STRIPE_WEBHOOK_SECRET is not configured");
+  }
+  return getStripeClient().webhooks.constructEvent(payload, signature, secret);
 }
 
 export async function retrievePaymentIntent(paymentIntentId: string) {
