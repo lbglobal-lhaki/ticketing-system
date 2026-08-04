@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
+  bulkUpdateFareTierPriceAction,
   createFlightAction,
   deleteFlightAction,
   removeFlightAction,
@@ -16,9 +17,14 @@ import {
 } from "@/components/InvoiceAdminPanel";
 import {
   createWalkInBookingAction,
+  deleteBookingAction,
   markBookingPaidAction,
   markBookingUnpaidAction,
 } from "@/lib/actions/walkIn";
+import {
+  DeletedRecordsPanel,
+  type AdminDeletedRecordRow,
+} from "@/components/DeletedRecordsPanel";
 import type { SystemAnalytics } from "@/lib/analytics/systemAnalytics";
 import {
   CharterFaresAdmin,
@@ -29,12 +35,20 @@ import {
   type AdminCargoRow,
 } from "@/components/CargoAdminPanel";
 import { SystemAnalyticsSection } from "@/components/SystemAnalyticsSection";
+import { MoneyInput } from "@/components/MoneyInput";
+import {
+  BulkSelectBar,
+  SelectAllCheckbox,
+  useBulkSelection,
+} from "@/components/BulkSelectBar";
 import { toDateTimeLocalValue } from "@/lib/datetime";
 import {
   BUSINESS_FARE_TEMPLATE,
   ECONOMY_FARE_TEMPLATE,
 } from "@/lib/fares/templates";
 import { formatAud } from "@/lib/pricing";
+
+const CUSTOM_FLIGHT_VALUE = "__custom__";
 
 type CabinClass = "economy" | "business";
 type TripType = "one_way" | "round_trip";
@@ -60,6 +74,7 @@ type FlightRow = {
   totalSeats: number;
   remainingSeats: number;
   active: boolean;
+  returnLegFlightId: string | null;
   fareReleases: FareRow[];
 };
 
@@ -72,6 +87,7 @@ type BookingRow = {
   email: string;
   amountPaidCents: number;
   fareReleaseName: string;
+  extraBaggageKg: number;
   status: "pending_payment" | "confirmed" | "cancelled" | "hold_expired";
   paymentMethod: "card" | "bank_transfer" | "cash" | null;
   source: "online" | "walk_in";
@@ -100,7 +116,8 @@ type Tab =
   | "fares"
   | "bookings"
   | "invoices"
-  | "cargo";
+  | "cargo"
+  | "deleted";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "analytics", label: "Analytics" },
@@ -110,6 +127,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "bookings", label: "Bookings" },
   { id: "invoices", label: "Invoices" },
   { id: "cargo", label: "Cargo" },
+  { id: "deleted", label: "Deleted" },
 ];
 
 const TAB_IDS = new Set<string>(TABS.map((t) => t.id));
@@ -134,11 +152,116 @@ function templateToRows(cabin: CabinClass): FareRow[] {
   }));
 }
 
+/** Inline fields for a walk-in leg that isn't in the Flight table at all. */
+function CustomFlightFields({ prefix }: { prefix: "outbound" | "return" }) {
+  return (
+    <div className="space-y-3 border-t border-line pt-4 sm:col-span-2">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+        Custom {prefix} flight details
+      </p>
+      <div className="grid gap-3 sm:grid-cols-4">
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Airline
+          </span>
+          <input
+            name={`${prefix}CustomAirline`}
+            required
+            placeholder="Qantas"
+            className={fieldClass}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Flight number
+          </span>
+          <input
+            name={`${prefix}CustomFlightNumber`}
+            required
+            placeholder="QF401"
+            className={fieldClass}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            From
+          </span>
+          <input
+            name={`${prefix}CustomOrigin`}
+            required
+            maxLength={3}
+            placeholder="PER"
+            className={`${fieldClass} uppercase`}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            To
+          </span>
+          <input
+            name={`${prefix}CustomDestination`}
+            required
+            maxLength={3}
+            placeholder="PBH"
+            className={`${fieldClass} uppercase`}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Departs at
+          </span>
+          <input
+            name={`${prefix}CustomDepartureAt`}
+            type="datetime-local"
+            required
+            className={fieldClass}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Arrives at
+          </span>
+          <input
+            name={`${prefix}CustomArrivalAt`}
+            type="datetime-local"
+            required
+            className={fieldClass}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Cabin
+          </span>
+          <select
+            name={`${prefix}CustomCabinClass`}
+            defaultValue="business"
+            className={fieldClass}
+          >
+            <option value="business">Business</option>
+            <option value="economy">Economy</option>
+          </select>
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Price per seat (AUD)
+          </span>
+          <MoneyInput
+            name={`${prefix}CustomPriceAud`}
+            defaultValue="0.00"
+            className={fieldClass}
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
 export function AdminDashboard({
   flights,
   bookings,
   invoices,
   cargoSubmissions,
+  deletedRecords,
   analytics,
   charterFares,
   initialTab,
@@ -149,6 +272,7 @@ export function AdminDashboard({
   bookings: BookingRow[];
   invoices: InvoiceRow[];
   cargoSubmissions: AdminCargoRow[];
+  deletedRecords: AdminDeletedRecordRow[];
   analytics: SystemAnalytics;
   charterFares: AdminCharterFare[];
   initialTab?: Tab;
@@ -165,9 +289,38 @@ export function AdminDashboard({
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [cabinClass, setCabinClass] = useState<CabinClass>("business");
+  const [bulkPriceCabin, setBulkPriceCabin] = useState<CabinClass>("business");
   const [fareRows, setFareRows] = useState<FareRow[]>(() =>
     templateToRows("business"),
   );
+  const [walkInOutboundChoice, setWalkInOutboundChoice] = useState("");
+  const [walkInReturnChoice, setWalkInReturnChoice] = useState("");
+  const [walkInTripType, setWalkInTripType] = useState<TripType>("one_way");
+  const [bulkPending, startBulkTransition] = useTransition();
+
+  const walkInOutboundFlight = useMemo(
+    () => flights.find((f) => f.id === walkInOutboundChoice) ?? null,
+    [flights, walkInOutboundChoice],
+  );
+  // Fixed charter round-trip pairing — the return leg is already known for
+  // this outbound flight, so the admin shouldn't have to search for it.
+  const walkInPairedReturn = useMemo(() => {
+    if (!walkInOutboundFlight?.returnLegFlightId) return null;
+    return (
+      flights.find((f) => f.id === walkInOutboundFlight.returnLegFlightId) ??
+      null
+    );
+  }, [flights, walkInOutboundFlight]);
+  const walkInCanAutoRoundTrip = Boolean(
+    walkInPairedReturn &&
+      walkInPairedReturn.active &&
+      walkInPairedReturn.remainingSeats > 0,
+  );
+  // Manual return picker only appears when there's no fixed pairing to fall
+  // back on (custom flights or flights that were never paired).
+  const walkInNeedsManualReturn =
+    walkInTripType === "round_trip" &&
+    (!walkInCanAutoRoundTrip || walkInOutboundChoice === CUSTOM_FLIGHT_VALUE);
 
   const editing = useMemo(
     () => flights.find((f) => f.id === editingId) ?? null,
@@ -175,6 +328,45 @@ export function AdminDashboard({
   );
 
   const activeCount = flights.filter((f) => f.active).length;
+
+  const flightIds = useMemo(() => flights.map((f) => f.id), [flights]);
+  const flightBulk = useBulkSelection(flightIds);
+  const bookingIds = useMemo(() => bookings.map((b) => b.id), [bookings]);
+  const bookingBulk = useBulkSelection(bookingIds);
+
+  function bulkDeleteFlights() {
+    const ids = [...flightBulk.selected];
+    if (ids.length === 0) return;
+    if (
+      !confirm(
+        `Delete ${ids.length} flight${ids.length === 1 ? "" : "s"} permanently? Any bookings and invoices still tied to them will be deleted too and recorded in the Deleted tab.`,
+      )
+    ) {
+      return;
+    }
+    const fd = new FormData();
+    for (const id of ids) fd.append("id", id);
+    startBulkTransition(() => {
+      void deleteFlightAction(fd);
+    });
+  }
+
+  function bulkDeleteBookings() {
+    const ids = [...bookingBulk.selected];
+    if (ids.length === 0) return;
+    if (
+      !confirm(
+        `Delete ${ids.length} booking${ids.length === 1 ? "" : "s"} permanently? Linked invoices will be deleted too and recorded in the Deleted tab.`,
+      )
+    ) {
+      return;
+    }
+    const fd = new FormData();
+    for (const id of ids) fd.append("id", id);
+    startBulkTransition(() => {
+      void deleteBookingAction(fd);
+    });
+  }
 
   function selectTab(next: Tab) {
     const params = new URLSearchParams(searchParams.toString());
@@ -316,6 +508,93 @@ export function AdminDashboard({
             </button>
           </div>
 
+          <div className="border border-line bg-surface/80 p-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">
+              Bulk pricing
+            </p>
+            <h3 className="mt-2 font-[family-name:var(--font-syne)] text-xl font-semibold">
+              Apply a price to a fare tier across all flights
+            </h3>
+            <p className="mt-1 max-w-2xl text-sm text-muted">
+              Set &quot;Early Bird&quot; business once and it updates every
+              business flight that has that tier — instead of opening each
+              flight one by one.
+            </p>
+            <form
+              action={bulkUpdateFareTierPriceAction}
+              className="mt-4 grid gap-4 sm:grid-cols-4"
+            >
+              <label className="space-y-1 text-sm">
+                <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                  Cabin
+                </span>
+                <select
+                  name="cabinClass"
+                  value={bulkPriceCabin}
+                  onChange={(e) =>
+                    setBulkPriceCabin(e.target.value as CabinClass)
+                  }
+                  className={fieldClass}
+                >
+                  <option value="business">Business</option>
+                  <option value="economy">Economy</option>
+                </select>
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                  Fare tier
+                </span>
+                <select name="tierName" className={fieldClass}>
+                  {(bulkPriceCabin === "economy"
+                    ? ECONOMY_FARE_TEMPLATE
+                    : BUSINESS_FARE_TEMPLATE
+                  ).map((t) => (
+                    <option key={t.name} value={t.name}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                  Price (AUD)
+                </span>
+                <MoneyInput
+                  name="priceAud"
+                  required
+                  defaultValue="0.00"
+                  className={fieldClass}
+                />
+              </label>
+              <label className="flex items-end gap-2 pb-3 text-sm text-muted">
+                <input
+                  type="checkbox"
+                  name="onlyUnpriced"
+                  value="true"
+                  defaultChecked
+                  className="size-4 accent-accent-deep"
+                />
+                Only fill in unpriced releases
+              </label>
+              <div className="sm:col-span-4">
+                <button
+                  type="submit"
+                  className="bg-accent-deep px-5 py-3 text-sm font-semibold tracking-wide text-white transition hover:bg-accent"
+                >
+                  Apply to matching flights
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <BulkSelectBar
+            count={flightBulk.selected.size}
+            itemLabel="flight"
+            pending={bulkPending}
+            onDelete={bulkDeleteFlights}
+            onClear={flightBulk.clear}
+          />
+
           {flights.length === 0 ? (
             <div className="border border-dashed border-line bg-surface/70 px-6 py-14 text-center">
               <p className="font-[family-name:var(--font-syne)] text-xl font-semibold">
@@ -330,10 +609,27 @@ export function AdminDashboard({
               </button>
             </div>
           ) : (
+            <>
+              <label className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted">
+                <SelectAllCheckbox
+                  allSelected={flightBulk.allSelected}
+                  someSelected={flightBulk.someSelected}
+                  onToggle={flightBulk.toggleAll}
+                />
+                Select all ({flights.length})
+              </label>
             <ul className="divide-y divide-line border-y border-line bg-surface/60">
               {flights.map((f) => (
                 <li key={f.id} className="px-4 py-5 sm:px-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${f.airline} ${f.flightNumber}`}
+                        checked={flightBulk.selected.has(f.id)}
+                        onChange={() => flightBulk.toggle(f.id)}
+                        className="mt-1.5 size-4 shrink-0 accent-accent-deep"
+                      />
                     <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <p className="font-[family-name:var(--font-syne)] text-lg font-semibold tracking-tight">
@@ -354,6 +650,7 @@ export function AdminDashboard({
                         {f.remainingSeats}/{f.totalSeats} seats across fare
                         releases
                       </p>
+                    </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
                       <button
@@ -388,7 +685,16 @@ export function AdminDashboard({
                         <input type="hidden" name="id" value={f.id} />
                         <button
                           type="submit"
-                          className="text-muted/70 transition hover:text-foreground"
+                          onClick={(e) => {
+                            if (
+                              !confirm(
+                                "Delete this flight permanently? Any bookings and invoices still tied to it will be deleted too and recorded in the Deleted tab.",
+                              )
+                            ) {
+                              e.preventDefault();
+                            }
+                          }}
+                          className="text-muted/70 transition hover:text-red-700"
                         >
                           Delete
                         </button>
@@ -417,14 +723,11 @@ export function AdminDashboard({
                           <span className="text-xs uppercase tracking-[0.14em] text-muted">
                             Price (AUD)
                           </span>
-                          <input
+                          <MoneyInput
                             name="priceAud"
-                            type="number"
-                            min={0}
-                            step={0.01}
                             required
                             defaultValue={(release.priceCents / 100).toFixed(2)}
-                            className="w-36 border border-line bg-white px-3 py-2 outline-none focus:border-accent"
+                            className="w-44 border border-line bg-white py-2 pr-3 outline-none focus:border-accent"
                           />
                         </label>
                         <button
@@ -439,6 +742,7 @@ export function AdminDashboard({
                 </li>
               ))}
             </ul>
+            </>
           )}
         </section>
       )}
@@ -562,6 +866,36 @@ export function AdminDashboard({
               </select>
             </label>
 
+            <label className="space-y-1 text-sm sm:col-span-2">
+              <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
+                Round-trip partner flight (optional)
+              </span>
+              <select
+                name="returnLegFlightId"
+                defaultValue={editing?.returnLegFlightId ?? ""}
+                className={fieldClass}
+              >
+                <option value="">
+                  No pairing — sells as one-way only
+                </option>
+                {flights
+                  .filter((f) => f.id !== editing?.id)
+                  .map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.airline} {f.flightNumber} · {f.origin}→{f.destination}{" "}
+                      · {new Date(f.departureAt).toLocaleString("en-AU")} ·{" "}
+                      {f.cabinClass}
+                    </option>
+                  ))}
+              </select>
+              <span className="block text-xs text-muted">
+                Pick the return leg this flight is chartered with. Customers
+                booking this flight will see a &ldquo;Round trip&rdquo; option
+                that auto-attaches the partner — no separate return search.
+                Set this on the earlier-departing (outbound) leg only.
+              </span>
+            </label>
+
             <div className="sm:col-span-2 space-y-4 border border-line bg-white/50 p-4">
               <div>
                 <p className="font-[family-name:var(--font-syne)] text-lg font-semibold">
@@ -623,18 +957,17 @@ export function AdminDashboard({
                     <span className="text-xs uppercase tracking-[0.12em] text-muted">
                       Price (AUD)
                     </span>
-                    <input
+                    <MoneyInput
                       name="farePriceAud"
-                      type="number"
-                      min={0}
-                      step={0.01}
                       required
                       value={(row.priceCents / 100).toFixed(2)}
                       onChange={(e) => {
                         const next = [...fareRows];
                         next[index] = {
                           ...row,
-                          priceCents: Math.round(Number(e.target.value) * 100),
+                          priceCents: Math.round(
+                            (Number(e.target.value) || 0) * 100,
+                          ),
                         };
                         setFareRows(next);
                       }}
@@ -737,8 +1070,21 @@ export function AdminDashboard({
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
                   Flight
                 </span>
-                <select name="flightId" required className={fieldClass}>
+                <select
+                  name="flightId"
+                  required
+                  value={walkInOutboundChoice}
+                  onChange={(e) => {
+                    setWalkInOutboundChoice(e.target.value);
+                    setWalkInReturnChoice("");
+                    setWalkInTripType("one_way");
+                  }}
+                  className={fieldClass}
+                >
                   <option value="">Select outbound flight</option>
+                  <option value={CUSTOM_FLIGHT_VALUE}>
+                    + Custom flight (not in system)
+                  </option>
                   {flights
                     .filter((f) => f.active && f.remainingSeats > 0)
                     .map((f) => (
@@ -750,21 +1096,119 @@ export function AdminDashboard({
                     ))}
                 </select>
               </label>
+              {walkInOutboundChoice === CUSTOM_FLIGHT_VALUE && (
+                <CustomFlightFields prefix="outbound" />
+              )}
+
+              {walkInOutboundChoice && (
+                <div className="space-y-2 sm:col-span-2">
+                  <span className="block text-xs uppercase tracking-[0.12em] text-muted">
+                    Trip type
+                  </span>
+                  <div className="inline-flex rounded-full border border-line bg-white p-1 text-sm font-medium">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWalkInTripType("one_way");
+                        setWalkInReturnChoice("");
+                      }}
+                      className={`rounded-full px-4 py-2 transition ${
+                        walkInTripType === "one_way"
+                          ? "bg-accent-deep text-white"
+                          : "text-muted hover:text-foreground"
+                      }`}
+                    >
+                      One way
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWalkInTripType("round_trip")}
+                      className={`rounded-full px-4 py-2 transition ${
+                        walkInTripType === "round_trip"
+                          ? "bg-accent-deep text-white"
+                          : "text-muted hover:text-foreground"
+                      }`}
+                    >
+                      Round trip
+                    </button>
+                  </div>
+                  {walkInTripType === "round_trip" &&
+                    walkInCanAutoRoundTrip &&
+                    walkInPairedReturn && (
+                      <>
+                        <input
+                          type="hidden"
+                          name="returnFlightId"
+                          value={walkInPairedReturn.id}
+                        />
+                        <p className="text-xs text-muted">
+                          Fixed return leg auto-attached: {walkInPairedReturn.airline}{" "}
+                          {walkInPairedReturn.flightNumber} ·{" "}
+                          {walkInPairedReturn.origin}→
+                          {walkInPairedReturn.destination} ·{" "}
+                          {new Date(
+                            walkInPairedReturn.departureAt,
+                          ).toLocaleString("en-AU")}
+                        </p>
+                      </>
+                    )}
+                </div>
+              )}
+
+              {walkInNeedsManualReturn && (
+                <label className="space-y-1 text-sm sm:col-span-2">
+                  <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                    Return flight
+                  </span>
+                  <select
+                    name="returnFlightId"
+                    required
+                    value={walkInReturnChoice}
+                    onChange={(e) => setWalkInReturnChoice(e.target.value)}
+                    className={fieldClass}
+                  >
+                    <option value="">Select return flight</option>
+                    <option value={CUSTOM_FLIGHT_VALUE}>
+                      + Custom flight (not in system)
+                    </option>
+                    {flights
+                      .filter((f) => f.active && f.remainingSeats > 0)
+                      .map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.airline} {f.flightNumber} · {f.origin}→
+                          {f.destination} ·{" "}
+                          {new Date(f.departureAt).toLocaleString("en-AU")}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
+              {walkInNeedsManualReturn &&
+                walkInReturnChoice === CUSTOM_FLIGHT_VALUE && (
+                  <CustomFlightFields prefix="return" />
+                )}
               <label className="space-y-1 text-sm sm:col-span-2">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                  Return flight (optional)
+                  Fare tier (optional override)
                 </span>
-                <select name="returnFlightId" className={fieldClass}>
-                  <option value="">One way only</option>
-                  {flights
-                    .filter((f) => f.active && f.remainingSeats > 0)
+                <select name="fareProductId" className={fieldClass}>
+                  <option value="">
+                    Auto — use each flight&apos;s current fare-release price
+                  </option>
+                  {charterFares
+                    .filter((f) => f.active)
                     .map((f) => (
                       <option key={f.id} value={f.id}>
-                        {f.airline} {f.flightNumber} · {f.origin}→{f.destination}{" "}
-                        · {new Date(f.departureAt).toLocaleString("en-AU")}
+                        {f.cabinClass === "business" ? "Business" : "Economy"} ·{" "}
+                        {f.name} — {formatAud(f.priceCents)} / leg
                       </option>
                     ))}
                 </select>
+                <span className="block text-xs text-muted">
+                  Charges this catalogue price per leg instead of the fare
+                  release price. Must match the cabin of the flight(s) chosen
+                  above.
+                </span>
               </label>
               <label className="space-y-1 text-sm">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
@@ -815,6 +1259,44 @@ export function AdminDashboard({
                   className={fieldClass}
                 />
               </label>
+              <label className="space-y-1 text-sm">
+                <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                  Extra baggage (kg)
+                </span>
+                <input
+                  name="extraBaggageKg"
+                  type="number"
+                  min={0}
+                  max={500}
+                  defaultValue={0}
+                  className={fieldClass}
+                />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                  Extra baggage charge (AUD)
+                </span>
+                <MoneyInput
+                  name="extraBaggageAud"
+                  defaultValue="0.00"
+                  className={fieldClass}
+                />
+              </label>
+              <label className="space-y-1 text-sm sm:col-span-2">
+                <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                  How was this booked?
+                </span>
+                <select
+                  name="bookingSource"
+                  defaultValue="walk_in"
+                  className={fieldClass}
+                >
+                  <option value="walk_in">Walk-in (counter / phone)</option>
+                  <option value="online">
+                    Online (entered on customer&apos;s behalf)
+                  </option>
+                </select>
+              </label>
               <label className="space-y-1 text-sm sm:col-span-2">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
                   Payment method
@@ -838,6 +1320,14 @@ export function AdminDashboard({
             </form>
           </div>
 
+          <BulkSelectBar
+            count={bookingBulk.selected.size}
+            itemLabel="booking"
+            pending={bulkPending}
+            onDelete={bulkDeleteBookings}
+            onClear={bookingBulk.clear}
+          />
+
           {bookings.length === 0 ? (
             <div className="border border-dashed border-line bg-surface/70 px-6 py-14 text-center text-sm text-muted">
               No bookings yet.
@@ -847,6 +1337,13 @@ export function AdminDashboard({
               <table className="w-full min-w-[980px] text-left text-sm">
                 <thead>
                   <tr className="border-b border-line text-xs uppercase tracking-[0.12em] text-muted">
+                    <th className="px-4 py-3 font-medium">
+                      <SelectAllCheckbox
+                        allSelected={bookingBulk.allSelected}
+                        someSelected={bookingBulk.someSelected}
+                        onToggle={bookingBulk.toggleAll}
+                      />
+                    </th>
                     <th className="px-4 py-3 font-medium">Ref</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3 font-medium">Payment</th>
@@ -860,6 +1357,15 @@ export function AdminDashboard({
                 <tbody>
                   {bookings.map((b) => (
                     <tr key={b.id} className="border-b border-line/70">
+                      <td className="px-4 py-4 align-top">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${b.bookingRef}`}
+                          checked={bookingBulk.selected.has(b.id)}
+                          onChange={() => bookingBulk.toggle(b.id)}
+                          className="size-4 accent-accent-deep"
+                        />
+                      </td>
                       <td className="px-4 py-4">
                         <p className="font-medium">{b.bookingRef}</p>
                         <p className="text-xs text-muted">{b.ticketNumber}</p>
@@ -895,6 +1401,11 @@ export function AdminDashboard({
                         {b.returnFlight
                           ? ` · ${b.returnFlight.flightNumber} ${b.returnFlight.origin}→${b.returnFlight.destination}`
                           : ""}
+                        {b.extraBaggageKg > 0 ? (
+                          <p className="mt-0.5 text-xs text-muted">
+                            +{b.extraBaggageKg}kg baggage
+                          </p>
+                        ) : null}
                       </td>
                       <td className="px-4 py-4 font-medium">
                         {formatAud(b.amountPaidCents)}
@@ -933,6 +1444,27 @@ export function AdminDashboard({
                             Hold expired
                           </span>
                         ) : null}
+                        <form
+                          action={deleteBookingAction}
+                          className="mt-1.5 inline"
+                        >
+                          <input type="hidden" name="id" value={b.id} />
+                          <button
+                            type="submit"
+                            onClick={(e) => {
+                              if (
+                                !confirm(
+                                  `Delete booking ${b.bookingRef} permanently? Its invoice (if any) is deleted too and both are recorded in the Deleted tab.`,
+                                )
+                              ) {
+                                e.preventDefault();
+                              }
+                            }}
+                            className="block text-xs text-muted/70 transition hover:text-red-700"
+                          >
+                            Delete
+                          </button>
+                        </form>
                       </td>
                     </tr>
                   ))}
@@ -946,6 +1478,10 @@ export function AdminDashboard({
       {tab === "invoices" && <InvoiceAdminPanel invoices={invoices} />}
 
       {tab === "cargo" && <CargoAdminPanel submissions={cargoSubmissions} />}
+
+      {tab === "deleted" && (
+        <DeletedRecordsPanel records={deletedRecords} />
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/adminAuth";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { recordDeletion } from "@/lib/audit/deletionLog";
 import { prisma } from "@/lib/db";
 import {
   fareTemplateForCabin,
@@ -23,6 +24,16 @@ function parseDateTimeLocal(value: string): Date {
 
 function redirectFormError(message: string): never {
   redirect(`/admin?tab=form&error=${encodeURIComponent(message)}`);
+}
+
+/** "" / self-id / missing => no pairing. */
+function parseReturnLegFlightId(
+  formData: FormData,
+  selfId?: string,
+): string | null {
+  const raw = String(formData.get("returnLegFlightId") ?? "").trim();
+  if (!raw || raw === selfId) return null;
+  return raw;
 }
 
 export async function createFlightAction(formData: FormData) {
@@ -72,6 +83,8 @@ export async function createFlightAction(formData: FormData) {
     remainingSeats: releases.reduce((s, r) => s + r.remainingSeats, 0),
   };
 
+  const returnLegFlightId = parseReturnLegFlightId(formData);
+
   await prisma.flight.create({
     data: {
       airline: data.airline,
@@ -85,6 +98,7 @@ export async function createFlightAction(formData: FormData) {
       totalSeats: totals.totalSeats,
       remainingSeats: totals.remainingSeats,
       active: true,
+      returnLegFlightId,
       fareReleases: {
         create: releases.map((r) => ({
           name: r.name,
@@ -145,6 +159,8 @@ export async function updateFlightAction(formData: FormData) {
     remainingSeats: releases.reduce((s, r) => s + r.remainingSeats, 0),
   };
 
+  const returnLegFlightId = parseReturnLegFlightId(formData, id);
+
   await prisma.$transaction(async (tx) => {
     await tx.fareRelease.deleteMany({ where: { flightId: id } });
     await tx.flight.update({
@@ -160,6 +176,7 @@ export async function updateFlightAction(formData: FormData) {
         totalSeats: totals.totalSeats,
         remainingSeats: totals.remainingSeats,
         active: true,
+        returnLegFlightId,
         fareReleases: {
           create: releases.map((r) => ({
             name: r.name,
@@ -209,6 +226,55 @@ export async function updateFarePriceAction(formData: FormData) {
   redirect("/admin?tab=flights&saved=price");
 }
 
+/**
+ * Sets one price across every flight that shares a fare-tier name — e.g. set
+ * "Early Bird" business once and it applies to all 30 business flights in
+ * the schedule, instead of opening each flight individually. Scope can be
+ * narrowed to only flights still missing a price (the common "finish
+ * pricing the reseeded schedule" case) or forced onto every match.
+ */
+export async function bulkUpdateFareTierPriceAction(formData: FormData) {
+  await requireAdmin();
+
+  const parsed = z
+    .object({
+      cabinClass: z.enum(["economy", "business"]),
+      tierName: z.string().min(1),
+      priceAud: z.coerce.number().min(0),
+      onlyUnpriced: z.coerce.boolean().default(false),
+    })
+    .safeParse({
+      cabinClass: formData.get("cabinClass"),
+      tierName: formData.get("tierName"),
+      priceAud: formData.get("priceAud"),
+      onlyUnpriced: formData.get("onlyUnpriced") === "true",
+    });
+
+  if (!parsed.success) {
+    redirect(
+      `/admin?tab=flights&error=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid bulk price")}`,
+    );
+  }
+
+  const { cabinClass, tierName, priceAud, onlyUnpriced } = parsed.data;
+  const priceCents = Math.round(priceAud * 100);
+
+  const result = await prisma.fareRelease.updateMany({
+    where: {
+      name: tierName,
+      flight: { cabinClass },
+      ...(onlyUnpriced ? { priceCents: 0 } : {}),
+    },
+    data: { priceCents },
+  });
+
+  revalidatePath("/admin");
+  revalidatePath("/flights");
+  redirect(
+    `/admin?tab=flights&saved=bulk-price&count=${result.count}`,
+  );
+}
+
 export async function removeFlightAction(formData: FormData) {
   await requireAdmin();
   const id = String(formData.get("id") ?? "");
@@ -239,29 +305,104 @@ export async function restoreFlightAction(formData: FormData) {
   redirect("/admin?tab=flights&saved=restored");
 }
 
+/**
+ * Permanently deletes one or many flights (accepts one or many `id` fields —
+ * powers both the row Delete button and bulk-select delete). Any bookings
+ * still pointing at them (as the outbound or return leg) — and their
+ * invoices — are deleted along with them; every one of those rows is
+ * recorded on the admin Deleted tab first so nothing disappears without a
+ * trace.
+ */
 export async function deleteFlightAction(formData: FormData) {
   await requireAdmin();
-  const id = String(formData.get("id") ?? "");
-  if (!id) redirect("/admin?error=Missing+flight");
+  const ids = Array.from(new Set(formData.getAll("id").map(String).filter(Boolean)));
+  if (ids.length === 0) redirect("/admin?error=Missing+flight");
 
-  const bookings = await prisma.booking.count({
-    where: { OR: [{ flightId: id }, { returnFlightId: id }] },
+  const flights = await prisma.flight.findMany({
+    where: { id: { in: ids } },
+    include: { fareReleases: true },
   });
-  if (bookings > 0) {
-    redirect(
-      "/admin?tab=flights&error=Cannot+delete+forever+—+this+flight+has+bookings.+Remove+it+from+the+site+instead.",
-    );
+  if (flights.length === 0) {
+    redirect("/admin?tab=flights&error=Flight(s)+not+found");
   }
 
-  await prisma.demandEvent.deleteMany({ where: { flightId: id } });
-  await prisma.priceQuote.deleteMany({
-    where: { OR: [{ flightId: id }, { returnFlightId: id }] },
+  const bookings = await prisma.booking.findMany({
+    where: { OR: [{ flightId: { in: ids } }, { returnFlightId: { in: ids } }] },
+    include: {
+      invoice: true,
+      flight: { select: { airline: true, flightNumber: true } },
+    },
   });
-  await prisma.flight.delete({ where: { id } });
+
+  await prisma.$transaction(
+    async (tx) => {
+      for (const booking of bookings) {
+        if (booking.invoice) {
+          await recordDeletion(
+            {
+              entityType: "invoice",
+              entityId: booking.invoice.id,
+              label: booking.invoice.invoiceNumber,
+              summary: `Deleted together with flight ${booking.flight.airline} ${booking.flight.flightNumber}`,
+              snapshot: booking.invoice,
+            },
+            tx,
+          );
+        }
+        await recordDeletion(
+          {
+            entityType: "booking",
+            entityId: booking.id,
+            label: booking.bookingRef,
+            summary: `${booking.passengerName} · deleted together with flight ${booking.flight.airline} ${booking.flight.flightNumber}`,
+            snapshot: booking,
+          },
+          tx,
+        );
+      }
+
+      for (const flight of flights) {
+        const flightBookingCount = bookings.filter(
+          (b) => b.flightId === flight.id || b.returnFlightId === flight.id,
+        ).length;
+        await recordDeletion(
+          {
+            entityType: "flight",
+            entityId: flight.id,
+            label: `${flight.airline} ${flight.flightNumber}`,
+            summary: `${flight.origin} → ${flight.destination}${
+              flightBookingCount
+                ? ` · ${flightBookingCount} booking(s) removed with it`
+                : ""
+            }`,
+            snapshot: flight,
+          },
+          tx,
+        );
+      }
+
+      if (bookings.length) {
+        // Cascades each booking's invoice via the Invoice.bookingId FK.
+        await tx.booking.deleteMany({
+          where: { id: { in: bookings.map((b) => b.id) } },
+        });
+      }
+      await tx.demandEvent.deleteMany({ where: { flightId: { in: ids } } });
+      await tx.priceQuote.deleteMany({
+        where: { OR: [{ flightId: { in: ids } }, { returnFlightId: { in: ids } }] },
+      });
+      // Cascades fareReleases via the FareRelease.flightId FK; clears any
+      // round-trip pairing pointing at these via onDelete: SetNull.
+      await tx.flight.deleteMany({ where: { id: { in: ids } } });
+    },
+    { maxWait: 20_000, timeout: 60_000 },
+  );
 
   revalidatePath("/admin");
   revalidatePath("/flights");
-  redirect("/admin?tab=flights&saved=deleted");
+  redirect(
+    `/admin?tab=flights&saved=${flights.length > 1 ? "flights-deleted" : "deleted"}`,
+  );
 }
 
 export async function getDefaultFareTemplateAction(cabin: string) {

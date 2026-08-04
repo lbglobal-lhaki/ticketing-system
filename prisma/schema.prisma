@@ -70,6 +70,13 @@ enum CargoEmailStatus {
   sent
 }
 
+enum DeletedEntityType {
+  flight
+  booking
+  invoice
+  cargo
+}
+
 model Flight {
   id             String     @id @default(cuid())
   airline        String
@@ -87,6 +94,14 @@ model Flight {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
+  /// Fixed charter round-trip partner — the return leg sold alongside this
+  /// (outbound) flight so customers pick "Round trip" without a second
+  /// manual search. Only set on the earlier-departing leg of a pair.
+  returnLegFlightId String?
+  returnLegFlight   Flight?  @relation("FlightReturnLeg", fields: [returnLegFlightId], references: [id], onDelete: SetNull)
+  /// Flights that point at this one as their return leg (reverse of above).
+  returnLegOf       Flight[] @relation("FlightReturnLeg")
+
   fareReleases   FareRelease[]
   /// Legacy demand-tracking rows (no longer used for pricing).
   demandEvents   DemandEvent[]
@@ -97,6 +112,7 @@ model Flight {
 
   @@index([origin, destination, departureAt])
   @@index([active])
+  @@index([returnLegFlightId])
 }
 
 /// Fare bucket sold in order (Early Bird → Standard → Final Release).
@@ -203,6 +219,9 @@ model Booking {
   fareReleaseName     String         @default("")
   fareProductCode     String         @default("")
   fareProductName     String         @default("")
+  /// Extra checked baggage purchased at booking time (kg) — admin-priced,
+  /// charge lives on the invoice's extraBaggageCents line.
+  extraBaggageKg      Int            @default(0)
   paymentMethod       PaymentMethod?
   source              BookingSource  @default(online)
   status              BookingStatus  @default(pending_payment)
@@ -378,4 +397,25 @@ model CargoEmailNotice {
   @@index([cargoId, role])
   @@index([cargoId, status])
   @@index([createdAt])
+}
+
+/// Audit trail for admin deletions — Flights / Bookings / Invoices / Cargo.
+/// Deleting the live row does not remove the record here, so ops can always
+/// see what was removed, by whom, and a full snapshot of the data.
+model DeletedRecord {
+  id         String            @id @default(cuid())
+  entityType DeletedEntityType
+  /// Id of the row that was deleted (row itself no longer exists).
+  entityId   String
+  /// Human-friendly title for list display (e.g. flight number, booking ref).
+  label      String
+  /// Secondary context line (e.g. passenger name, route, amount).
+  summary    String            @default("")
+  /// Full JSON snapshot of the row (and light relations) at deletion time.
+  snapshot   Json
+  deletedAt  DateTime          @default(now())
+  deletedBy  String            @default("admin")
+
+  @@index([entityType, deletedAt])
+  @@index([deletedAt])
 }

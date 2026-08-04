@@ -35,7 +35,7 @@ export function getBrand() {
     agentPhoneSecondary:
       process.env.BRAND_AGENT_PHONE_SECONDARY?.trim() || "+61 451 106 077",
     agentWebsite:
-      process.env.BRAND_AGENT_WEBSITE?.trim() || "www.lbglobal.com",
+      process.env.BRAND_AGENT_WEBSITE?.trim() || "www.lbglobal.com.au",
     agentEmail:
       process.env.BRAND_AGENT_EMAIL?.trim() ||
       process.env.BRAND_SUPPORT_EMAIL?.trim() ||

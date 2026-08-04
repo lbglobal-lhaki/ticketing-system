@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@/generated/prisma/client";
 import { requireAdmin } from "@/lib/adminAuth";
+import { recordDeletion } from "@/lib/audit/deletionLog";
 import { allocateCargoParcelNumber } from "@/lib/cargo/parcelNumber";
 import { extractCargoContacts } from "@/lib/cargo/submit";
 import { prisma } from "@/lib/db";
@@ -166,14 +167,44 @@ export async function setCargoPaidAction(formData: FormData) {
   );
 }
 
+/** Accepts one or many `id` fields — powers both the row Delete button and bulk-select delete. */
 export async function deleteCargoSubmissionAction(formData: FormData) {
   await requireAdmin();
 
-  const id = String(formData.get("id") || "").trim();
-  if (!id) cargoFail("Missing cargo id");
+  const ids = Array.from(
+    new Set(formData.getAll("id").map((v) => String(v).trim()).filter(Boolean)),
+  );
+  if (ids.length === 0) cargoFail("Missing cargo id");
 
   try {
-    await prisma.cargoSubmission.delete({ where: { id } });
+    await prisma.$transaction(
+      async (tx) => {
+        const cargos = await tx.cargoSubmission.findMany({
+          where: { id: { in: ids } },
+          include: { emailNotices: true },
+        });
+        if (cargos.length === 0) throw new Error("Cargo enquiry not found");
+
+        for (const cargo of cargos) {
+          await recordDeletion(
+            {
+              entityType: "cargo",
+              entityId: cargo.id,
+              label: cargo.parcelNumber,
+              summary: cargo.submitterName || cargo.email || "Cargo enquiry",
+              snapshot: cargo,
+            },
+            tx,
+          );
+        }
+
+        // Cascades cargo.emailNotices via the CargoEmailNotice.cargoId FK.
+        await tx.cargoSubmission.deleteMany({
+          where: { id: { in: cargos.map((c) => c.id) } },
+        });
+      },
+      { maxWait: 20_000, timeout: 60_000 },
+    );
   } catch (error) {
     console.error("deleteCargoSubmissionAction", error);
     cargoFail(
@@ -182,5 +213,7 @@ export async function deleteCargoSubmissionAction(formData: FormData) {
   }
 
   revalidatePath("/admin");
-  redirect("/admin?tab=cargo&saved=cargo-deleted");
+  redirect(
+    `/admin?tab=cargo&saved=${ids.length > 1 ? "cargo-bulk-deleted" : "cargo-deleted"}`,
+  );
 }

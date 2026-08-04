@@ -409,27 +409,17 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
   );
   const displayRows = onSelectedDay.length > 0 ? onSelectedDay : priced;
 
+  // This charter route sells one fixed round-trip pair a month — the fare
+  // step on /flights/[id] offers "Round trip" inline (auto-attaching the
+  // paired return leg), so there's no separate manual return-flight search
+  // to send customers through here, even when they searched "Round trip".
   const grouped = groupFlightResults(
-    displayRows.map(({ flight, price }) => {
-      const href = isRoundTrip
-        ? `/?${new URLSearchParams({
-            origin,
-            destination,
-            date,
-            tripType: "round_trip",
-            ...(returnDate ? { returnDate } : {}),
-            outboundId: flight.id,
-            passengers: String(passengers),
-            cabinClass,
-          }).toString()}`
-        : `/flights/${flight.id}`;
-      return {
-        flight,
-        price,
-        href,
-        ctaLabel: isRoundTrip ? "Select outbound" : "Select",
-      };
-    }),
+    displayRows.map(({ flight, price }) => ({
+      flight,
+      price,
+      href: `/flights/${flight.id}`,
+      ctaLabel: "Select",
+    })),
   );
 
   const baseParams: Record<string, string> = {

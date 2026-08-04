@@ -37,6 +37,7 @@ function parseTab(
   | "bookings"
   | "invoices"
   | "cargo"
+  | "deleted"
   | undefined {
   if (
     value === "analytics" ||
@@ -45,7 +46,8 @@ function parseTab(
     value === "fares" ||
     value === "bookings" ||
     value === "invoices" ||
-    value === "cargo"
+    value === "cargo" ||
+    value === "deleted"
   ) {
     return value;
   }
@@ -59,6 +61,7 @@ export default async function AdminPage({
     error?: string;
     saved?: string;
     tab?: string;
+    count?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -160,8 +163,15 @@ export default async function AdminPage({
     console.error("expire stale holds on admin load failed", err);
   }
 
-  const [flights, bookings, invoices, cargoSubmissions, analytics, charterFares] =
-    await Promise.all([
+  const [
+    flights,
+    bookings,
+    invoices,
+    cargoSubmissions,
+    deletedRecords,
+    analytics,
+    charterFares,
+  ] = await Promise.all([
       prisma.flight.findMany({
         orderBy: [{ active: "desc" }, { departureAt: "asc" }],
         include: { fareReleases: { orderBy: { sortOrder: "asc" } } },
@@ -192,52 +202,53 @@ export default async function AdminPage({
         orderBy: { createdAt: "desc" },
         take: 100,
       }),
+      prisma.deletedRecord.findMany({
+        orderBy: { deletedAt: "desc" },
+        take: 300,
+      }),
       getSystemAnalytics(),
       listAllCharterFareProductsAdmin(),
     ]);
 
+  const SAVED_MESSAGES: Record<string, string> = {
+    added: "Flight added — customers can now see it.",
+    updated: "Flight details saved.",
+    price: "Ticket price updated.",
+    removed: "Flight removed from the website.",
+    restored: "Flight is visible to customers again.",
+    deleted: "Flight deleted permanently — logged in the Deleted tab.",
+    "flights-deleted": "Flights deleted permanently — logged in the Deleted tab.",
+    "invoice-paid":
+      "Invoice marked paid. Confirmation email with both documents sent.",
+    "invoice-unpaid": "Invoice marked unpaid.",
+    "invoice-sent":
+      "Invoice email sent (or marked sent if email is not configured).",
+    "invoice-updated": "Invoice document fields saved.",
+    "invoice-generated": "Invoice document fields generated / refreshed.",
+    "invoice-deleted": "Invoice deleted — logged in the Deleted tab.",
+    "invoices-deleted": "Invoices deleted — logged in the Deleted tab.",
+    "booking-paid":
+      "Bank transfer marked paid. Confirmation email with documents sent.",
+    "booking-unpaid": "Booking marked unpaid — 48h hold restored.",
+    "booking-deleted":
+      "Booking (and its invoice, if any) deleted — logged in the Deleted tab.",
+    "bookings-deleted":
+      "Bookings (and their invoices, if any) deleted — logged in the Deleted tab.",
+    "walk-in": "Walk-in booking created.",
+    "fare-updated": "Charter fare product saved.",
+    "cargo-updated": "Cargo submission updated.",
+    "cargo-created": "Cargo enquiry created.",
+    "cargo-deleted": "Cargo enquiry deleted — logged in the Deleted tab.",
+    "cargo-bulk-deleted": "Cargo enquiries deleted — logged in the Deleted tab.",
+    "cargo-paid": "Cargo marked as paid.",
+    "cargo-unpaid": "Cargo marked as unpaid.",
+  };
   const savedMessage =
-    params.saved === "added"
-      ? "Flight added — customers can now see it."
-      : params.saved === "updated"
-        ? "Flight details saved."
-        : params.saved === "price"
-          ? "Ticket price updated."
-          : params.saved === "removed"
-            ? "Flight removed from the website."
-            : params.saved === "restored"
-              ? "Flight is visible to customers again."
-              : params.saved === "deleted"
-                ? "Flight deleted permanently."
-                : params.saved === "invoice-paid"
-                  ? "Invoice marked paid. Confirmation email with both documents sent."
-                  : params.saved === "invoice-unpaid"
-                    ? "Invoice marked unpaid."
-                    : params.saved === "invoice-sent"
-                      ? "Invoice email sent (or marked sent if email is not configured)."
-                      : params.saved === "invoice-updated"
-                        ? "Invoice document fields saved."
-                        : params.saved === "invoice-generated"
-                          ? "Invoice document fields generated / refreshed."
-                          : params.saved === "booking-paid"
-                            ? "Bank transfer marked paid. Confirmation email with documents sent."
-                            : params.saved === "booking-unpaid"
-                              ? "Booking marked unpaid — 48h hold restored."
-                              : params.saved === "walk-in"
-                                ? "Walk-in booking created."
-                                : params.saved === "fare-updated"
-                                  ? "Charter fare product saved."
-                                  : params.saved === "cargo-updated"
-                                    ? "Cargo submission updated."
-                                    : params.saved === "cargo-created"
-                                      ? "Cargo enquiry created."
-                                      : params.saved === "cargo-deleted"
-                                        ? "Cargo enquiry deleted."
-                                        : params.saved === "cargo-paid"
-                                          ? "Cargo marked as paid."
-                                          : params.saved === "cargo-unpaid"
-                                            ? "Cargo marked as unpaid."
-                                            : null;
+    params.saved === "bulk-price"
+      ? `Price applied to ${params.count ?? "0"} fare release(s) across matching flights.`
+      : params.saved
+        ? (SAVED_MESSAGES[params.saved] ?? null)
+        : null;
 
   // Prefer explicit ?tab= — action redirects already include the right tab.
   // Do not infer tab from leftover ?saved= (that caused refresh jumps).
@@ -354,6 +365,7 @@ export default async function AdminPage({
               totalSeats: f.totalSeats,
               remainingSeats: f.remainingSeats,
               active: f.active,
+              returnLegFlightId: f.returnLegFlightId,
               fareReleases: f.fareReleases.map((r) => ({
                 id: r.id,
                 name: r.name,
@@ -372,6 +384,7 @@ export default async function AdminPage({
               email: b.email,
               amountPaidCents: b.amountPaidCents,
               fareReleaseName: b.fareReleaseName,
+              extraBaggageKg: b.extraBaggageKg,
               status: b.status,
               paymentMethod: b.paymentMethod,
               source: b.source,
@@ -428,6 +441,16 @@ export default async function AdminPage({
               createdAt: invoice.createdAt.toISOString(),
               bookingRef: invoice.booking.bookingRef,
               bookingId: invoice.bookingId,
+            }))}
+            deletedRecords={deletedRecords.map((row) => ({
+              id: row.id,
+              entityType: row.entityType,
+              entityId: row.entityId,
+              label: row.label,
+              summary: row.summary,
+              deletedAt: row.deletedAt.toISOString(),
+              deletedBy: row.deletedBy,
+              snapshot: row.snapshot,
             }))}
             cargoSubmissions={cargoSubmissions.map((row) => {
               const answers =

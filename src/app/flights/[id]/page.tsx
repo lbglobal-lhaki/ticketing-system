@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { FareComparisonRow } from "@/components/fares/FareComparisonRow";
-import { SelectedFlightSummary } from "@/components/fares/SelectedFlightSummary";
+import { TripTypeFareSection } from "@/components/fares/TripTypeFareSection";
 import { getBrand } from "@/lib/branding";
 import { prisma } from "@/lib/db";
 import { buildCharterFareProducts } from "@/lib/fares/charter";
@@ -18,7 +17,10 @@ export default async function FlightDetailPage({
   const brand = getBrand();
   const flight = await prisma.flight.findFirst({
     where: { id, active: true },
-    include: { fareReleases: { orderBy: { sortOrder: "asc" } } },
+    include: {
+      fareReleases: { orderBy: { sortOrder: "asc" } },
+      returnLegFlight: true,
+    },
   });
   if (!flight) notFound();
 
@@ -27,6 +29,11 @@ export default async function FlightDetailPage({
     cabinClass: flight.cabinClass,
     available: !soldOut,
   });
+
+  const pairedReturn =
+    flight.returnLegFlight && flight.returnLegFlight.active
+      ? flight.returnLegFlight
+      : null;
 
   return (
     <main className="page-shell bg-background pb-safe">
@@ -39,21 +46,18 @@ export default async function FlightDetailPage({
         </Link>
 
         <div className="mt-5 space-y-6">
-          <SelectedFlightSummary outbound={flight} />
-
           {error ? (
             <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {decodeURIComponent(error)}
             </p>
           ) : null}
 
-          <FareComparisonRow
+          <TripTypeFareSection
+            outbound={flight}
+            pairedReturn={pairedReturn}
             products={products}
-            flightId={flight.id}
             supportEmail={brand.supportEmail}
             disabled={soldOut}
-            title={`${flight.cabinClass === "business" ? "Business" : "Economy"} charter fares`}
-            subtitle="Perth ⇄ Paro rules · prices are per passenger one-way"
           />
         </div>
       </div>

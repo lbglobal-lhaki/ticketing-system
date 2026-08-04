@@ -108,14 +108,16 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     ["Other Charges", lines.otherChargesCents + (invoice.serviceFeeCents || 0)],
   ];
 
+  // header.png's canvas is 30px too short and crops the "GLOBAL" pill under
+  // the L&B logo — header-wide.png is the same artwork, uncropped.
   const headerUri =
-    assetDataUri("header.png") || assetDataUri("header-page1.png");
+    assetDataUri("header-wide.png") || assetDataUri("header-page1.png");
   const taxPct = ((invoice.gstRateBps || 1000) / 100).toFixed(0);
 
   const styles = `
     @page { size: A4; margin: 0; }
     * { box-sizing: border-box; }
-    body {
+    html, body {
       margin: 0;
       background: #d7dde5;
       color: #111;
@@ -125,23 +127,20 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     }
     .page {
       width: 210mm;
-      min-height: 297mm;
       margin: 0 auto;
       background: #fff;
-      position: relative;
-      overflow: hidden;
       box-shadow: 0 4px 24px rgba(0,0,0,.12);
-      padding-bottom: 88px;
     }
-    .topbar { height: 12px; background: #0b2c5a; }
     .header-img { display: block; width: 100%; height: auto; }
-    .body { padding: 18px 36px 10px; }
+    .topbar-fallback { height: 12px; background: #0b2c5a; }
+    .body { padding: 16px 36px 4px; }
     .meta-row {
       display: grid;
       grid-template-columns: 1.15fr 0.95fr;
       gap: 18px;
       align-items: start;
       margin-bottom: 8px;
+      break-inside: avoid;
     }
     .invoice-title {
       margin: 8px 0 18px;
@@ -184,6 +183,7 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       margin: 6px 0 20px;
       font-size: 13px;
       line-height: 1.7;
+      break-inside: avoid;
     }
     .flight .row {
       display: grid;
@@ -228,7 +228,9 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       border-collapse: collapse;
       font-size: 13px;
       margin-top: 6px;
+      break-inside: avoid;
     }
+    table.items tr { break-inside: avoid; }
     table.items th {
       text-align: left;
       font-size: 12px;
@@ -250,6 +252,7 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       align-items: flex-start;
       gap: 24px;
       margin-top: 14px;
+      break-inside: avoid;
     }
     .totals {
       width: 260px;
@@ -305,10 +308,10 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       color: ${unpaid ? "#8a3b12" : "#0f3d2e"};
     }
     .footer {
-      position: absolute;
-      left: 0; right: 0; bottom: 0;
+      margin-top: 18px;
       border-top: 2px solid #f5c518;
-      padding: 14px 28px 20px;
+      padding: 12px 28px 18px;
+      break-inside: avoid;
     }
     .footer-row {
       display: grid;
@@ -329,6 +332,9 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     @media print {
       body { background: #fff; }
       .page { box-shadow: none; margin: 0; }
+      .footer, table.items tr, .pay-totals-row, .flight, .meta-row {
+        break-inside: avoid;
+      }
     }
   `;
 
@@ -341,11 +347,10 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
 </head>
 <body>
   <section class="page">
-    <div class="topbar"></div>
     ${
       headerUri
         ? `<img class="header-img" src="${headerUri}" alt="L&B Global · Drukair" />`
-        : ""
+        : `<div class="topbar-fallback"></div>`
     }
     <div class="body">
       <div class="meta-row">

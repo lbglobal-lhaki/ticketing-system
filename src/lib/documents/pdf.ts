@@ -95,8 +95,27 @@ export async function htmlToPdf(html: string): Promise<Buffer> {
   const page = await browser.newPage();
   try {
     await page.setContent(html, {
-      waitUntil: "domcontentloaded",
+      waitUntil: "networkidle0",
       timeout: 30_000,
+    });
+    // `domcontentloaded`/`networkidle0` don't guarantee images have finished
+    // decoding and painting — even inline base64 <img>s decode async off the
+    // main thread. Without this, page.pdf() can snapshot mid-paint and the
+    // header banner comes out cropped/cut off. Wait for every image plus
+    // web fonts before printing.
+    await page.evaluate(async () => {
+      const images = Array.from(document.images);
+      await Promise.all(
+        images.map((img) => {
+          if (img.complete && img.naturalHeight > 0) return Promise.resolve();
+          return new Promise<void>((resolve) => {
+            img.addEventListener("load", () => resolve(), { once: true });
+            img.addEventListener("error", () => resolve(), { once: true });
+          });
+        }),
+      );
+      const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
+      if (fonts?.ready) await fonts.ready;
     });
     const pdf = await page.pdf({
       format: "A4",

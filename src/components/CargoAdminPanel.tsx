@@ -9,6 +9,11 @@ import {
 } from "@/lib/actions/cargo";
 import { CargoEmailNotices } from "@/components/CargoEmailNotices";
 import { formatCargoAnswer } from "@/lib/cargo/submit";
+import {
+  BulkSelectBar,
+  SelectAllCheckbox,
+  useBulkSelection,
+} from "@/components/BulkSelectBar";
 
 export type AdminCargoRow = {
   id: string;
@@ -144,6 +149,9 @@ export function CargoAdminPanel({
     return submissions.filter((s) => s.status === filter);
   }, [filter, submissions]);
 
+  const filteredIds = useMemo(() => filtered.map((s) => s.id), [filtered]);
+  const bulk = useBulkSelection(filteredIds);
+
   const active = useMemo(
     () => submissions.find((s) => s.id === activeId) ?? null,
     [activeId, submissions],
@@ -207,6 +215,24 @@ export function CargoAdminPanel({
     });
   }
 
+  function handleBulkDelete() {
+    const ids = [...bulk.selected];
+    if (ids.length === 0) return;
+    if (
+      !confirm(
+        `Delete ${ids.length} cargo ${ids.length === 1 ? "enquiry" : "enquiries"} permanently?`,
+      )
+    ) {
+      return;
+    }
+    setLocalError(null);
+    const fd = new FormData();
+    for (const id of ids) fd.append("id", id);
+    startTransition(() => {
+      void deleteCargoSubmissionAction(fd);
+    });
+  }
+
   return (
     <section className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -251,20 +277,45 @@ export function CargoAdminPanel({
         </p>
       )}
 
+      <BulkSelectBar
+        count={bulk.selected.size}
+        itemLabel="enquiry"
+        pending={pending}
+        onDelete={handleBulkDelete}
+        onClear={bulk.clear}
+      />
+
       {filtered.length === 0 ? (
         <p className="border border-dashed border-line bg-white/60 px-4 py-8 text-center text-sm text-muted">
           No cargo submissions yet. Add one manually or wait for a Google Form
           response.
         </p>
       ) : (
-        <ul className="space-y-3">
+        <>
+          <label className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted">
+            <SelectAllCheckbox
+              allSelected={bulk.allSelected}
+              someSelected={bulk.someSelected}
+              onToggle={bulk.toggleAll}
+            />
+            Select all ({filtered.length})
+          </label>
+          <ul className="space-y-3">
           {filtered.map((row) => (
             <li
               key={row.id}
               className="border border-line bg-white px-4 py-4 shadow-sm"
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0 space-y-1">
+                <div className="flex min-w-0 items-start gap-3">
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${row.parcelNumber}`}
+                    checked={bulk.selected.has(row.id)}
+                    onChange={() => bulk.toggle(row.id)}
+                    className="mt-1.5 size-4 shrink-0 accent-accent-deep"
+                  />
+                  <div className="min-w-0 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-mono text-sm font-semibold tracking-wide text-accent-deep">
                       {row.parcelNumber}
@@ -303,6 +354,7 @@ export function CargoAdminPanel({
                       ? ` · Paid ${new Date(row.paidAt).toLocaleDateString("en-AU")}`
                       : ""}
                   </p>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -353,7 +405,8 @@ export function CargoAdminPanel({
               </div>
             </li>
           ))}
-        </ul>
+          </ul>
+        </>
       )}
 
       {mode === "emails" && active && (

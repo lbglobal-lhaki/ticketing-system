@@ -1,5 +1,6 @@
 "use client";
 
+import { MoneyInput } from "@/components/MoneyInput";
 import { updateCharterFareAction } from "@/lib/actions/charterFares";
 import { formatAud } from "@/lib/pricing";
 
@@ -124,11 +125,8 @@ function FareGroup({
               <span className="text-xs uppercase tracking-[0.12em] text-muted">
                 Price (AUD)
               </span>
-              <input
+              <MoneyInput
                 name="priceAud"
-                type="number"
-                min={0}
-                step="1"
                 defaultValue={Math.round(fare.priceCents / 100)}
                 required
                 className={fieldClass}

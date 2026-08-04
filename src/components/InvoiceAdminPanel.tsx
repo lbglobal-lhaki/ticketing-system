@@ -3,13 +3,22 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  generateInvoiceDocumentsModalAction,
+  deleteInvoiceAction,
+  deleteInvoiceModalAction,
+  generateAirfareInvoiceModalAction,
+  generateTravelDocumentModalAction,
   markInvoicePaidAction,
   markInvoiceUnpaidAction,
   saveInvoiceDocumentModalAction,
-  sendInvoiceEmailModalAction,
+  sendAirfareInvoiceEmailModalAction,
+  sendTravelDocumentEmailModalAction,
 } from "@/lib/actions/invoices";
 import { formatAud } from "@/lib/pricing";
+import {
+  BulkSelectBar,
+  SelectAllCheckbox,
+  useBulkSelection,
+} from "@/components/BulkSelectBar";
 
 export type AdminInvoiceRow = {
   id: string;
@@ -83,6 +92,9 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  const invoiceIds = useMemo(() => invoices.map((i) => i.id), [invoices]);
+  const bulk = useBulkSelection(invoiceIds);
+
   const active = useMemo(
     () => invoices.find((i) => i.id === activeId) ?? null,
     [activeId, invoices],
@@ -139,14 +151,62 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
     if (!active) return;
     setStatusMsg(null);
     setErrorMsg(null);
+    const isTravel = docTab === "travel";
     startTransition(async () => {
-      const result = await generateInvoiceDocumentsModalAction(active.id);
+      const result = isTravel
+        ? await generateTravelDocumentModalAction(active.id)
+        : await generateAirfareInvoiceModalAction(active.id);
       if (!result.ok) {
         setErrorMsg(result.error);
         return;
       }
-      setStatusMsg("Both documents generated / refreshed.");
+      setStatusMsg(
+        isTravel
+          ? "Travel document generated / refreshed."
+          : "Airfare invoice generated / refreshed.",
+      );
       refreshPreview();
+    });
+  }
+
+  function onDelete() {
+    if (!active) return;
+    if (
+      !confirm(
+        `Delete invoice ${active.invoiceNumber} permanently? It will be recorded in the Deleted tab.`,
+      )
+    ) {
+      return;
+    }
+    setStatusMsg(null);
+    setErrorMsg(null);
+    startTransition(async () => {
+      const result = await deleteInvoiceModalAction(active.id);
+      if (!result.ok) {
+        setErrorMsg(result.error);
+        return;
+      }
+      closeEditor();
+      router.refresh();
+    });
+  }
+
+  function onBulkDelete() {
+    const ids = [...bulk.selected];
+    if (ids.length === 0) return;
+    if (
+      !confirm(
+        `Delete ${ids.length} invoice${ids.length === 1 ? "" : "s"} permanently? They will be recorded in the Deleted tab.`,
+      )
+    ) {
+      return;
+    }
+    setStatusMsg(null);
+    setErrorMsg(null);
+    const fd = new FormData();
+    for (const id of ids) fd.append("id", id);
+    startTransition(() => {
+      void deleteInvoiceAction(fd);
     });
   }
 
@@ -154,8 +214,11 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
     if (!active) return;
     setStatusMsg(null);
     setErrorMsg(null);
+    const isTravel = docTab === "travel";
     startTransition(async () => {
-      const result = await sendInvoiceEmailModalAction(active.id);
+      const result = isTravel
+        ? await sendTravelDocumentEmailModalAction(active.id)
+        : await sendAirfareInvoiceEmailModalAction(active.id);
       if (!result.ok) {
         setErrorMsg(result.error);
         return;
@@ -163,7 +226,9 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
       setStatusMsg(
         result.warning
           ? result.warning
-          : "Email sent with travel document and airfare invoice.",
+          : isTravel
+            ? "Travel document emailed to the customer."
+            : "Airfare invoice emailed to the customer.",
       );
       router.refresh();
     });
@@ -176,20 +241,45 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
           Invoices
         </h2>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Open a document popup to preview, edit the travel pack or airfare
-          invoice, generate both, and email them to the customer.
+          Open a document popup to preview and edit the travel pack or
+          airfare invoice — generate and email each one independently.
         </p>
       </div>
+
+      <BulkSelectBar
+        count={bulk.selected.size}
+        itemLabel="invoice"
+        pending={pending}
+        onDelete={onBulkDelete}
+        onClear={bulk.clear}
+      />
 
       {invoices.length === 0 ? (
         <div className="border border-dashed border-line bg-surface/70 px-6 py-14 text-center text-sm text-muted">
           No invoices yet.
         </div>
       ) : (
+        <>
+          <label className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted">
+            <SelectAllCheckbox
+              allSelected={bulk.allSelected}
+              someSelected={bulk.someSelected}
+              onToggle={bulk.toggleAll}
+            />
+            Select all ({invoices.length})
+          </label>
         <ul className="divide-y divide-line border-y border-line bg-surface/60">
           {invoices.map((invoice) => (
             <li key={invoice.id} className="px-4 py-5 sm:px-5">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${invoice.invoiceNumber}`}
+                    checked={bulk.selected.has(invoice.id)}
+                    onChange={() => bulk.toggle(invoice.id)}
+                    className="mt-1.5 size-4 shrink-0 accent-accent-deep"
+                  />
                 <div className="min-w-0 space-y-1">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <p className="font-[family-name:var(--font-syne)] text-lg font-semibold tracking-tight">
@@ -229,6 +319,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                       ? ` · Paid ${new Date(invoice.paidAt).toLocaleString("en-AU")}`
                       : ""}
                   </p>
+                </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
@@ -274,11 +365,30 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                       </button>
                     </form>
                   )}
+                  <form action={deleteInvoiceAction}>
+                    <input type="hidden" name="id" value={invoice.id} />
+                    <button
+                      type="submit"
+                      onClick={(e) => {
+                        if (
+                          !confirm(
+                            `Delete invoice ${invoice.invoiceNumber} permanently? It will be recorded in the Deleted tab.`,
+                          )
+                        ) {
+                          e.preventDefault();
+                        }
+                      }}
+                      className="px-3 py-2 text-sm font-medium text-muted/70 transition hover:text-red-700"
+                    >
+                      Delete
+                    </button>
+                  </form>
                 </div>
               </div>
             </li>
           ))}
         </ul>
+        </>
       )}
 
       {active && (
@@ -357,11 +467,11 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
               </div>
             )}
 
-            <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-2">
+            <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-2 lg:overflow-hidden">
               <form
                 key={`${active.id}-${previewBust}-form`}
                 action={onSave}
-                className="min-h-0 space-y-4 overflow-y-auto border-b border-line px-4 py-4 sm:px-6 lg:border-b-0 lg:border-r"
+                className="space-y-4 border-b border-line px-4 py-4 sm:px-6 lg:min-h-0 lg:overflow-y-auto lg:border-b-0 lg:border-r"
               >
                 <input type="hidden" name="id" value={active.id} />
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">
@@ -675,7 +785,9 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                     onClick={onGenerate}
                     className="border border-line px-4 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground disabled:opacity-60"
                   >
-                    Generate both
+                    {docTab === "travel"
+                      ? "Generate travel document"
+                      : "Generate airfare invoice"}
                   </button>
                   <button
                     type="button"
@@ -683,7 +795,8 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                     onClick={onSend}
                     className="border border-line px-4 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground disabled:opacity-60"
                   >
-                    {active.sentAt ? "Resend email" : "Send email"}
+                    {active.sentAt ? "Resend" : "Send"}{" "}
+                    {docTab === "travel" ? "travel document" : "airfare invoice"}
                   </button>
                   <a
                     href={previewUrl(active, docTab, previewBust)}
@@ -693,10 +806,18 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                   >
                     Open full page
                   </a>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={onDelete}
+                    className="border border-line px-4 py-2 text-sm font-medium text-muted/70 transition hover:border-red-300 hover:text-red-700 disabled:opacity-60"
+                  >
+                    Delete invoice
+                  </button>
                 </div>
               </form>
 
-              <div className="flex min-h-[40vh] flex-col bg-[#eef3f0] lg:min-h-0">
+              <div className="flex h-[75svh] flex-col bg-[#eef3f0] lg:h-auto lg:min-h-0">
                 <div className="flex items-center justify-between gap-2 border-b border-line bg-white px-4 py-2 text-xs text-muted">
                   <span>
                     Live preview ·{" "}

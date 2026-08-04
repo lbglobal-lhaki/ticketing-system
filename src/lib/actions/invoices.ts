@@ -13,9 +13,13 @@ import {
   defaultInvoiceIdentity,
 } from "@/lib/documents/invoiceFields";
 import {
+  sendAirfareInvoiceEmail,
   sendBookingConfirmationBundle,
   sendInvoiceEmailForBooking,
+  sendTravelDocumentEmail,
 } from "@/lib/email/bookingMail";
+import { invalidateInvoicePdfBlob } from "@/lib/documents/invoiceBlob";
+import { recordDeletion } from "@/lib/audit/deletionLog";
 import { z } from "zod";
 
 
@@ -296,52 +300,53 @@ export async function updateInvoiceDocumentAction(formData: FormData) {
   redirect("/admin?tab=invoices&saved=invoice-updated");
 }
 
-async function generateInvoiceDocuments(id: string) {
-  const invoice = await prisma.invoice.findUnique({
+async function loadInvoiceForGenerate(id: string) {
+  return prisma.invoice.findUnique({
     where: { id },
     include: {
       booking: { include: { flight: true, returnFlight: true } },
     },
   });
+}
+
+/** Current airfare figure to seed default text fields (invoice's own line item, falling back to legacy fareCents / the total minus fees). */
+function resolveAirfareCents(invoice: {
+  airfareCents: number;
+  fareCents: number;
+  amountCents: number;
+  serviceFeeCents: number;
+}) {
+  if (invoice.airfareCents > 0) return invoice.airfareCents;
+  if (invoice.fareCents > 0) return invoice.fareCents;
+  return Math.max(0, invoice.amountCents - invoice.serviceFeeCents);
+}
+
+/**
+ * Regenerates the fields shown on the travel document / e-ticket (seat,
+ * name ref, fare-calc line, endorsement) from the current booking + flight
+ * data. "Generate" always recomputes fresh — use Save instead to keep a
+ * one-off manual override.
+ */
+async function generateTravelDocumentFields(id: string) {
+  const invoice = await loadInvoiceForGenerate(id);
   if (!invoice) return { ok: false as const, error: "Invoice not found" };
 
-  const identity = defaultInvoiceIdentity();
   const flight = invoice.booking.flight;
   const tripType = invoice.booking.tripType;
-  const airfare =
-    invoice.airfareCents > 0
-      ? invoice.airfareCents
-      : invoice.fareCents > 0
-        ? invoice.fareCents
-        : Math.max(0, invoice.amountCents - invoice.serviceFeeCents);
+  const airfare = resolveAirfareCents(invoice);
 
   await prisma.invoice.update({
     where: { id },
     data: {
-      airfareCents: airfare,
-      fareCents: airfare,
-      accountNumber: invoice.accountNumber || identity.accountNumber,
-      businessTpn: invoice.businessTpn || identity.businessTpn,
-      routeLabel:
-        invoice.routeLabel ||
-        buildRouteLabel({
-          origin: flight.origin,
-          destination: flight.destination,
-          tripType,
-        }),
-      seatLabel: invoice.seatLabel || "Auto assigned",
-      nameRef: invoice.nameRef || invoice.booking.bookingRef.slice(-7),
-      endorsementText: invoice.endorsementText || defaultEndorsementText(),
-      fareCalculationLine:
-        invoice.fareCalculationLine ||
-        defaultFareCalculationLine({
-          origin: flight.origin,
-          destination: flight.destination,
-          tripType,
-          fareCents: airfare,
-        }),
-      gstRateBps: invoice.gstRateBps || 1000,
-      gstIncluded: invoice.gstIncluded,
+      seatLabel: "Auto assigned",
+      nameRef: invoice.booking.bookingRef.slice(-7),
+      endorsementText: defaultEndorsementText(),
+      fareCalculationLine: defaultFareCalculationLine({
+        origin: flight.origin,
+        destination: flight.destination,
+        tripType,
+        fareCents: airfare,
+      }),
     },
   });
 
@@ -349,27 +354,128 @@ async function generateInvoiceDocuments(id: string) {
   return { ok: true as const };
 }
 
-/** Modal-friendly generate both docs (no redirect). */
-export async function generateInvoiceDocumentsModalAction(invoiceId: string) {
-  await requireAdmin();
-  return generateInvoiceDocuments(invoiceId);
+/**
+ * Regenerates the fields shown on the airfare invoice (route label,
+ * account/TPN numbers, line-item backfill) and drops the cached PDF so the
+ * next view/send renders fresh from the current template.
+ */
+async function generateAirfareInvoiceFields(id: string) {
+  const invoice = await loadInvoiceForGenerate(id);
+  if (!invoice) return { ok: false as const, error: "Invoice not found" };
+
+  const identity = defaultInvoiceIdentity();
+  const flight = invoice.booking.flight;
+  const tripType = invoice.booking.tripType;
+  const airfare = resolveAirfareCents(invoice);
+
+  await prisma.invoice.update({
+    where: { id },
+    data: {
+      airfareCents: airfare,
+      fareCents: airfare,
+      accountNumber: identity.accountNumber,
+      businessTpn: identity.businessTpn,
+      routeLabel: buildRouteLabel({
+        origin: flight.origin,
+        destination: flight.destination,
+        tripType,
+      }),
+      gstRateBps: invoice.gstRateBps || 1000,
+      gstIncluded: invoice.gstIncluded,
+    },
+  });
+
+  // "Generate" means regenerate — drop any cached PDF so the next view
+  // (preview, download, or email) renders fresh from the current template.
+  await invalidateInvoicePdfBlob(id);
+
+  revalidatePath("/admin");
+  return { ok: true as const };
 }
 
-/** Backfill document fields on an existing invoice (generate / refresh). */
+/** Modal-friendly generate — travel document only (no redirect). */
+export async function generateTravelDocumentModalAction(invoiceId: string) {
+  await requireAdmin();
+  return generateTravelDocumentFields(invoiceId);
+}
+
+/** Modal-friendly generate — airfare invoice only (no redirect). */
+export async function generateAirfareInvoiceModalAction(invoiceId: string) {
+  await requireAdmin();
+  return generateAirfareInvoiceFields(invoiceId);
+}
+
+/** Backfill both documents' fields on an existing invoice (generate / refresh). */
 export async function generateInvoiceDocumentsAction(formData: FormData) {
   await requireAdmin();
   const id = String(formData.get("id") ?? "");
   if (!id) redirect("/admin?tab=invoices&error=Missing+invoice");
 
-  const result = await generateInvoiceDocuments(id);
-  if (!result.ok) {
+  const travel = await generateTravelDocumentFields(id);
+  if (!travel.ok) {
     redirect(
-      `/admin?tab=invoices&error=${encodeURIComponent(result.error)}`,
+      `/admin?tab=invoices&error=${encodeURIComponent(travel.error)}`,
+    );
+  }
+  const airfare = await generateAirfareInvoiceFields(id);
+  if (!airfare.ok) {
+    redirect(
+      `/admin?tab=invoices&error=${encodeURIComponent(airfare.error)}`,
     );
   }
   redirect(
     `/admin?tab=invoices&saved=invoice-generated&focus=${encodeURIComponent(id)}`,
   );
+}
+
+/** Modal-friendly send — travel document only (ticketing@). */
+export async function sendTravelDocumentEmailModalAction(invoiceId: string) {
+  await requireAdmin();
+  const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
+  if (!invoice) return { ok: false as const, error: "Invoice not found" };
+
+  const result = await sendTravelDocumentEmail(invoice.bookingId);
+  if (!result.ok && !("skipped" in result && result.skipped)) {
+    return { ok: false as const, error: result.error };
+  }
+  if (!result.ok && "skipped" in result && result.skipped) {
+    revalidatePath("/admin");
+    return {
+      ok: true as const,
+      warning:
+        "Marked sent locally — configure TICKETING_SMTP_USER/PASS to actually email customers.",
+    };
+  }
+
+  revalidatePath("/admin");
+  return { ok: true as const };
+}
+
+/** Modal-friendly send — airfare invoice only (accounts@). */
+export async function sendAirfareInvoiceEmailModalAction(invoiceId: string) {
+  await requireAdmin();
+  const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
+  if (!invoice) return { ok: false as const, error: "Invoice not found" };
+
+  const result = await sendAirfareInvoiceEmail(invoice.bookingId);
+  if (!result.ok && !("skipped" in result && result.skipped)) {
+    return { ok: false as const, error: result.error };
+  }
+  if (!result.ok && "skipped" in result && result.skipped) {
+    await prisma.invoice.update({
+      where: { id: invoiceId },
+      data: { sentAt: new Date() },
+    });
+    revalidatePath("/admin");
+    return {
+      ok: true as const,
+      warning:
+        "Marked sent locally — configure ACCOUNTS_SMTP_USER/PASS to actually email customers.",
+    };
+  }
+
+  revalidatePath("/admin");
+  return { ok: true as const };
 }
 
 /** Modal-friendly send email for both documents. */
@@ -395,6 +501,80 @@ export async function sendInvoiceEmailModalAction(invoiceId: string) {
         "Marked sent locally — configure TICKETING_SMTP_USER/PASS and ACCOUNTS_SMTP_USER/PASS to actually email customers.",
     };
   }
+
+  revalidatePath("/admin");
+  return { ok: true as const };
+}
+
+/** Permanently deletes an invoice — recorded on the admin Deleted tab first. */
+/** Accepts one or many `id` fields — powers both the row Delete button and bulk-select delete. */
+export async function deleteInvoiceAction(formData: FormData) {
+  await requireAdmin();
+  const ids = Array.from(new Set(formData.getAll("id").map(String).filter(Boolean)));
+  if (ids.length === 0) redirect("/admin?tab=invoices&error=Missing+invoice");
+
+  const invoices = await prisma.invoice.findMany({
+    where: { id: { in: ids } },
+    include: {
+      booking: { select: { bookingRef: true, passengerName: true } },
+    },
+  });
+  if (invoices.length === 0) {
+    redirect("/admin?tab=invoices&error=Invoice(s)+not+found");
+  }
+
+  await prisma.$transaction(
+    async (tx) => {
+      for (const invoice of invoices) {
+        await recordDeletion(
+          {
+            entityType: "invoice",
+            entityId: invoice.id,
+            label: invoice.invoiceNumber,
+            summary: `${invoice.customerName} · Booking ${invoice.booking.bookingRef} · ${(invoice.amountCents / 100).toFixed(2)} AUD`,
+            snapshot: invoice,
+          },
+          tx,
+        );
+      }
+      await tx.invoice.deleteMany({
+        where: { id: { in: invoices.map((i) => i.id) } },
+      });
+    },
+    { maxWait: 20_000, timeout: 60_000 },
+  );
+
+  revalidatePath("/admin");
+  redirect(
+    `/admin?tab=invoices&saved=${invoices.length > 1 ? "invoices-deleted" : "invoice-deleted"}`,
+  );
+}
+
+/** Modal-friendly delete (no redirect) — used from the document editor modal. */
+export async function deleteInvoiceModalAction(invoiceId: string) {
+  await requireAdmin();
+
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    include: {
+      booking: { select: { bookingRef: true, passengerName: true } },
+    },
+  });
+  if (!invoice) return { ok: false as const, error: "Invoice not found" };
+
+  await prisma.$transaction(async (tx) => {
+    await recordDeletion(
+      {
+        entityType: "invoice",
+        entityId: invoice.id,
+        label: invoice.invoiceNumber,
+        summary: `${invoice.customerName} · Booking ${invoice.booking.bookingRef} · ${(invoice.amountCents / 100).toFixed(2)} AUD`,
+        snapshot: invoice,
+      },
+      tx,
+    );
+    await tx.invoice.delete({ where: { id: invoiceId } });
+  });
 
   revalidatePath("/admin");
   return { ok: true as const };

@@ -209,6 +209,60 @@ export async function sendBankTransferBundle(bookingId: string) {
   return result;
 }
 
+/** Sends only the e-ticket / itinerary email (ticketing@) — independent of the invoice. */
+export async function sendTravelDocumentEmail(bookingId: string) {
+  const data = await loadBookingDocumentData(bookingId);
+  if (!data) return { ok: false as const, error: "Booking not found" };
+  if (data.status !== "confirmed") {
+    return {
+      ok: false as const,
+      error:
+        "Booking isn't confirmed yet — the travel document emails once payment is confirmed",
+    };
+  }
+
+  const ticketEmail = eTicketEmail(data);
+  const ticketAttachment = await travelDocAttachment(data);
+  return sendEmail({
+    to: data.email,
+    subject: ticketEmail.subject,
+    html: ticketEmail.html,
+    text: ticketEmail.text,
+    mailbox: "ticketing",
+    attachments: [ticketAttachment],
+  });
+}
+
+/** Sends only the airfare invoice / receipt email (accounts@) — independent of the travel document. */
+export async function sendAirfareInvoiceEmail(bookingId: string) {
+  const data = await loadBookingDocumentData(bookingId);
+  if (!data) return { ok: false as const, error: "Booking not found" };
+  if (!data.invoice) return { ok: false as const, error: "Invoice not found" };
+
+  const email =
+    data.status === "confirmed"
+      ? invoiceReceiptEmail(data)
+      : bankTransferEmail(data);
+  const invoiceFile = await invoiceAttachment(data);
+  const result = await sendEmail({
+    to: data.email,
+    subject: email.subject,
+    html: email.html,
+    text: email.text,
+    mailbox: "accounts",
+    attachments: [invoiceFile],
+  });
+
+  if (result.ok) {
+    await prisma.invoice.update({
+      where: { invoiceNumber: data.invoice.invoiceNumber },
+      data: { sentAt: new Date() },
+    });
+  }
+
+  return result;
+}
+
 /** Sends the right template for the booking/invoice state. */
 export async function sendInvoiceEmailForBooking(bookingId: string) {
   const data = await loadBookingDocumentData(bookingId);

@@ -13,7 +13,11 @@ export async function GET(
 ) {
   try {
     const { invoiceNumber } = await context.params;
-    const token = new URL(request.url).searchParams.get("t");
+    const url = new URL(request.url);
+    const token = url.searchParams.get("t");
+    // Admin preview iframes append `?preview=<bust>` — always render the
+    // current template instead of serving a possibly stale cached PDF.
+    const isPreview = url.searchParams.has("preview");
     const invoice = await prisma.invoice.findUnique({
       where: { invoiceNumber: decodeURIComponent(invoiceNumber) },
       select: {
@@ -48,7 +52,9 @@ export async function GET(
     }
 
     try {
-      const pdf = await getOrCreateInvoicePdf(data);
+      const pdf = await getOrCreateInvoicePdf(data, {
+        forceRefresh: isPreview,
+      });
       return new NextResponse(new Uint8Array(pdf), {
         headers: {
           "Content-Type": "application/pdf",
