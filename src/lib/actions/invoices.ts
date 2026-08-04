@@ -176,9 +176,17 @@ const updateSchema = z.object({
   nameRef: z.string().trim().max(40).optional().or(z.literal("")),
   endorsementText: z.string().trim().max(240).optional().or(z.literal("")),
   fareCalculationLine: z.string().trim().max(240).optional().or(z.literal("")),
-  gstIncluded: z.enum(["true", "false"]).optional(),
+  gstMode: z.enum(["none", "exclusive", "inclusive"]).optional(),
   dueAt: z.string().optional().or(z.literal("")),
 });
+
+function parseGstMode(formData: FormData): "none" | "exclusive" | "inclusive" {
+  const raw = String(formData.get("gstMode") ?? "").trim();
+  if (raw === "exclusive" || raw === "inclusive" || raw === "none") return raw;
+  // Legacy checkbox fallback
+  if (formData.get("applyGst") === "on") return "exclusive";
+  return "none";
+}
 
 function parseUpdateForm(formData: FormData) {
   return updateSchema.safeParse({
@@ -196,7 +204,7 @@ function parseUpdateForm(formData: FormData) {
     nameRef: formData.get("nameRef") || "",
     endorsementText: formData.get("endorsementText") || "",
     fareCalculationLine: formData.get("fareCalculationLine") || "",
-    gstIncluded: formData.get("gstIncluded") === "on" ? "true" : "false",
+    gstMode: parseGstMode(formData),
     dueAt: formData.get("dueAt") || "",
   });
 }
@@ -222,6 +230,9 @@ async function persistInvoiceDocument(formData: FormData) {
   const travelInsuranceCents = moneyAud(formData.get("travelInsuranceAud"));
   const otherChargesCents = moneyAud(formData.get("otherChargesAud"));
   const serviceFeeCents = moneyAud(formData.get("serviceFeeAud"));
+  const gstMode = parsed.data.gstMode ?? "none";
+  const gstRateBps = gstMode === "none" ? 0 : 1000;
+  const gstIncluded = gstMode === "inclusive";
 
   const totals = computeInvoiceTotals({
     airfareCents,
@@ -230,9 +241,8 @@ async function persistInvoiceDocument(formData: FormData) {
     travelInsuranceCents,
     otherChargesCents,
     serviceFeeCents,
-    gstRateBps: existing.gstRateBps || 1000,
-    // Line amounts are GST-exclusive — 10% is always added on top.
-    gstIncluded: false,
+    gstRateBps,
+    gstIncluded,
   });
 
   let dueAt: Date | null = existing.dueAt;
@@ -262,6 +272,7 @@ async function persistInvoiceDocument(formData: FormData) {
       otherChargesCents,
       fareCents: airfareCents,
       serviceFeeCents,
+      gstRateBps,
       gstIncluded: totals.gstIncluded,
       amountCents: totals.amountCents,
       dueAt,
@@ -317,6 +328,7 @@ async function persistInvoiceDocument(formData: FormData) {
       fareCents: airfareCents,
       serviceFeeCents,
       gstIncluded: totals.gstIncluded,
+      gstRateBps,
       amountCents: totals.amountCents,
       dueAt: dueAt?.toISOString() ?? null,
     },
@@ -427,6 +439,8 @@ async function generateAirfareInvoiceFields(id: string) {
     destination: flight.destination,
     tripType,
   });
+  const gstRateBps = invoice.gstRateBps ?? 0;
+  const gstIncluded = Boolean(invoice.gstIncluded) && gstRateBps > 0;
   const totals = computeInvoiceTotals({
     airfareCents: airfare,
     airportTaxesCents: invoice.airportTaxesCents,
@@ -434,8 +448,8 @@ async function generateAirfareInvoiceFields(id: string) {
     travelInsuranceCents: invoice.travelInsuranceCents,
     otherChargesCents: invoice.otherChargesCents,
     serviceFeeCents: invoice.serviceFeeCents,
-    gstRateBps: invoice.gstRateBps || 1000,
-    gstIncluded: false,
+    gstRateBps,
+    gstIncluded,
   });
 
   await prisma.invoice.update({
@@ -446,8 +460,8 @@ async function generateAirfareInvoiceFields(id: string) {
       accountNumber: identity.accountNumber,
       businessTpn: identity.businessTpn,
       routeLabel,
-      gstRateBps: invoice.gstRateBps || 1000,
-      gstIncluded: false,
+      gstRateBps,
+      gstIncluded,
       amountCents: totals.amountCents,
       pdfBlobUrl: null,
       pdfBlobPathname: null,
@@ -474,7 +488,8 @@ async function generateAirfareInvoiceFields(id: string) {
       accountNumber: identity.accountNumber,
       businessTpn: identity.businessTpn,
       routeLabel,
-      gstIncluded: false,
+      gstIncluded,
+      gstRateBps,
       amountCents: totals.amountCents,
     },
   };

@@ -63,9 +63,13 @@ export default async function ConfirmationPage({
       ? booking.quote.quotedPriceCents * booking.seatsBooked
       : Math.max(0, booking.amountPaidCents - booking.serviceFeeCents));
   const cardServiceFeeCents =
+    booking.paymentMethod === "card" ? booking.serviceFeeCents || 0 : 0;
+  const cardGstCents =
     booking.paymentMethod === "card"
-      ? booking.serviceFeeCents ||
-        Math.max(0, booking.amountPaidCents - fareOnlyCents)
+      ? Math.max(
+          0,
+          booking.amountPaidCents - fareOnlyCents - cardServiceFeeCents,
+        )
       : 0;
 
   return (
@@ -165,16 +169,24 @@ export default async function ConfirmationPage({
             <p>
               <span className="text-muted">Seats</span> {booking.seatsBooked}
             </p>
-            {cardServiceFeeCents > 0 ? (
+            {cardServiceFeeCents > 0 || cardGstCents > 0 ? (
               <>
                 <p>
                   <span className="text-muted">Ticket fare</span>{" "}
                   {formatAud(fareOnlyCents)}
                 </p>
-                <p>
-                  <span className="text-muted">Credit card fee (2.2%)</span>{" "}
-                  {formatAud(cardServiceFeeCents)}
-                </p>
+                {cardServiceFeeCents > 0 ? (
+                  <p>
+                    <span className="text-muted">Credit card fee (2.2%)</span>{" "}
+                    {formatAud(cardServiceFeeCents)}
+                  </p>
+                ) : null}
+                {cardGstCents > 0 ? (
+                  <p>
+                    <span className="text-muted">GST (10%)</span>{" "}
+                    {formatAud(cardGstCents)}
+                  </p>
+                ) : null}
                 <p>
                   <span className="text-muted">Total paid (AUD)</span>{" "}
                   {formatAud(booking.amountPaidCents)}

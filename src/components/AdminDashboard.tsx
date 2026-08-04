@@ -1118,8 +1118,9 @@ export function AdminDashboard({
               Book for a client
             </h3>
             <p className="mt-1 text-sm text-muted">
-              Counter / phone bookings. Cash or card = confirmed + confirmation
-              email. Bank transfer = 48h hold + invoice email.
+              Counter / phone bookings. Cash or card = confirmed immediately.
+              Bank transfer = 48h seat hold. No GST is added automatically —
+              enable it on the invoice when needed, then send from Invoices.
             </p>
             <form
               action={createWalkInBookingAction}

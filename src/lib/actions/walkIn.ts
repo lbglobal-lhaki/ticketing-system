@@ -22,7 +22,6 @@ import {
   defaultInvoiceIdentity,
 } from "@/lib/documents/invoiceFields";
 import {
-  sendBankTransferBundle,
   sendBookingConfirmationBundle,
 } from "@/lib/email/bookingMail";
 import { getCurrentFareRelease } from "@/lib/fares/current";
@@ -327,10 +326,13 @@ export async function createWalkInBookingAction(formData: FormData) {
     const paidUpfront = data.paymentMethod !== "bank_transfer";
     const fee =
       data.paymentMethod === "card"
-        ? calculateCardServiceFee(chargeableSubtotalCents)
+        ? calculateCardServiceFee(chargeableSubtotalCents, {
+            includeGst: false,
+          })
         : {
             fareCents: chargeableSubtotalCents,
             serviceFeeCents: 0,
+            gstCents: 0,
             totalCents: chargeableSubtotalCents,
           };
 
@@ -407,7 +409,7 @@ export async function createWalkInBookingAction(formData: FormData) {
           extraBaggageCents: baggageCents,
           travelInsuranceCents: 0,
           otherChargesCents: 0,
-          gstRateBps: 1000,
+          gstRateBps: 0,
           gstIncluded: false,
           accountNumber: identity.accountNumber,
           businessTpn: identity.businessTpn,
@@ -443,21 +445,8 @@ export async function createWalkInBookingAction(formData: FormData) {
       return { booking, invoice };
     });
 
-    // Don't block the admin redirect on PDF + SMTP — that was taking minutes
-    // on cold Chromium. Emails finish in the background after the response.
-    const bookingId = created.booking.id;
-    after(async () => {
-      try {
-        if (paidUpfront) {
-          await sendBookingConfirmationBundle(bookingId);
-        } else {
-          await sendBankTransferBundle(bookingId);
-        }
-      } catch (err) {
-        console.error("walk-in email failed", err);
-      }
-    });
-
+    // Do not auto-email travel docs / invoices on walk-in create — admins
+    // often need to edit the documents first, then send from the Invoices tab.
     revalidatePath("/admin");
     redirect(
       `/admin?tab=bookings&saved=walk-in&ref=${encodeURIComponent(created.booking.bookingRef)}`,

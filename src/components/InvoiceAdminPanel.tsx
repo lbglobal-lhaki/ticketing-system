@@ -35,6 +35,7 @@ export type AdminInvoiceRow = {
   extraBaggageCents: number;
   travelInsuranceCents: number;
   otherChargesCents: number;
+  gstRateBps: number;
   gstIncluded: boolean;
   accountNumber: string;
   businessTpn: string;
@@ -72,6 +73,65 @@ function dueInputValue(iso: string | null) {
   if (Number.isNaN(d.getTime())) return "";
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function invoiceGstMode(invoice: {
+  gstRateBps: number;
+  gstIncluded: boolean;
+}): "none" | "exclusive" | "inclusive" {
+  if ((invoice.gstRateBps ?? 0) <= 0) return "none";
+  return invoice.gstIncluded ? "inclusive" : "exclusive";
+}
+
+const gstModeBtnClass = (active: boolean) =>
+  `flex-1 border px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] transition ${
+    active
+      ? "border-accent-deep bg-accent-deep text-white"
+      : "border-line bg-white text-muted hover:border-accent hover:text-foreground"
+  }`;
+
+function GstModeFields({
+  gstRateBps,
+  gstIncluded,
+}: {
+  gstRateBps: number;
+  gstIncluded: boolean;
+}) {
+  const [mode, setMode] = useState(invoiceGstMode({ gstRateBps, gstIncluded }));
+  return (
+    <fieldset className="sm:col-span-2 space-y-2">
+      <legend className="text-xs text-muted">GST (10%)</legend>
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            ["none", "None"],
+            ["exclusive", "Exclusive"],
+            ["inclusive", "Inclusive"],
+          ] as const
+        ).map(([value, label]) => (
+          <label key={value} className={gstModeBtnClass(mode === value)}>
+            <input
+              type="radio"
+              name="gstMode"
+              value={value}
+              checked={mode === value}
+              onChange={() => setMode(value)}
+              className="sr-only"
+            />
+            {label}
+          </label>
+        ))}
+      </div>
+      <p className="text-xs text-muted">
+        {mode === "exclusive"
+          ? "Exclusive: 10% GST is added on top of all line items."
+          : mode === "inclusive"
+            ? "Inclusive: line amounts already include GST; the GST portion is shown but not added again."
+            : "None: no GST on this invoice."}{" "}
+        Save to update the preview.
+      </p>
+    </fieldset>
+  );
 }
 
 const fieldClass =
@@ -679,7 +739,11 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                         name="dueAt"
                         value={dueInputValue(active.dueAt)}
                       />
-                      <input type="hidden" name="gstIncluded" value="false" />
+                      <input
+                        type="hidden"
+                        name="gstMode"
+                        value={invoiceGstMode(active)}
+                      />
                     </>
                   ) : (
                     <>
@@ -815,12 +879,10 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                           className={fieldClass}
                         />
                       </label>
-                      <input type="hidden" name="gstIncluded" value="false" />
-                      <p className="text-xs text-muted sm:col-span-2">
-                        GST (10%) is calculated on the sum of all line items
-                        (including the payment surcharge) and added on top —
-                        line amounts are GST-exclusive.
-                      </p>
+                      <GstModeFields
+                        gstRateBps={active.gstRateBps ?? 0}
+                        gstIncluded={active.gstIncluded}
+                      />
                     </>
                   )}
 

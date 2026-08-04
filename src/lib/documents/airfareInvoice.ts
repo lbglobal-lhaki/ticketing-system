@@ -116,7 +116,7 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
   // the L&B logo — header-wide.png is the same artwork, uncropped.
   const headerUri =
     assetDataUri("header-wide.png") || assetDataUri("header-page1.png");
-  const taxPct = ((invoice.gstRateBps || 1000) / 100).toFixed(0);
+  const taxPct = ((invoice.gstRateBps ?? 0) / 100).toFixed(0);
 
   const styles = `
     ${pdfFontFaceCss()}
@@ -490,8 +490,14 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
 
       <div class="totals">
         <div class="line"><span>SUBTOTAL</span><span>${esc(money(totals.subtotalCents))}</span></div>
-        <div class="line tax"><span>GST / Tax</span><span>${esc(taxPct)}%</span></div>
-        <div class="line"><span></span><span>${esc(money(totals.gstCents))}</span></div>
+        ${
+          totals.gstCents > 0
+            ? `<div class="line tax"><span>GST / Tax ${
+                totals.gstIncluded ? "(incl.)" : "(excl.)"
+              }</span><span>${esc(taxPct)}%</span></div>
+        <div class="line"><span></span><span>${esc(money(totals.gstCents))}</span></div>`
+            : ""
+        }
         <div class="rule"></div>
         <div class="grand"><span>Total</span><span>${esc(money(totals.amountCents))}</span></div>
       </div>

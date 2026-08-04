@@ -304,7 +304,7 @@ export async function confirmBooking(input: {
             : null;
         const invoiceNotes =
           serviceFeeCents > 0
-            ? `Includes card processing fee ${serviceFeeCents} cents.`
+            ? `Includes card processing fee and exclusive GST (10%).`
             : holdExpiresAt
               ? "Awaiting bank transfer · seats held for 48 hours."
               : "";

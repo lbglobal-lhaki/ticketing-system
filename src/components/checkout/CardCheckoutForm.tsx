@@ -277,6 +277,13 @@ export function CardCheckoutForm({
             </dt>
             <dd className="font-medium">{formatAud(fee.serviceFeeCents)}</dd>
           </div>
+          <div className="flex justify-between gap-4">
+            <dt className="text-muted">
+              GST{" "}
+              <span className="text-foreground/70">({fee.gstRateLabel})</span>
+            </dt>
+            <dd className="font-medium">{formatAud(fee.gstCents)}</dd>
+          </div>
           <div className="flex justify-between gap-4 border-t border-line pt-3">
             <dt className="font-semibold text-foreground">Total due</dt>
             <dd className="font-[family-name:var(--font-syne)] text-2xl font-semibold">
@@ -286,7 +293,8 @@ export function CardCheckoutForm({
         </dl>
         <p className="mt-3 text-xs text-muted">
           The credit card fee covers card processing for Visa, Mastercard, and
-          digital wallets.
+          digital wallets. GST ({fee.gstRateLabel}) is added on top of the fare
+          and card fee — it is not included in those amounts.
         </p>
       </div>
 

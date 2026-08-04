@@ -443,6 +443,7 @@ export default async function AdminPage({
               extraBaggageCents: invoice.extraBaggageCents,
               travelInsuranceCents: invoice.travelInsuranceCents,
               otherChargesCents: invoice.otherChargesCents,
+              gstRateBps: invoice.gstRateBps,
               gstIncluded: invoice.gstIncluded,
               accountNumber: invoice.accountNumber,
               businessTpn: invoice.businessTpn,
