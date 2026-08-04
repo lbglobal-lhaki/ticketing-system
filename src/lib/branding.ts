@@ -6,6 +6,8 @@ export function getBrand() {
     process.env.SITE_URL?.trim() ||
     "http://localhost:3000";
   const logoPath = "/drukair_logo.png";
+  // Emails use a distinct logo asset from the website chrome/favicon.
+  const emailLogoPath = "/loogo.png";
 
   return {
     airlineName:
@@ -15,7 +17,7 @@ export function getBrand() {
     /** Public path for the brand mark (UI). */
     logoPath,
     /** Absolute logo URL for emails / external HTML. */
-    logoUrl: `${siteUrl.replace(/\/$/, "")}${logoPath}`,
+    logoUrl: `${siteUrl.replace(/\/$/, "")}${emailLogoPath}`,
     bookingPrefix: process.env.BRAND_BOOKING_PREFIX?.trim() || "LBG",
     reservationsTeam:
       process.env.BRAND_RESERVATIONS_TEAM?.trim() || "Chartered Flight Team",
