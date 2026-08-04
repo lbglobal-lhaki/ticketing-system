@@ -1,5 +1,5 @@
 import { formatDocDateTime, getBrand } from "@/lib/branding";
-import { releaseQuoteHold } from "@/lib/booking/inventory";
+import { releaseQuoteHold, restoreFareAndFlight } from "@/lib/booking/inventory";
 import { formatAud } from "@/lib/pricing";
 import type { BookingDocumentData } from "@/lib/documents/templates";
 import { sendEmail } from "@/lib/email/send";
@@ -40,36 +40,6 @@ ${brand.reservationsTeam}`;
   return { subject, html, text };
 }
 
-async function restoreSeats(
-  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
-  flightId: string,
-  fareReleaseId: string | null,
-  seats: number,
-) {
-  if (fareReleaseId) {
-    const fare = await tx.fareRelease.findUnique({ where: { id: fareReleaseId } });
-    if (fare) {
-      const nextRemaining = Math.min(fare.totalSeats, fare.remainingSeats + seats);
-      await tx.fareRelease.update({
-        where: { id: fareReleaseId },
-        data: { remainingSeats: nextRemaining },
-      });
-    }
-  }
-
-  const flight = await tx.flight.findUnique({ where: { id: flightId } });
-  if (flight) {
-    const nextRemaining = Math.min(
-      flight.totalSeats,
-      flight.remainingSeats + seats,
-    );
-    await tx.flight.update({
-      where: { id: flightId },
-      data: { remainingSeats: nextRemaining },
-    });
-  }
-}
-
 /** Expire unpaid bank-transfer holds past holdExpiresAt; restore inventory; email customer. */
 export async function expireStaleBankHolds() {
   const now = new Date();
@@ -102,14 +72,14 @@ export async function expireStaleBankHolds() {
           return null;
         }
 
-        await restoreSeats(
+        await restoreFareAndFlight(
           tx,
           current.flightId,
           current.fareReleaseId,
           current.seatsBooked,
         );
         if (current.returnFlightId) {
-          await restoreSeats(
+          await restoreFareAndFlight(
             tx,
             current.returnFlightId,
             current.returnFareReleaseId,
@@ -185,4 +155,33 @@ export async function expireStaleQuotes() {
     }
   }
   return { scanned: stale.length, released };
+}
+
+let lastAdminExpirySweepAt = 0;
+const ADMIN_EXPIRY_SWEEP_INTERVAL_MS = 60_000;
+
+/**
+ * Best-effort hold-expiry sweep for the admin dashboard's page load. An
+ * hourly cron (`/api/cron/expire-holds`) is the source of truth for this
+ * cleanup, so re-running the full scan — up to 100 quotes + 100 bookings,
+ * each its own DB transaction — on *every* admin page load is wasted work.
+ * That matters in practice: every admin form submit redirects back to
+ * `/admin`, so a burst of admin activity was firing this scan dozens of
+ * times a minute, saturating the connection pool and causing sibling
+ * transactions (e.g. `restoreFareAndFlight`) to time out waiting for a free
+ * connection. Throttle it to once per minute per warm server instance —
+ * still keeps things fresh for ops opening the dashboard, without hammering
+ * the DB on every click.
+ */
+export async function expireStaleHoldsForAdminLoad() {
+  const now = Date.now();
+  if (now - lastAdminExpirySweepAt < ADMIN_EXPIRY_SWEEP_INTERVAL_MS) return;
+  lastAdminExpirySweepAt = now;
+
+  try {
+    await expireStaleQuotes();
+    await expireStaleBankHolds();
+  } catch (err) {
+    console.error("expire stale holds on admin load failed", err);
+  }
 }

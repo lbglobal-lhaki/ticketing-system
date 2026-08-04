@@ -47,6 +47,7 @@ const walkInSchema = z.object({
   extraBaggageKg: z.coerce.number().int().min(0).max(500).default(0),
   extraBaggageAud: z.coerce.number().min(0).max(100000).default(0),
   bookingSource: z.enum(["walk_in", "online"]).default("walk_in"),
+  customPriceAud: z.string().trim().optional().or(z.literal("")),
 });
 
 const CUSTOM_FLIGHT_VALUE = "__custom__";
@@ -176,6 +177,7 @@ export async function createWalkInBookingAction(formData: FormData) {
     extraBaggageKg: formData.get("extraBaggageKg") || "0",
     extraBaggageAud: formData.get("extraBaggageAud") || "0",
     bookingSource: formData.get("bookingSource") || "walk_in",
+    customPriceAud: formData.get("customPriceAud") || "",
   });
 
   if (!parsed.success) {
@@ -189,6 +191,23 @@ export async function createWalkInBookingAction(formData: FormData) {
     redirect(
       "/admin?tab=bookings&error=Bank+details+not+configured+for+walk-in+bank+transfer",
     );
+  }
+
+  // Admin-entered custom total airfare — optional. When set, it fully
+  // replaces whatever the system would otherwise charge (the flight's fare
+  // release price, or a selected fare tier override), for this booking only.
+  const customPriceRaw = data.customPriceAud?.trim();
+  let customTotalCents: number | null = null;
+  if (customPriceRaw) {
+    const amount = Number(customPriceRaw);
+    if (!Number.isFinite(amount) || amount < 0) {
+      redirect(
+        `/admin?tab=bookings&error=${encodeURIComponent(
+          "Custom price must be a valid amount ($0 or more)",
+        )}`,
+      );
+    }
+    customTotalCents = Math.round(amount * 100);
   }
 
   try {
@@ -213,18 +232,21 @@ export async function createWalkInBookingAction(formData: FormData) {
     });
     if (!flight) throw new Error("Flight not found");
 
-    // A fare-tier override charges its own catalogue price, so the flight's
-    // own fare release only needs to exist (to decrement seats against) —
-    // it doesn't need to be priced itself in that case.
+    // A fare-tier override charges its own catalogue price, and a custom
+    // admin price replaces the total outright — in either case the flight's
+    // own fare release only needs to exist (to decrement seats against), it
+    // doesn't need to be priced itself.
     const usingFareOverride = Boolean(data.fareProductId);
+    const usingCustomPrice = customTotalCents !== null;
+    const skipsSystemFarePricing = usingFareOverride || usingCustomPrice;
 
     const outboundCurrent = getCurrentFareRelease(flight.fareReleases);
     if (!outboundCurrent) {
       throw new Error("Outbound flight has no active fare release");
     }
-    if (!usingFareOverride && outboundCurrent.priceCents <= 0) {
+    if (!skipsSystemFarePricing && outboundCurrent.priceCents <= 0) {
       throw new Error(
-        "Current fare release is not priced — set a price in Flights, or pick a fare tier override below",
+        "Current fare release is not priced — set a price in Flights, pick a fare tier override, or enter a custom price below",
       );
     }
 
@@ -240,16 +262,16 @@ export async function createWalkInBookingAction(formData: FormData) {
       if (!returnCurrent) {
         throw new Error("Return flight has no active fare release");
       }
-      if (!usingFareOverride && returnCurrent.priceCents <= 0) {
+      if (!skipsSystemFarePricing && returnCurrent.priceCents <= 0) {
         throw new Error(
-          "Return fare is not priced — set a price in Flights, or pick a fare tier override below",
+          "Return fare is not priced — set a price in Flights, pick a fare tier override, or enter a custom price below",
         );
       }
     }
 
     let outboundLegCents = 0;
     let returnLegCents = 0;
-    if (!usingFareOverride) {
+    if (!skipsSystemFarePricing) {
       const outboundPrice = await priceFlight(flight);
       const returnPrice = returnFlight ? await priceFlight(returnFlight) : null;
       if (!outboundPrice.farePriced) {
@@ -288,8 +310,15 @@ export async function createWalkInBookingAction(formData: FormData) {
       }
     }
 
-    const flightFareCents =
-      (outboundLegCents + returnLegCents) * data.seatsBooked;
+    // Custom price wins over everything above — it's a flat total for the
+    // whole booking (all seats/legs included), not a per-leg or per-seat rate.
+    if (usingCustomPrice && !usingFareOverride) {
+      outboundReleaseName = "Custom price (admin-set)";
+    }
+
+    const flightFareCents = usingCustomPrice
+      ? (customTotalCents as number)
+      : (outboundLegCents + returnLegCents) * data.seatsBooked;
     const baggageCents = Math.round(data.extraBaggageAud * 100);
     const chargeableSubtotalCents = flightFareCents + baggageCents;
 
@@ -398,9 +427,11 @@ export async function createWalkInBookingAction(formData: FormData) {
           customerName: data.passengerName,
           customerEmail: data.email,
           customerPhone: data.passengerPhone || "",
-          notes: paidUpfront
-            ? `Walk-in booking · paid by ${data.paymentMethod}`
-            : "Walk-in booking · awaiting bank transfer (48h hold)",
+          notes:
+            (paidUpfront
+              ? `Walk-in booking · paid by ${data.paymentMethod}`
+              : "Walk-in booking · awaiting bank transfer (48h hold)") +
+            (usingCustomPrice ? " · custom admin-set price" : ""),
           dueAt: holdExpiresAt,
           paidAt: paidUpfront ? new Date() : null,
           markedPaidByAdmin: paidUpfront,

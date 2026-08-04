@@ -9,10 +9,7 @@ import {
   setAdminSessionCookie,
 } from "@/lib/adminAuth";
 import { getSystemAnalytics } from "@/lib/analytics/systemAnalytics";
-import {
-  expireStaleBankHolds,
-  expireStaleQuotes,
-} from "@/lib/booking/expireHolds";
+import { expireStaleHoldsForAdminLoad } from "@/lib/booking/expireHolds";
 import { prisma } from "@/lib/db";
 import { listAllCharterFareProductsAdmin } from "@/lib/fares/charter";
 import { adminLoginSchema } from "@/lib/validation";
@@ -157,12 +154,8 @@ export default async function AdminPage({
   }
 
   // Best-effort: expire stale bank holds when ops open the dashboard.
-  try {
-    await expireStaleQuotes();
-    await expireStaleBankHolds();
-  } catch (err) {
-    console.error("expire stale holds on admin load failed", err);
-  }
+  // Throttled internally — see expireStaleHoldsForAdminLoad for why.
+  await expireStaleHoldsForAdminLoad();
 
   const [
     flights,

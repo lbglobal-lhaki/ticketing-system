@@ -1262,6 +1262,21 @@ export function AdminDashboard({
                   above.
                 </span>
               </label>
+              <label className="space-y-1 text-sm sm:col-span-2">
+                <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                  Custom total price (AUD, optional)
+                </span>
+                <MoneyInput
+                  name="customPriceAud"
+                  placeholder="Leave blank to use system price"
+                  className={fieldClass}
+                />
+                <span className="block text-xs text-muted">
+                  Overrides everything above — the fare release price and any
+                  fare tier selected — with this exact total for the whole
+                  booking (all seats/legs, before baggage).
+                </span>
+              </label>
               <label className="space-y-1 text-sm">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
                   Passenger name

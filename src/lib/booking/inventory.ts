@@ -26,6 +26,15 @@ export async function decrementFareAndFlight(
   }
 }
 
+/**
+ * Restores `seats` back onto a fare release + its flight, clamped to each
+ * row's `totalSeats`. Single atomic `UPDATE ... SET x = LEAST(...)` per row
+ * (no read-then-write) so this can't race with a concurrent restore/decrement
+ * on the same row, and so it stays fast inside an interactive transaction —
+ * this runs inside best-effort hold-expiry sweeps that can process many rows
+ * back-to-back, where each extra round trip adds up toward the transaction's
+ * timeout.
+ */
 export async function restoreFareAndFlight(
   tx: Tx,
   flightId: string,
@@ -34,30 +43,17 @@ export async function restoreFareAndFlight(
 ) {
   if (seats < 1) return;
   if (fareReleaseId) {
-    const fare = await tx.fareRelease.findUnique({ where: { id: fareReleaseId } });
-    if (fare) {
-      const nextRemaining = Math.min(
-        fare.totalSeats,
-        fare.remainingSeats + seats,
-      );
-      await tx.fareRelease.update({
-        where: { id: fareReleaseId },
-        data: { remainingSeats: nextRemaining },
-      });
-    }
+    await tx.$executeRaw`
+      UPDATE "FareRelease"
+      SET "remainingSeats" = LEAST("totalSeats", "remainingSeats" + ${seats})
+      WHERE "id" = ${fareReleaseId}
+    `;
   }
-
-  const flight = await tx.flight.findUnique({ where: { id: flightId } });
-  if (flight) {
-    const nextRemaining = Math.min(
-      flight.totalSeats,
-      flight.remainingSeats + seats,
-    );
-    await tx.flight.update({
-      where: { id: flightId },
-      data: { remainingSeats: nextRemaining },
-    });
-  }
+  await tx.$executeRaw`
+    UPDATE "Flight"
+    SET "remainingSeats" = LEAST("totalSeats", "remainingSeats" + ${seats})
+    WHERE "id" = ${flightId}
+  `;
 }
 
 /** Adjust soft-held seats on an active quote to match `targetSeats`. */
