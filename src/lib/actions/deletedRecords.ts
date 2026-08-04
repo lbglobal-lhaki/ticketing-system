@@ -18,6 +18,22 @@ function deletedFail(message: string): never {
  * this runs there is no record left anywhere. Accepts one or many `id`
  * fields, powering both the row "Delete forever" button and bulk-select.
  */
+/** Fetches one audit snapshot on demand — keeps the Deleted tab list light. */
+export async function loadDeletedRecordSnapshotAction(
+  id: string,
+): Promise<{ ok: true; snapshot: unknown } | { ok: false; error: string }> {
+  await requireAdmin();
+  const trimmed = id.trim();
+  if (!trimmed) return { ok: false, error: "Missing record id" };
+
+  const row = await prisma.deletedRecord.findUnique({
+    where: { id: trimmed },
+    select: { snapshot: true },
+  });
+  if (!row) return { ok: false, error: "Record not found" };
+  return { ok: true, snapshot: row.snapshot };
+}
+
 export async function purgeDeletedRecordAction(formData: FormData) {
   await requireAdmin();
 

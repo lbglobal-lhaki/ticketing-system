@@ -139,6 +139,12 @@ export function SearchSummaryBar({
                     <span className="hidden h-4 w-px bg-line sm:block" aria-hidden />
                     <p className="text-muted">
                       <span className="font-medium text-foreground">
+                        {tripType === "round_trip" ? "Round trip" : "One way"}
+                      </span>
+                    </p>
+                    <span className="hidden h-4 w-px bg-line sm:block" aria-hidden />
+                    <p className="text-muted">
+                      <span className="font-medium text-foreground">
                         {passengers}
                       </span>{" "}
                       / {cabinLabel}

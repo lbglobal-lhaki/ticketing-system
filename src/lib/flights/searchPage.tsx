@@ -177,6 +177,17 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
         departureAt: { gte: dayStart },
       },
       orderBy: { departureAt: "asc" },
+      include: {
+        returnLegFlight: {
+          select: {
+            id: true,
+            flightNumber: true,
+            departureAt: true,
+            remainingSeats: true,
+            active: true,
+          },
+        },
+      },
     });
 
     const priced = flights.map((flight) => ({
@@ -217,6 +228,16 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
     };
     if (returnDate) baseParams.returnDate = returnDate;
 
+    // Surface paired charters first in the full catalogue.
+    const sortedCatalogue = [...grouped].sort((a, b) => {
+      if (a.roundTripAvailable !== b.roundTripAvailable) {
+        return a.roundTripAvailable ? -1 : 1;
+      }
+      return (
+        new Date(a.departureAt).getTime() - new Date(b.departureAt).getTime()
+      );
+    });
+
     return (
       <FlightResultsClient
         origin={origin}
@@ -232,8 +253,9 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
         dateParam="date"
         dayFares={dayFares}
         baseParams={baseParams}
-        flights={grouped}
+        flights={sortedCatalogue}
         airports={airports}
+        preferRoundTrip={isRoundTrip}
       />
     );
   }
@@ -270,6 +292,17 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
         },
       },
       orderBy: { departureAt: "asc" },
+      include: {
+        returnLegFlight: {
+          select: {
+            id: true,
+            flightNumber: true,
+            departureAt: true,
+            remainingSeats: true,
+            active: true,
+          },
+        },
+      },
     });
 
     const priced = returns.map((flight) => ({
@@ -309,6 +342,8 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
 
     const withTripTotals = grouped.map((row) => ({
       ...row,
+      roleLabel: "return" as const,
+      roundTripAvailable: true,
       economy: row.economy
         ? {
             ...row.economy,
@@ -389,6 +424,17 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
       departureAt: { gte: windowStart, lte: windowEnd },
     },
     orderBy: { departureAt: "asc" },
+    include: {
+      returnLegFlight: {
+        select: {
+          id: true,
+          flightNumber: true,
+          departureAt: true,
+          remainingSeats: true,
+          active: true,
+        },
+      },
+    },
   });
 
   const priced = flights.map((flight) => ({
@@ -420,7 +466,27 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
       href: `/flights/${flight.id}`,
       ctaLabel: "Select",
     })),
+  ).map((row) =>
+    isRoundTrip
+      ? {
+          ...row,
+          roleLabel: "outbound" as const,
+        }
+      : row,
   );
+
+  // When customers searched round-trip, surface paired charters first so the
+  // fixed return leg is easy to find (manual return picker is secondary).
+  if (isRoundTrip) {
+    grouped.sort((a, b) => {
+      if (a.roundTripAvailable !== b.roundTripAvailable) {
+        return a.roundTripAvailable ? -1 : 1;
+      }
+      return (
+        new Date(a.departureAt).getTime() - new Date(b.departureAt).getTime()
+      );
+    });
+  }
 
   const baseParams: Record<string, string> = {
     origin,
@@ -449,6 +515,7 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
       baseParams={baseParams}
       flights={grouped}
       airports={airports}
+      preferRoundTrip={isRoundTrip}
     />
   );
 }

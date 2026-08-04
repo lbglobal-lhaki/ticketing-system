@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/adminAuth";
 
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import {
   bankHoldExpiresAt,
@@ -442,15 +443,20 @@ export async function createWalkInBookingAction(formData: FormData) {
       return { booking, invoice };
     });
 
-    try {
-      if (paidUpfront) {
-        await sendBookingConfirmationBundle(created.booking.id);
-      } else {
-        await sendBankTransferBundle(created.booking.id);
+    // Don't block the admin redirect on PDF + SMTP — that was taking minutes
+    // on cold Chromium. Emails finish in the background after the response.
+    const bookingId = created.booking.id;
+    after(async () => {
+      try {
+        if (paidUpfront) {
+          await sendBookingConfirmationBundle(bookingId);
+        } else {
+          await sendBankTransferBundle(bookingId);
+        }
+      } catch (err) {
+        console.error("walk-in email failed", err);
       }
-    } catch (err) {
-      console.error("walk-in email failed", err);
-    }
+    });
 
     revalidatePath("/admin");
     redirect(
@@ -506,11 +512,13 @@ export async function markBookingPaidAction(formData: FormData) {
     }
   });
 
-  try {
-    await sendBookingConfirmationBundle(id);
-  } catch (err) {
-    console.error("mark booking paid email failed", err);
-  }
+  after(async () => {
+    try {
+      await sendBookingConfirmationBundle(id);
+    } catch (err) {
+      console.error("mark booking paid email failed", err);
+    }
+  });
 
   revalidatePath("/admin");
   redirect("/admin?tab=bookings&saved=booking-paid");

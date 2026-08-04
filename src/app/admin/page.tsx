@@ -153,9 +153,9 @@ export default async function AdminPage({
     );
   }
 
-  // Best-effort: expire stale bank holds when ops open the dashboard.
-  // Throttled internally — see expireStaleHoldsForAdminLoad for why.
-  await expireStaleHoldsForAdminLoad();
+  // Best-effort hold expiry — never block dashboard TTFB on it. The hourly
+  // cron is the source of truth; this is just a warm-up for ops sessions.
+  void expireStaleHoldsForAdminLoad();
 
   const [
     flights,
@@ -199,6 +199,16 @@ export default async function AdminPage({
       prisma.deletedRecord.findMany({
         orderBy: { deletedAt: "desc" },
         take: 300,
+        // Snapshots are large JSON blobs — load on demand when ops expand a row.
+        select: {
+          id: true,
+          entityType: true,
+          entityId: true,
+          label: true,
+          summary: true,
+          deletedAt: true,
+          deletedBy: true,
+        },
       }),
       getSystemAnalytics(),
       listAllCharterFareProductsAdmin(),
@@ -213,7 +223,7 @@ export default async function AdminPage({
     deleted: "Flight deleted permanently — logged in the Deleted tab.",
     "flights-deleted": "Flights deleted permanently — logged in the Deleted tab.",
     "invoice-paid":
-      "Invoice marked paid. Confirmation email with both documents sent.",
+      "Invoice marked paid. Confirmation email is sending in the background.",
     "invoice-unpaid": "Invoice marked unpaid.",
     "invoice-sent":
       "Invoice email sent (or marked sent if email is not configured).",
@@ -222,13 +232,14 @@ export default async function AdminPage({
     "invoice-deleted": "Invoice deleted — logged in the Deleted tab.",
     "invoices-deleted": "Invoices deleted — logged in the Deleted tab.",
     "booking-paid":
-      "Bank transfer marked paid. Confirmation email with documents sent.",
+      "Bank transfer marked paid. Confirmation email is sending in the background.",
     "booking-unpaid": "Booking marked unpaid — 48h hold restored.",
     "booking-deleted":
       "Booking (and its invoice, if any) deleted — logged in the Deleted tab.",
     "bookings-deleted":
       "Bookings (and their invoices, if any) deleted — logged in the Deleted tab.",
-    "walk-in": "Walk-in booking created.",
+    "walk-in":
+      "Walk-in booking created. Documents/email are sending in the background.",
     "fare-updated": "Charter fare product saved.",
     "cargo-updated": "Cargo submission updated.",
     "cargo-created": "Cargo enquiry created.",
@@ -448,7 +459,7 @@ export default async function AdminPage({
               summary: row.summary,
               deletedAt: row.deletedAt.toISOString(),
               deletedBy: row.deletedBy,
-              snapshot: row.snapshot,
+              snapshot: null,
             }))}
             cargoSubmissions={cargoSubmissions.map((row) => {
               const answers =

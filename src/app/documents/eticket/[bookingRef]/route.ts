@@ -15,6 +15,8 @@ export async function GET(
     const { bookingRef } = await context.params;
     const url = new URL(request.url);
     const token = url.searchParams.get("t");
+    // Admin modal preview uses `?preview=` — HTML only (no Chromium wait).
+    const isPreview = url.searchParams.has("preview");
     // Admin "Download" links append `?download=1` to force a save instead
     // of opening inline (used for the modal's live preview iframe).
     const isDownload = url.searchParams.get("download") === "1";
@@ -48,6 +50,18 @@ export async function GET(
     }
 
     const html = renderTravelDocumentHtml(data);
+
+    // Admin Save / preview must not wait on Puppeteer — HTML is enough to
+    // verify fields and layout in the modal iframe.
+    if (isPreview && !isDownload) {
+      return new NextResponse(html, {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "private, no-store",
+        },
+      });
+    }
+
     try {
       const pdf = await htmlToPdf(html);
       return new NextResponse(new Uint8Array(pdf), {

@@ -3,6 +3,7 @@
 import { requireAdmin } from "@/lib/adminAuth";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import {
@@ -69,11 +70,14 @@ export async function markInvoicePaidAction(formData: FormData) {
     return updated;
   });
 
-  try {
-    await sendBookingConfirmationBundle(invoice.bookingId);
-  } catch (err) {
-    console.error("send confirmation after mark paid failed", err);
-  }
+  const bookingId = invoice.bookingId;
+  after(async () => {
+    try {
+      await sendBookingConfirmationBundle(bookingId);
+    } catch (err) {
+      console.error("send confirmation after mark paid failed", err);
+    }
+  });
 
   revalidatePath("/admin");
   redirect("/admin?tab=invoices&saved=invoice-paid");
@@ -208,6 +212,7 @@ async function persistInvoiceDocument(formData: FormData) {
 
   const existing = await prisma.invoice.findUnique({
     where: { id: parsed.data.id },
+    include: { booking: { select: { bookingRef: true } } },
   });
   if (!existing) return { ok: false as const, error: "Invoice not found" };
 
@@ -278,9 +283,43 @@ async function persistInvoiceDocument(formData: FormData) {
     },
   });
 
-  revalidatePath("/admin");
+  // Don't revalidatePath("/admin") here — the invoice modal updates local
+  // state + preview iframe. Full admin revalidation was reloading the whole
+  // dashboard after every Save and felt like a multi-minute hang.
   revalidatePath(`/confirmation/${existing.bookingId}`);
-  return { ok: true as const, bookingId: existing.bookingId };
+  revalidatePath(`/documents/invoice/${existing.invoiceNumber}`);
+  revalidatePath(`/documents/eticket/${existing.booking.bookingRef}`);
+
+  return {
+    ok: true as const,
+    bookingId: existing.bookingId,
+    invoice: {
+      id: existing.id,
+      customerName: parsed.data.customerName,
+      customerEmail: parsed.data.customerEmail,
+      customerPhone: parsed.data.customerPhone || "",
+      passportNumber: parsed.data.passportNumber || "",
+      nationality: parsed.data.nationality || "",
+      notes: parsed.data.notes || "",
+      accountNumber: parsed.data.accountNumber || "",
+      businessTpn: parsed.data.businessTpn || "",
+      routeLabel: parsed.data.routeLabel || "",
+      seatLabel: parsed.data.seatLabel || "",
+      nameRef: parsed.data.nameRef || "",
+      endorsementText: parsed.data.endorsementText || "",
+      fareCalculationLine: parsed.data.fareCalculationLine || "",
+      airfareCents,
+      airportTaxesCents,
+      extraBaggageCents,
+      travelInsuranceCents,
+      otherChargesCents,
+      fareCents: airfareCents,
+      serviceFeeCents,
+      gstIncluded: totals.gstIncluded,
+      amountCents: totals.amountCents,
+      dueAt: dueAt?.toISOString() ?? null,
+    },
+  };
 }
 
 /** Modal-friendly save (no redirect). */
@@ -335,23 +374,38 @@ async function generateTravelDocumentFields(id: string) {
   const tripType = invoice.booking.tripType;
   const airfare = resolveAirfareCents(invoice);
 
+  const seatLabel = "Auto assigned";
+  const nameRef = invoice.booking.bookingRef.slice(-7);
+  const endorsementText = defaultEndorsementText();
+  const fareCalculationLine = defaultFareCalculationLine({
+    origin: flight.origin,
+    destination: flight.destination,
+    tripType,
+    fareCents: airfare,
+  });
+
   await prisma.invoice.update({
     where: { id },
     data: {
-      seatLabel: "Auto assigned",
-      nameRef: invoice.booking.bookingRef.slice(-7),
-      endorsementText: defaultEndorsementText(),
-      fareCalculationLine: defaultFareCalculationLine({
-        origin: flight.origin,
-        destination: flight.destination,
-        tripType,
-        fareCents: airfare,
-      }),
+      seatLabel,
+      nameRef,
+      endorsementText,
+      fareCalculationLine,
     },
   });
 
-  revalidatePath("/admin");
-  return { ok: true as const };
+  // Modal updates local state — avoid forcing a full /admin reload.
+  revalidatePath(`/documents/eticket/${invoice.booking.bookingRef}`);
+  return {
+    ok: true as const,
+    invoice: {
+      id,
+      seatLabel,
+      nameRef,
+      endorsementText,
+      fareCalculationLine,
+    },
+  };
 }
 
 /**
@@ -367,6 +421,11 @@ async function generateAirfareInvoiceFields(id: string) {
   const flight = invoice.booking.flight;
   const tripType = invoice.booking.tripType;
   const airfare = resolveAirfareCents(invoice);
+  const routeLabel = buildRouteLabel({
+    origin: flight.origin,
+    destination: flight.destination,
+    tripType,
+  });
 
   await prisma.invoice.update({
     where: { id },
@@ -375,11 +434,7 @@ async function generateAirfareInvoiceFields(id: string) {
       fareCents: airfare,
       accountNumber: identity.accountNumber,
       businessTpn: identity.businessTpn,
-      routeLabel: buildRouteLabel({
-        origin: flight.origin,
-        destination: flight.destination,
-        tripType,
-      }),
+      routeLabel,
       gstRateBps: invoice.gstRateBps || 1000,
       gstIncluded: invoice.gstIncluded,
     },
@@ -389,8 +444,19 @@ async function generateAirfareInvoiceFields(id: string) {
   // (preview, download, or email) renders fresh from the current template.
   await invalidateInvoicePdfBlob(id);
 
-  revalidatePath("/admin");
-  return { ok: true as const };
+  // Modal updates local state — avoid forcing a full /admin reload.
+  revalidatePath(`/documents/invoice/${invoice.invoiceNumber}`);
+  return {
+    ok: true as const,
+    invoice: {
+      id,
+      airfareCents: airfare,
+      fareCents: airfare,
+      accountNumber: identity.accountNumber,
+      businessTpn: identity.businessTpn,
+      routeLabel,
+    },
+  };
 }
 
 /** Modal-friendly generate — travel document only (no redirect). */
@@ -439,7 +505,6 @@ export async function sendTravelDocumentEmailModalAction(invoiceId: string) {
     return { ok: false as const, error: result.error };
   }
   if (!result.ok && "skipped" in result && result.skipped) {
-    revalidatePath("/admin");
     return {
       ok: true as const,
       warning:
@@ -447,7 +512,7 @@ export async function sendTravelDocumentEmailModalAction(invoiceId: string) {
     };
   }
 
-  revalidatePath("/admin");
+  // Travel email doesn't touch invoice.sentAt (that's the airfare receipt flag).
   return { ok: true as const };
 }
 
@@ -461,21 +526,21 @@ export async function sendAirfareInvoiceEmailModalAction(invoiceId: string) {
   if (!result.ok && !("skipped" in result && result.skipped)) {
     return { ok: false as const, error: result.error };
   }
+  const sentAt = new Date().toISOString();
   if (!result.ok && "skipped" in result && result.skipped) {
     await prisma.invoice.update({
       where: { id: invoiceId },
-      data: { sentAt: new Date() },
+      data: { sentAt: new Date(sentAt) },
     });
-    revalidatePath("/admin");
     return {
       ok: true as const,
+      sentAt,
       warning:
         "Marked sent locally — configure ACCOUNTS_SMTP_USER/PASS to actually email customers.",
     };
   }
 
-  revalidatePath("/admin");
-  return { ok: true as const };
+  return { ok: true as const, sentAt };
 }
 
 /** Modal-friendly send email for both documents. */

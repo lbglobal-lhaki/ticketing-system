@@ -55,9 +55,21 @@ export async function GET(
       return new NextResponse("Airfare invoice not found", { status: 404 });
     }
 
+    // Admin modal preview uses `?preview=` — serve HTML so Save/reload is
+    // instant. Chromium PDF generation is reserved for download / customer
+    // views (that was taking 1–2 minutes per preview refresh).
+    if (isPreview && !isDownload) {
+      return new NextResponse(renderAirfareInvoiceHtml(data), {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "private, no-store",
+        },
+      });
+    }
+
     try {
       const pdf = await getOrCreateInvoicePdf(data, {
-        forceRefresh: isPreview,
+        forceRefresh: false,
       });
       return new NextResponse(new Uint8Array(pdf), {
         headers: {

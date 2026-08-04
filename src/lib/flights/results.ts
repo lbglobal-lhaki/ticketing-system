@@ -26,6 +26,13 @@ export type FlightResultRow = {
   economy: CabinFare | null;
   business: CabinFare | null;
   lowestFareCents: number | null;
+  /** True when a paired return leg exists and still has seats. */
+  roundTripAvailable: boolean;
+  /** Paired return departure (ISO), when roundTripAvailable. */
+  returnDepartureAt: string | null;
+  returnFlightNumber: string | null;
+  /** Optional listing role — used on multi-step round-trip search. */
+  roleLabel?: "outbound" | "return" | null;
 };
 
 export type DateStripDay = {
@@ -68,13 +75,14 @@ export function formatShortDate(date: Date | string) {
   }).format(d);
 }
 
-/** Card schedule line — e.g. "Mon, 17 Aug". */
+/** Card schedule line — e.g. "Mon, 17 Aug 2026". */
 export function formatCardDate(date: Date | string) {
   const d = typeof date === "string" ? new Date(date) : date;
   return new Intl.DateTimeFormat("en-AU", {
     weekday: "short",
     day: "numeric",
     month: "short",
+    year: "numeric",
     timeZone: "Australia/Sydney",
   }).format(d);
 }
@@ -154,30 +162,57 @@ export function buildDateStrip(
   });
 }
 
-export function groupFlightResults(
-  rows: Array<{
-    flight: {
+export type GroupFlightInput = {
+  flight: {
+    id: string;
+    airline: string;
+    flightNumber: string;
+    origin: string;
+    destination: string;
+    departureAt: Date;
+    arrivalAt: Date;
+    cabinClass: string;
+    remainingSeats: number;
+    totalSeats: number;
+    returnLegFlight?: {
       id: string;
-      airline: string;
       flightNumber: string;
-      origin: string;
-      destination: string;
       departureAt: Date;
-      arrivalAt: Date;
-      cabinClass: string;
       remainingSeats: number;
-      totalSeats: number;
+      active: boolean;
+    } | null;
+  };
+  price: {
+    displayPriceCents: number;
+    basePriceCents: number;
+    fareReleaseName: string | null;
+    farePriced: boolean;
+  };
+  href: string;
+  ctaLabel: string;
+};
+
+function pairingFromFlight(flight: GroupFlightInput["flight"]): {
+  roundTripAvailable: boolean;
+  returnDepartureAt: string | null;
+  returnFlightNumber: string | null;
+} {
+  const ret = flight.returnLegFlight;
+  if (ret && ret.active && ret.remainingSeats > 0) {
+    return {
+      roundTripAvailable: true,
+      returnDepartureAt: ret.departureAt.toISOString(),
+      returnFlightNumber: ret.flightNumber,
     };
-    price: {
-      displayPriceCents: number;
-      basePriceCents: number;
-      fareReleaseName: string | null;
-      farePriced: boolean;
-    };
-    href: string;
-    ctaLabel: string;
-  }>,
-): FlightResultRow[] {
+  }
+  return {
+    roundTripAvailable: false,
+    returnDepartureAt: null,
+    returnFlightNumber: null,
+  };
+}
+
+export function groupFlightResults(rows: GroupFlightInput[]): FlightResultRow[] {
   const map = new Map<string, FlightResultRow>();
 
   for (const row of rows) {
@@ -201,6 +236,7 @@ export function groupFlightResults(
       href: row.href,
       ctaLabel: row.ctaLabel,
     };
+    const pairing = pairingFromFlight(row.flight);
 
     const existing = map.get(key);
     if (!existing) {
@@ -223,12 +259,20 @@ export function groupFlightResults(
         lowestFareCents: row.price.farePriced
           ? row.price.displayPriceCents
           : null,
+        ...pairing,
       });
       continue;
     }
 
     if (cabin === "economy") existing.economy = fare;
     else existing.business = fare;
+
+    // Prefer showing round-trip if either cabin has a bookable pair.
+    if (pairing.roundTripAvailable) {
+      existing.roundTripAvailable = true;
+      existing.returnDepartureAt = pairing.returnDepartureAt;
+      existing.returnFlightNumber = pairing.returnFlightNumber;
+    }
 
     const prices = [existing.economy, existing.business]
       .filter((f): f is CabinFare => Boolean(f?.farePriced))

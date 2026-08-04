@@ -137,36 +137,41 @@ export async function sendBookingConfirmationBundle(bookingId: string) {
     };
   }
 
+  // Build both PDFs in parallel (shared warm Chromium) — used to take 2×
+  // cold-start time when done serially on serverless.
   const ticketEmail = eTicketEmail(data);
-  const ticketAttachment = await travelDocAttachment(data);
-  const ticketResult = await sendEmail({
-    to: data.email,
-    subject: ticketEmail.subject,
-    html: ticketEmail.html,
-    text: ticketEmail.text,
-    mailbox: "ticketing",
-    attachments: [ticketAttachment],
-  });
+  const receiptEmail = data.invoice ? invoiceReceiptEmail(data) : null;
+  const [ticketAttachment, invoiceFile] = await Promise.all([
+    travelDocAttachment(data),
+    data.invoice ? invoiceAttachment(data) : Promise.resolve(null),
+  ]);
 
-  let invoiceResult: Awaited<ReturnType<typeof sendEmail>> | null = null;
-  if (data.invoice) {
-    const receiptEmail = invoiceReceiptEmail(data);
-    const invoiceFile = await invoiceAttachment(data);
-    invoiceResult = await sendEmail({
+  const [ticketResult, invoiceResult] = await Promise.all([
+    sendEmail({
       to: data.email,
-      subject: receiptEmail.subject,
-      html: receiptEmail.html,
-      text: receiptEmail.text,
-      mailbox: "accounts",
-      attachments: [invoiceFile],
-    });
+      subject: ticketEmail.subject,
+      html: ticketEmail.html,
+      text: ticketEmail.text,
+      mailbox: "ticketing",
+      attachments: [ticketAttachment],
+    }),
+    invoiceFile && receiptEmail && data.invoice
+      ? sendEmail({
+          to: data.email,
+          subject: receiptEmail.subject,
+          html: receiptEmail.html,
+          text: receiptEmail.text,
+          mailbox: "accounts",
+          attachments: [invoiceFile],
+        })
+      : Promise.resolve(null),
+  ]);
 
-    if (invoiceResult.ok) {
-      await prisma.invoice.update({
-        where: { invoiceNumber: data.invoice.invoiceNumber },
-        data: { sentAt: new Date() },
-      });
-    }
+  if (invoiceResult?.ok && data.invoice) {
+    await prisma.invoice.update({
+      where: { invoiceNumber: data.invoice.invoiceNumber },
+      data: { sentAt: new Date() },
+    });
   }
 
   if (!ticketResult.ok) return ticketResult;

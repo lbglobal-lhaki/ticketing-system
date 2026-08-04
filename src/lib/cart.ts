@@ -1,5 +1,5 @@
 import { releaseQuoteHold } from "@/lib/booking/inventory";
-import { prisma } from "@/lib/db";
+import { withDbRetry } from "@/lib/db";
 import { getSessionId } from "@/lib/session";
 
 export async function getActiveCartQuotes() {
@@ -7,18 +7,20 @@ export async function getActiveCartQuotes() {
   if (!sessionId) return [];
 
   const now = new Date();
-  const items = await prisma.priceQuote.findMany({
-    where: {
-      sessionId,
-      status: "active",
-      expiresAt: { gt: now },
-    },
-    include: {
-      flight: true,
-      returnFlight: true,
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const items = await withDbRetry((db) =>
+    db.priceQuote.findMany({
+      where: {
+        sessionId,
+        status: "active",
+        expiresAt: { gt: now },
+      },
+      include: {
+        flight: true,
+        returnFlight: true,
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+  );
 
   // One active hold per session — release older leftovers.
   if (items.length > 1) {

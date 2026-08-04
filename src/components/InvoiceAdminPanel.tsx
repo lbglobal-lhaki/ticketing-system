@@ -94,6 +94,18 @@ function downloadUrl(invoice: AdminInvoiceRow, tab: DocTab) {
 
 export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] }) {
   const router = useRouter();
+  // Local copy so Save can update the open modal without router.refresh()
+  // (which reloads the entire admin dashboard and felt like a multi-minute hang).
+  const [rows, setRows] = useState(invoices);
+  const invoicesKey = invoices
+    .map((i) => `${i.id}:${i.status}:${i.amountCents}:${i.sentAt ?? ""}:${i.paidAt ?? ""}`)
+    .join("|");
+  const [settledKey, setSettledKey] = useState(invoicesKey);
+  if (invoicesKey !== settledKey) {
+    setSettledKey(invoicesKey);
+    setRows(invoices);
+  }
+
   const [activeId, setActiveId] = useState<string | null>(null);
   const [docTab, setDocTab] = useState<DocTab>("travel");
   const [previewBust, setPreviewBust] = useState(0);
@@ -107,12 +119,12 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
     "save" | "generate" | "send" | "delete" | null
   >(null);
 
-  const invoiceIds = useMemo(() => invoices.map((i) => i.id), [invoices]);
+  const invoiceIds = useMemo(() => rows.map((i) => i.id), [rows]);
   const bulk = useBulkSelection(invoiceIds);
 
   const active = useMemo(
-    () => invoices.find((i) => i.id === activeId) ?? null,
-    [activeId, invoices],
+    () => rows.find((i) => i.id === activeId) ?? null,
+    [activeId, rows],
   );
 
   useEffect(() => {
@@ -143,9 +155,17 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
     setErrorMsg(null);
   }
 
-  function refreshPreview() {
+  function refreshPreviewOnly() {
+    // Bust the iframe URL only — do NOT router.refresh() the whole admin page.
     setPreviewBust(Date.now());
-    router.refresh();
+  }
+
+  function mergeInvoicePatch(
+    patch: Partial<AdminInvoiceRow> & { id: string },
+  ) {
+    setRows((prev) =>
+      prev.map((row) => (row.id === patch.id ? { ...row, ...patch } : row)),
+    );
   }
 
   function onSave(formData: FormData) {
@@ -159,8 +179,9 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
         setErrorMsg(result.error);
         return;
       }
+      if (result.invoice) mergeInvoicePatch(result.invoice);
       setStatusMsg("Saved — preview updated.");
-      refreshPreview();
+      refreshPreviewOnly();
     });
   }
 
@@ -179,12 +200,13 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
         setErrorMsg(result.error);
         return;
       }
+      if (result.invoice) mergeInvoicePatch(result.invoice);
       setStatusMsg(
         isTravel
           ? "Travel document generated / refreshed."
           : "Airfare invoice generated / refreshed.",
       );
-      refreshPreview();
+      refreshPreviewOnly();
     });
   }
 
@@ -246,6 +268,13 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
         setErrorMsg(result.error);
         return;
       }
+      if (
+        "sentAt" in result &&
+        typeof result.sentAt === "string" &&
+        result.sentAt
+      ) {
+        mergeInvoicePatch({ id: active.id, sentAt: result.sentAt });
+      }
       setStatusMsg(
         result.warning
           ? result.warning
@@ -253,7 +282,6 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
             ? "Travel document emailed to the customer."
             : "Airfare invoice emailed to the customer.",
       );
-      router.refresh();
     });
   }
 
@@ -277,7 +305,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
         onClear={bulk.clear}
       />
 
-      {invoices.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="border border-dashed border-line bg-surface/70 px-6 py-14 text-center text-sm text-muted">
           No invoices yet.
         </div>
@@ -289,10 +317,10 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
               someSelected={bulk.someSelected}
               onToggle={bulk.toggleAll}
             />
-            Select all ({invoices.length})
+            Select all ({rows.length})
           </label>
         <ul className="divide-y divide-line border-y border-line bg-surface/60">
-          {invoices.map((invoice) => (
+          {rows.map((invoice) => (
             <li key={invoice.id} className="px-4 py-5 sm:px-5">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex min-w-0 items-start gap-3">
@@ -510,6 +538,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
               <form
                 key={`${active.id}-${previewBust}-form`}
                 action={onSave}
+                onSubmitCapture={(e) => e.stopPropagation()}
                 className="space-y-4 border-b border-line px-4 py-4 sm:px-6 lg:min-h-0 lg:overflow-y-auto lg:border-b-0 lg:border-r"
               >
                 <input type="hidden" name="id" value={active.id} />

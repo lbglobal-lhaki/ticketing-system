@@ -36,12 +36,28 @@ export function FlightResultCard({
               height={56}
               className="size-12 shrink-0 rounded-[12px] object-contain sm:size-14"
             />
-            <p className="min-w-0 truncate font-[family-name:var(--font-syne)] text-sm font-bold tracking-tight text-accent-deep sm:text-base">
-              {flight.airline}{" "}
-              <span className="font-semibold text-foreground">
-                {flight.flightNumber}
-              </span>
-            </p>
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <p className="min-w-0 truncate font-[family-name:var(--font-syne)] text-sm font-bold tracking-tight text-accent-deep sm:text-base">
+                  {flight.airline}{" "}
+                  <span className="font-semibold text-foreground">
+                    {flight.flightNumber}
+                  </span>
+                </p>
+                <TripBadge flight={flight} />
+              </div>
+              {flight.roundTripAvailable &&
+              flight.returnDepartureAt &&
+              flight.roleLabel !== "return" ? (
+                <p className="mt-1 text-xs text-muted">
+                  Return{" "}
+                  {flight.returnFlightNumber
+                    ? `${flight.returnFlightNumber} · `
+                    : ""}
+                  {formatCardDate(flight.returnDepartureAt)}
+                </p>
+              ) : null}
+            </div>
           </div>
 
           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-3 sm:gap-5">
@@ -107,6 +123,35 @@ export function FlightResultCard({
         </div>
       </div>
     </article>
+  );
+}
+
+function TripBadge({ flight }: { flight: FlightResultRow }) {
+  if (flight.roleLabel === "return") {
+    return (
+      <span className="shrink-0 rounded-full bg-sky-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-sky-900">
+        Return
+      </span>
+    );
+  }
+  if (flight.roleLabel === "outbound" && flight.roundTripAvailable) {
+    return (
+      <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-emerald-900">
+        Round trip
+      </span>
+    );
+  }
+  if (flight.roundTripAvailable) {
+    return (
+      <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-emerald-900">
+        Round trip
+      </span>
+    );
+  }
+  return (
+    <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-700">
+      One way
+    </span>
   );
 }
 

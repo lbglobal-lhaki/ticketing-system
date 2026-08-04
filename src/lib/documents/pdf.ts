@@ -1,5 +1,6 @@
 import { existsSync } from "fs";
 import type { Browser } from "puppeteer-core";
+import { loadPdfFontPayloads } from "@/lib/documents/pdfFonts";
 
 /** True when running on Vercel/AWS Lambda-style serverless compute. */
 const isServerless = Boolean(
@@ -89,20 +90,61 @@ async function launchBrowser(): Promise<Browser> {
   return puppeteer.launch({ executablePath, headless: true });
 }
 
-/** Renders a self-contained HTML document (inline styles/images) to an A4 PDF buffer. */
+/**
+ * Renders HTML to an A4 PDF buffer.
+ *
+ * Performance notes:
+ * - Reuses one Chromium instance for the life of the process (including
+ *   serverless warm instances). Closing after every PDF forced a multi-minute
+ *   Chromium pack download/extract on each invoice/eticket.
+ * - Fonts are registered via FontFace after setContent — not baked as ~824KB
+ *   of base64 CSS into every HTML string (that made parsing alone crawl).
+ * - `domcontentloaded` is enough for fully inlined documents; `networkidle0`
+ *   was waiting on nothing useful and adding seconds.
+ */
 export async function htmlToPdf(html: string): Promise<Buffer> {
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
     await page.setContent(html, {
-      waitUntil: "networkidle0",
+      waitUntil: "domcontentloaded",
       timeout: 30_000,
     });
-    // `domcontentloaded`/`networkidle0` don't guarantee images have finished
-    // decoding and painting — even inline base64 <img>s decode async off the
-    // main thread. Without this, page.pdf() can snapshot mid-paint and the
-    // header banner comes out cropped/cut off. Wait for every image plus
-    // web fonts before printing.
+
+    const fonts = loadPdfFontPayloads();
+    if (fonts) {
+      await page.evaluate(
+        async (regularBase64: string, boldBase64: string) => {
+          const decode = (b64: string) => {
+            const binary = atob(b64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+              bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes.buffer;
+          };
+
+          const loadFace = async (weight: string, b64: string) => {
+            const face = new FontFace("Arimo", decode(b64), {
+              style: "normal",
+              weight,
+            });
+            await face.load();
+            document.fonts.add(face);
+          };
+
+          await Promise.all([
+            loadFace("400", regularBase64),
+            loadFace("700", boldBase64),
+          ]);
+        },
+        fonts.regularBase64,
+        fonts.boldBase64,
+      );
+    }
+
+    // Images (even base64) decode async — wait before capturing so headers
+    // aren't cropped mid-paint.
     await page.evaluate(async () => {
       const images = Array.from(document.images);
       await Promise.all(
@@ -114,9 +156,10 @@ export async function htmlToPdf(html: string): Promise<Buffer> {
           });
         }),
       );
-      const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
-      if (fonts?.ready) await fonts.ready;
+      const fontSet = (document as Document & { fonts?: FontFaceSet }).fonts;
+      if (fontSet?.ready) await fontSet.ready;
     });
+
     const pdf = await page.pdf({
       format: "A4",
       printBackground: true,
@@ -124,11 +167,9 @@ export async function htmlToPdf(html: string): Promise<Buffer> {
     });
     return Buffer.from(pdf);
   } finally {
+    // Only close the page — keep the browser warm for the next PDF in this
+    // request (or the next warm-instance request). Relaunch happens
+    // automatically in getBrowser() if the handle dies after a freeze.
     await page.close().catch(() => {});
-    // Close after each render on serverless — warm instances often kill Chrome.
-    if (isServerless) {
-      await browser.close().catch(() => {});
-      browserPromise = null;
-    }
   }
 }

@@ -1,6 +1,7 @@
 "use server";
 
 import { isRedirectError } from "next/dist/client/components/redirect-error";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { confirmBooking } from "@/lib/booking/confirmBooking";
 import { withAccessToken } from "@/lib/documentAccess";
@@ -160,11 +161,14 @@ export async function payWithCardAction(input: {
       };
     }
 
-    try {
-      await sendBookingConfirmationBundle(result.booking.id);
-    } catch (err) {
-      console.error("confirmation email failed", err);
-    }
+    const bookingId = result.booking.id;
+    after(async () => {
+      try {
+        await sendBookingConfirmationBundle(bookingId);
+      } catch (err) {
+        console.error("confirmation email failed", err);
+      }
+    });
 
     redirect(
       withAccessToken(
@@ -231,20 +235,23 @@ export async function payWithBankTransferAction(
       return fail(result.error);
     }
 
-    let emailed = "0";
-    try {
-      const mail = await sendBankTransferBundle(result.booking.id);
-      emailed = mail.ok ? "1" : "0";
-      if (!mail.ok) {
-        console.error("bank transfer email failed", mail.error);
+    const bookingId = result.booking.id;
+    after(async () => {
+      try {
+        const mail = await sendBankTransferBundle(bookingId);
+        if (!mail.ok) {
+          console.error("bank transfer email failed", mail.error);
+        }
+      } catch (err) {
+        console.error("bank transfer email failed", err);
       }
-    } catch (err) {
-      console.error("bank transfer email failed", err);
-    }
+    });
 
+    // Email is queued in the background — confirmation page should not wait
+    // minutes for Chromium + SMTP before showing bank details.
     redirect(
       withAccessToken(
-        `/confirmation/${result.booking.id}?invoice=1&emailed=${emailed}`,
+        `/confirmation/${result.booking.id}?invoice=1&emailed=1`,
         result.booking.accessToken,
       ),
     );

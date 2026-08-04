@@ -1,7 +1,10 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { purgeDeletedRecordAction } from "@/lib/actions/deletedRecords";
+import {
+  loadDeletedRecordSnapshotAction,
+  purgeDeletedRecordAction,
+} from "@/lib/actions/deletedRecords";
 import {
   BulkSelectBar,
   SelectAllCheckbox,
@@ -65,7 +68,29 @@ export function DeletedRecordsPanel({
 }) {
   const [miniTab, setMiniTab] = useState<MiniTab>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [snapshots, setSnapshots] = useState<Record<string, unknown>>({});
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [snapshotPending, startSnapshotTransition] = useTransition();
+
+  function toggleDetails(id: string) {
+    if (expandedId === id) {
+      setExpandedId(null);
+      setSnapshotError(null);
+      return;
+    }
+    setExpandedId(id);
+    setSnapshotError(null);
+    if (snapshots[id] !== undefined) return;
+    startSnapshotTransition(async () => {
+      const result = await loadDeletedRecordSnapshotAction(id);
+      if (!result.ok) {
+        setSnapshotError(result.error);
+        return;
+      }
+      setSnapshots((prev) => ({ ...prev, [id]: result.snapshot }));
+    });
+  }
 
   const counts = useMemo(() => {
     const c: Record<MiniTab, number> = {
@@ -206,9 +231,7 @@ export function DeletedRecordsPanel({
                     <div className="flex shrink-0 flex-wrap items-center gap-2 self-start">
                       <button
                         type="button"
-                        onClick={() =>
-                          setExpandedId(expanded ? null : record.id)
-                        }
+                        onClick={() => toggleDetails(record.id)}
                         className="border border-line px-3 py-1.5 text-xs font-medium text-muted transition hover:border-accent hover:text-foreground"
                       >
                         {expanded ? "Hide details" : "View details"}
@@ -236,7 +259,15 @@ export function DeletedRecordsPanel({
 
                   {expanded && (
                     <pre className="mt-3 max-h-80 overflow-auto border border-line bg-white p-3 text-xs leading-relaxed text-foreground/80">
-                      {JSON.stringify(record.snapshot, null, 2)}
+                      {snapshotPending && snapshots[record.id] === undefined
+                        ? "Loading snapshot…"
+                        : snapshotError && snapshots[record.id] === undefined
+                          ? snapshotError
+                          : JSON.stringify(
+                              snapshots[record.id] ?? record.snapshot ?? {},
+                              null,
+                              2,
+                            )}
                     </pre>
                   )}
                 </li>
