@@ -538,7 +538,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
               <form
                 key={`${active.id}-${previewBust}-form`}
                 action={onSave}
-                onSubmitCapture={(e) => e.stopPropagation()}
+                data-skip-busy
                 className="space-y-4 border-b border-line px-4 py-4 sm:px-6 lg:min-h-0 lg:overflow-y-auto lg:border-b-0 lg:border-r"
               >
                 <input type="hidden" name="id" value={active.id} />
@@ -679,9 +679,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                         name="dueAt"
                         value={dueInputValue(active.dueAt)}
                       />
-                      {active.gstIncluded ? (
-                        <input type="hidden" name="gstIncluded" value="on" />
-                      ) : null}
+                      <input type="hidden" name="gstIncluded" value="false" />
                     </>
                   ) : (
                     <>
@@ -817,14 +815,12 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                           className={fieldClass}
                         />
                       </label>
-                      <label className="inline-flex items-center gap-2 text-sm text-foreground sm:col-span-2">
-                        <input
-                          type="checkbox"
-                          name="gstIncluded"
-                          defaultChecked={active.gstIncluded}
-                        />
-                        GST included in totals
-                      </label>
+                      <input type="hidden" name="gstIncluded" value="false" />
+                      <p className="text-xs text-muted sm:col-span-2">
+                        GST (10%) is calculated on the sum of all line items
+                        (including the payment surcharge) and added on top —
+                        line amounts are GST-exclusive.
+                      </p>
                     </>
                   )}
 

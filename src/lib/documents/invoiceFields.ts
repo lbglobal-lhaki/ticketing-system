@@ -42,17 +42,27 @@ export function invoiceLineSubtotal(lines: {
   );
 }
 
-/** GST portion of a GST-inclusive amount (bps, e.g. 1000 = 10%). */
-export function gstIncludedPortion(amountCents: number, gstRateBps: number) {
-  if (amountCents <= 0 || gstRateBps <= 0) return 0;
-  return Math.round((amountCents * gstRateBps) / (10_000 + gstRateBps));
-}
-
+/** GST to add on top of a GST-exclusive amount (bps, e.g. 1000 = 10%). */
 export function gstExclusiveAmount(amountCents: number, gstRateBps: number) {
   if (amountCents <= 0 || gstRateBps <= 0) return 0;
   return Math.round((amountCents * gstRateBps) / 10_000);
 }
 
+/** GST portion already embedded in a GST-inclusive amount (legacy invoices). */
+export function gstIncludedPortion(amountCents: number, gstRateBps: number) {
+  if (amountCents <= 0 || gstRateBps <= 0) return 0;
+  return Math.round((amountCents * gstRateBps) / (10_000 + gstRateBps));
+}
+
+/**
+ * Invoice totals.
+ *
+ * Default (gstIncluded=false): line items are GST-exclusive. GST is 10% of
+ * (all line items + payment surcharge) and is added on top of that total.
+ *
+ * Legacy (gstIncluded=true): line items already include GST; gstCents is the
+ * embedded portion for disclosure only and is not added again.
+ */
 export function computeInvoiceTotals(input: {
   airfareCents: number;
   airportTaxesCents: number;
@@ -66,25 +76,33 @@ export function computeInvoiceTotals(input: {
   const lines = invoiceLineSubtotal(input);
   const serviceFeeCents = input.serviceFeeCents ?? 0;
   const gstRateBps = input.gstRateBps ?? 1000;
-  const gstIncluded = input.gstIncluded ?? true;
+  const gstIncluded = input.gstIncluded ?? false;
+  const taxableCents = lines + serviceFeeCents;
 
-  const gstCents = gstIncluded
-    ? gstIncludedPortion(lines, gstRateBps)
-    : gstExclusiveAmount(lines, gstRateBps);
+  if (gstIncluded) {
+    const gstCents = gstIncludedPortion(taxableCents, gstRateBps);
+    return {
+      linesCents: lines,
+      taxableCents,
+      subtotalCents: taxableCents - gstCents,
+      gstCents,
+      serviceFeeCents,
+      amountCents: taxableCents,
+      gstRateBps,
+      gstIncluded: true as const,
+    };
+  }
 
-  const subtotalCents = gstIncluded ? lines - gstCents : lines;
-  const amountCents = gstIncluded
-    ? lines + serviceFeeCents
-    : lines + gstCents + serviceFeeCents;
-
+  const gstCents = gstExclusiveAmount(taxableCents, gstRateBps);
   return {
     linesCents: lines,
-    subtotalCents,
+    taxableCents,
+    subtotalCents: taxableCents,
     gstCents,
     serviceFeeCents,
-    amountCents,
+    amountCents: taxableCents + gstCents,
     gstRateBps,
-    gstIncluded,
+    gstIncluded: false as const,
   };
 }
 

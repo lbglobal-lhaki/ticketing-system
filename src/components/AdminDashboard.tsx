@@ -457,7 +457,14 @@ export function AdminDashboard({
   }
 
   return (
-    <div className="relative space-y-8" onSubmitCapture={markBusy}>
+    <div
+      className="relative space-y-8"
+      onSubmitCapture={(e) => {
+        const form = e.target as HTMLFormElement | null;
+        if (form?.closest?.("[data-skip-busy]")) return;
+        markBusy();
+      }}
+    >
       {busy && (
         <div
           aria-live="polite"

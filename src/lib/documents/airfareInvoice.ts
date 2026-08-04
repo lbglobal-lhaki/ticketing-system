@@ -106,8 +106,11 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     ["Airport Taxes", lines.airportTaxesCents],
     ["Extra Baggage", lines.extraBaggageCents],
     ["Travel Insurance", lines.travelInsuranceCents],
-    ["Other Charges", lines.otherChargesCents + (invoice.serviceFeeCents || 0)],
+    ["Other Charges", lines.otherChargesCents],
   ];
+  if ((invoice.serviceFeeCents || 0) > 0) {
+    lineRows.push(["Payment surcharge", invoice.serviceFeeCents || 0]);
+  }
 
   // header.png's canvas is 30px too short and crops the "GLOBAL" pill under
   // the L&B logo — header-wide.png is the same artwork, uncropped.
@@ -486,11 +489,11 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       </div>
 
       <div class="totals">
-        <div class="line"><span>SUBTOTAL</span><span>${esc(money(totals.linesCents))}</span></div>
-        <div class="line tax"><span>Tax</span><span>${esc(taxPct)}%</span></div>
+        <div class="line"><span>SUBTOTAL</span><span>${esc(money(totals.subtotalCents))}</span></div>
+        <div class="line tax"><span>GST / Tax</span><span>${esc(taxPct)}%</span></div>
         <div class="line"><span></span><span>${esc(money(totals.gstCents))}</span></div>
         <div class="rule"></div>
-        <div class="grand"><span>Total</span><span>${esc(money(invoice.amountCents))}</span></div>
+        <div class="grand"><span>Total</span><span>${esc(money(totals.amountCents))}</span></div>
       </div>
       </div>
     </div>

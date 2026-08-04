@@ -216,10 +216,9 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
     ...lines,
     serviceFeeCents: serviceFee,
     gstRateBps: invoice?.gstRateBps ?? 1000,
-    gstIncluded: invoice?.gstIncluded ?? true,
+    gstIncluded: invoice?.gstIncluded ?? false,
   });
-  const totalCents =
-    invoice?.amountCents || data.amountPaidCents || totals.amountCents;
+  const totalCents = totals.amountCents;
   const fop = paymentMethodLabel(data.paymentMethod);
   const endorsement =
     invoice?.endorsementText?.trim() ||
@@ -831,9 +830,9 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
         <div class="money-row"><span>Form of Payment:</span><span>${esc(fop)}</span></div>
         <div class="money-row"><span>Payment Surcharge:</span><span>${esc(formatAud(serviceFee))}</span></div>
         <div class="money-row"><span>Total Fare and Other Charges:</span><span>${esc(formatAud(totalCents))}</span></div>
-        <div class="money-row"><span>GST included in this transaction:</span><span>${
-          totals.gstIncluded ? "Yes" : "No"
-        }${totals.gstCents > 0 ? ` (${esc(formatAud(totals.gstCents))})` : ""}</span></div>
+        <div class="money-row"><span>GST on this transaction (10% added):</span><span>${
+          totals.gstCents > 0 ? esc(formatAud(totals.gstCents)) : "—"
+        }</span></div>
       </div>
     </div>
   </section>

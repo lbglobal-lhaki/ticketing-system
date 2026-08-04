@@ -408,7 +408,7 @@ export async function createWalkInBookingAction(formData: FormData) {
           travelInsuranceCents: 0,
           otherChargesCents: 0,
           gstRateBps: 1000,
-          gstIncluded: true,
+          gstIncluded: false,
           accountNumber: identity.accountNumber,
           businessTpn: identity.businessTpn,
           routeLabel,

@@ -231,7 +231,8 @@ async function persistInvoiceDocument(formData: FormData) {
     otherChargesCents,
     serviceFeeCents,
     gstRateBps: existing.gstRateBps || 1000,
-    gstIncluded: parsed.data.gstIncluded !== "false",
+    // Line amounts are GST-exclusive — 10% is always added on top.
+    gstIncluded: false,
   });
 
   let dueAt: Date | null = existing.dueAt;
@@ -426,6 +427,16 @@ async function generateAirfareInvoiceFields(id: string) {
     destination: flight.destination,
     tripType,
   });
+  const totals = computeInvoiceTotals({
+    airfareCents: airfare,
+    airportTaxesCents: invoice.airportTaxesCents,
+    extraBaggageCents: invoice.extraBaggageCents,
+    travelInsuranceCents: invoice.travelInsuranceCents,
+    otherChargesCents: invoice.otherChargesCents,
+    serviceFeeCents: invoice.serviceFeeCents,
+    gstRateBps: invoice.gstRateBps || 1000,
+    gstIncluded: false,
+  });
 
   await prisma.invoice.update({
     where: { id },
@@ -436,8 +447,16 @@ async function generateAirfareInvoiceFields(id: string) {
       businessTpn: identity.businessTpn,
       routeLabel,
       gstRateBps: invoice.gstRateBps || 1000,
-      gstIncluded: invoice.gstIncluded,
+      gstIncluded: false,
+      amountCents: totals.amountCents,
+      pdfBlobUrl: null,
+      pdfBlobPathname: null,
     },
+  });
+
+  await prisma.booking.update({
+    where: { id: invoice.bookingId },
+    data: { amountPaidCents: totals.amountCents },
   });
 
   // "Generate" means regenerate — drop any cached PDF so the next view
@@ -455,6 +474,8 @@ async function generateAirfareInvoiceFields(id: string) {
       accountNumber: identity.accountNumber,
       businessTpn: identity.businessTpn,
       routeLabel,
+      gstIncluded: false,
+      amountCents: totals.amountCents,
     },
   };
 }
