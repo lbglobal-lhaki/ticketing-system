@@ -23,6 +23,8 @@ type BankCheckoutFormProps = {
     accountName: string;
     bsb: string;
     accountNumber: string;
+    swiftCode: string;
+    bankAddress: string;
   };
 };
 
