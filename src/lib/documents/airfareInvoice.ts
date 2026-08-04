@@ -395,7 +395,8 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
         <div class="meta">
           <div><b>Invoice Date:</b> ${esc(longDate(invoice.createdAt))}</div>
           <div><b>Invoice Number:</b> ${esc(invoice.invoiceNumber)}</div>
-          <div><b>Account Number:</b> ${esc(invoice.accountNumber || brand.invoiceAccountNumber)}</div>
+          <div><b>Swift Code:</b> ${esc(bankSwift)}</div>
+          <div><b>Bank Address:</b> ${esc(bankAddress)}</div>
           <div><b>Business ABN:</b> ${esc(
             !invoice.businessTpn?.trim() || invoice.businessTpn.trim() === "LAC00357"
               ? brand.invoiceBusinessAbn
