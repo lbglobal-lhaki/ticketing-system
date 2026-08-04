@@ -2,6 +2,7 @@
 
 import { requireAdmin } from "@/lib/adminAuth";
 
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
@@ -456,6 +457,9 @@ export async function createWalkInBookingAction(formData: FormData) {
       `/admin?tab=bookings&saved=walk-in&ref=${encodeURIComponent(created.booking.bookingRef)}`,
     );
   } catch (error) {
+    // Next.js implements redirect() by throwing — must rethrow so the
+    // navigation isn't swallowed and shown as "NEXT_REDIRECT" in the UI.
+    if (isRedirectError(error)) throw error;
     redirect(
       `/admin?tab=bookings&error=${encodeURIComponent(
         error instanceof Error ? error.message : "Walk-in booking failed",
