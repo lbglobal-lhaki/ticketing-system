@@ -121,7 +121,8 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     * { box-sizing: border-box; }
     html, body {
       margin: 0;
-      background: #d7dde5;
+      /* White so PDF never shows grey band below a short page. */
+      background: #fff;
       color: #111;
       font-family: ${PDF_FONT_FAMILY};
       -webkit-print-color-adjust: exact;
@@ -129,13 +130,21 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     }
     .page {
       width: 210mm;
+      /* Fill exactly one A4 sheet and pin the footer to the bottom. */
+      min-height: 297mm;
+      height: 297mm;
       margin: 0 auto;
       background: #fff;
-      box-shadow: 0 4px 24px rgba(0,0,0,.12);
+      display: flex;
+      flex-direction: column;
     }
-    .header-img { display: block; width: 100%; height: auto; }
-    .topbar-fallback { height: 12px; background: #0b2c5a; }
-    .body { padding: 12px 36px 4px; }
+    .header-img { display: block; width: 100%; height: auto; flex-shrink: 0; }
+    .topbar-fallback { height: 12px; background: #0b2c5a; flex-shrink: 0; }
+    .body {
+      padding: 12px 36px 4px;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
     .meta-row {
       display: grid;
       grid-template-columns: 1.15fr 0.95fr;
@@ -310,9 +319,10 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       color: ${unpaid ? "#8a3b12" : "#0f3d2e"};
     }
     .footer {
-      margin-top: 10px;
+      margin-top: auto;
       border-top: 2px solid #f5c518;
-      padding: 10px 28px 12px;
+      padding: 10px 28px 14px;
+      flex-shrink: 0;
       break-inside: avoid;
     }
     .footer-row {
@@ -332,8 +342,13 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     }
     .footer .dot svg { display: block; }
     @media print {
-      body { background: #fff; }
-      .page { box-shadow: none; margin: 0; }
+      html, body { background: #fff; }
+      .page {
+        margin: 0;
+        width: 210mm;
+        min-height: 297mm;
+        height: 297mm;
+      }
       .footer, table.items tr, .pay-totals-row, .flight, .meta-row {
         break-inside: avoid;
       }
