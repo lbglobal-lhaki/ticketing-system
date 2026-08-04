@@ -18,6 +18,10 @@ export async function GET(
     // Admin preview iframes append `?preview=<bust>` — always render the
     // current template instead of serving a possibly stale cached PDF.
     const isPreview = url.searchParams.has("preview");
+    // Admin "Download" links append `?download=1` — same PDF, but tell the
+    // browser to save it instead of opening inline (which is what the
+    // preview iframe needs, so this can't just always be "attachment").
+    const isDownload = url.searchParams.get("download") === "1";
     const invoice = await prisma.invoice.findUnique({
       where: { invoiceNumber: decodeURIComponent(invoiceNumber) },
       select: {
@@ -58,7 +62,7 @@ export async function GET(
       return new NextResponse(new Uint8Array(pdf), {
         headers: {
           "Content-Type": "application/pdf",
-          "Content-Disposition": `inline; filename="Airfare-Invoice-${data.invoice.invoiceNumber}.pdf"`,
+          "Content-Disposition": `${isDownload ? "attachment" : "inline"}; filename="Airfare-Invoice-${data.invoice.invoiceNumber}.pdf"`,
           "Cache-Control": "private, no-store",
         },
       });

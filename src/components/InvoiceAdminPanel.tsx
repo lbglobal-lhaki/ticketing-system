@@ -77,12 +77,19 @@ function dueInputValue(iso: string | null) {
 const fieldClass =
   "w-full min-w-0 border-0 border-b border-line bg-transparent py-2 text-sm text-foreground outline-none transition focus:border-accent";
 
+function docBaseUrl(invoice: AdminInvoiceRow, tab: DocTab) {
+  return tab === "travel"
+    ? `/documents/eticket/${encodeURIComponent(invoice.bookingRef)}`
+    : `/documents/invoice/${encodeURIComponent(invoice.invoiceNumber)}`;
+}
+
 function previewUrl(invoice: AdminInvoiceRow, tab: DocTab, bust: number) {
-  const base =
-    tab === "travel"
-      ? `/documents/eticket/${encodeURIComponent(invoice.bookingRef)}`
-      : `/documents/invoice/${encodeURIComponent(invoice.invoiceNumber)}`;
-  return `${base}?preview=${bust}`;
+  return `${docBaseUrl(invoice, tab)}?preview=${bust}`;
+}
+
+/** Forces a save-to-disk instead of the inline view the preview iframe uses. */
+function downloadUrl(invoice: AdminInvoiceRow, tab: DocTab) {
+  return `${docBaseUrl(invoice, tab)}?download=1`;
 }
 
 export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] }) {
@@ -360,6 +367,22 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                   >
                     Edit / preview
                   </button>
+                  <a
+                    href={downloadUrl(invoice, "travel")}
+                    download
+                    className="border border-line px-3 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground"
+                    title="Download travel document PDF"
+                  >
+                    ⬇ Travel doc
+                  </a>
+                  <a
+                    href={downloadUrl(invoice, "airfare")}
+                    download
+                    className="border border-line px-3 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground"
+                    title="Download airfare invoice PDF"
+                  >
+                    ⬇ Invoice
+                  </a>
                   {invoice.status !== "paid" ? (
                     <form action={markInvoicePaidAction}>
                       <input type="hidden" name="id" value={invoice.id} />
@@ -846,6 +869,13 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                     className="border border-line px-4 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground"
                   >
                     Open full page
+                  </a>
+                  <a
+                    href={downloadUrl(active, docTab)}
+                    download
+                    className="border border-line px-4 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground"
+                  >
+                    Download PDF
                   </a>
                   <button
                     type="button"

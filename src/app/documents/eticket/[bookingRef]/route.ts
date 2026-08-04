@@ -13,7 +13,11 @@ export async function GET(
 ) {
   try {
     const { bookingRef } = await context.params;
-    const token = new URL(request.url).searchParams.get("t");
+    const url = new URL(request.url);
+    const token = url.searchParams.get("t");
+    // Admin "Download" links append `?download=1` to force a save instead
+    // of opening inline (used for the modal's live preview iframe).
+    const isDownload = url.searchParams.get("download") === "1";
     const booking = await prisma.booking.findUnique({
       where: { bookingRef: decodeURIComponent(bookingRef) },
       select: {
@@ -49,7 +53,7 @@ export async function GET(
       return new NextResponse(new Uint8Array(pdf), {
         headers: {
           "Content-Type": "application/pdf",
-          "Content-Disposition": `inline; filename="E-Ticket-Itinerary-${data.bookingRef}.pdf"`,
+          "Content-Disposition": `${isDownload ? "attachment" : "inline"}; filename="E-Ticket-Itinerary-${data.bookingRef}.pdf"`,
           "Cache-Control": "private, no-store",
         },
       });

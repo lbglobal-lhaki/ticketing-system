@@ -236,6 +236,10 @@ export default async function AdminPage({
     "cargo-bulk-deleted": "Cargo enquiries deleted — logged in the Deleted tab.",
     "cargo-paid": "Cargo marked as paid.",
     "cargo-unpaid": "Cargo marked as unpaid.",
+    "deleted-record-purged":
+      "Entry purged permanently — freed from the database.",
+    "deleted-records-purged":
+      "Entries purged permanently — freed from the database.",
   };
   const savedMessage =
     params.saved === "bulk-price"
