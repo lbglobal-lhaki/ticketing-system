@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import path from "path";
 import { getBrand } from "@/lib/branding";
 import { formatCargoAnswer } from "@/lib/cargo/submit";
+import { PDF_FONT_FAMILY, pdfFontFaceCss } from "@/lib/documents/pdfFonts";
 
 export type CargoDocumentData = {
   id: string;
@@ -402,13 +403,14 @@ export function renderCargoDocumentHtml(data: CargoDocumentData) {
   ]);
 
   const styles = `
+    ${pdfFontFaceCss()}
     @page { size: A4; margin: 10mm 11mm 12mm; }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       background: #fff;
       color: #1a2332;
-      font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+      font-family: ${PDF_FONT_FAMILY};
       font-size: 10px;
       line-height: 1.35;
       -webkit-print-color-adjust: exact;

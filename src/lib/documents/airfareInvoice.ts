@@ -8,6 +8,7 @@ import {
   ICON_MAIL,
   ICON_PHONE,
 } from "@/lib/documents/invoiceFields";
+import { PDF_FONT_FAMILY, pdfFontFaceCss } from "@/lib/documents/pdfFonts";
 import type { BookingDocumentData } from "@/lib/documents/templates";
 
 function esc(value: string | number | null | undefined) {
@@ -115,13 +116,14 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
   const taxPct = ((invoice.gstRateBps || 1000) / 100).toFixed(0);
 
   const styles = `
+    ${pdfFontFaceCss()}
     @page { size: A4; margin: 0; }
     * { box-sizing: border-box; }
     html, body {
       margin: 0;
       background: #d7dde5;
       color: #111;
-      font-family: Arial, Helvetica, sans-serif;
+      font-family: ${PDF_FONT_FAMILY};
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
@@ -133,18 +135,18 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     }
     .header-img { display: block; width: 100%; height: auto; }
     .topbar-fallback { height: 12px; background: #0b2c5a; }
-    .body { padding: 16px 36px 4px; }
+    .body { padding: 12px 36px 4px; }
     .meta-row {
       display: grid;
       grid-template-columns: 1.15fr 0.95fr;
       gap: 18px;
       align-items: start;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
       break-inside: avoid;
     }
     .invoice-title {
-      margin: 8px 0 18px;
-      font-size: 42px;
+      margin: 6px 0 12px;
+      font-size: 40px;
       font-weight: 800;
       letter-spacing: 0.02em;
       line-height: 1;
@@ -170,8 +172,8 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     }
     .invoice-to {
       font-size: 13px;
-      line-height: 1.75;
-      margin-bottom: 18px;
+      line-height: 1.65;
+      margin-bottom: 12px;
     }
     .invoice-to .row {
       display: grid;
@@ -180,9 +182,9 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     }
     .invoice-to .row span:first-child { font-weight: 700; }
     .flight {
-      margin: 6px 0 20px;
+      margin: 4px 0 14px;
       font-size: 13px;
-      line-height: 1.7;
+      line-height: 1.6;
       break-inside: avoid;
     }
     .flight .row {
@@ -236,12 +238,12 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       font-size: 12px;
       letter-spacing: 0.04em;
       text-transform: uppercase;
-      padding: 8px 6px;
+      padding: 6px 6px;
       border-bottom: 1.5px solid #c5ced8;
     }
     table.items th.num, table.items td.num { text-align: right; }
     table.items td {
-      padding: 10px 6px;
+      padding: 7px 6px;
       border-bottom: 1px solid #d7dde5;
       vertical-align: middle;
     }
@@ -251,7 +253,7 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       justify-content: space-between;
       align-items: flex-start;
       gap: 24px;
-      margin-top: 14px;
+      margin-top: 8px;
       break-inside: avoid;
     }
     .totals {
@@ -279,7 +281,7 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     }
     .pay {
       font-size: 13px;
-      line-height: 1.7;
+      line-height: 1.55;
       max-width: 420px;
       flex: 1;
     }
@@ -294,7 +296,7 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       gap: 6px;
     }
     .ref {
-      margin-top: 14px;
+      margin-top: 8px;
       font-weight: 800;
       font-size: 13px;
     }
@@ -308,9 +310,9 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       color: ${unpaid ? "#8a3b12" : "#0f3d2e"};
     }
     .footer {
-      margin-top: 18px;
+      margin-top: 10px;
       border-top: 2px solid #f5c518;
-      padding: 12px 28px 18px;
+      padding: 10px 28px 12px;
       break-inside: avoid;
     }
     .footer-row {

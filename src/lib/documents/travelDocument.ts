@@ -11,6 +11,7 @@ import {
   ICON_MAIL,
   ICON_PHONE,
 } from "@/lib/documents/invoiceFields";
+import { PDF_FONT_FAMILY, pdfFontFaceCss } from "@/lib/documents/pdfFonts";
 import type { BookingDocumentData } from "@/lib/documents/templates";
 
 function esc(value: string | number | null | undefined) {
@@ -236,13 +237,14 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
   const routeLabel = `${cityName(data.flight.origin).toUpperCase()} ⇄ ${cityName(data.flight.destination).toUpperCase()}`;
 
   const styles = `
+    ${pdfFontFaceCss()}
     @page { size: A4; margin: 0; }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       background: #d7dde5;
       color: #111;
-      font-family: Arial, Helvetica, sans-serif;
+      font-family: ${PDF_FONT_FAMILY};
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
