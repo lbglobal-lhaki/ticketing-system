@@ -140,6 +140,14 @@ export function BankCheckoutForm({
           <dt className="text-muted">Account</dt>
           <dd className="font-medium">{bankPreview.accountNumber}</dd>
         </div>
+        <div className="flex justify-between gap-4">
+          <dt className="text-muted">Swift</dt>
+          <dd className="font-medium">{bankPreview.swiftCode}</dd>
+        </div>
+        <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-4">
+          <dt className="shrink-0 text-muted">Bank address</dt>
+          <dd className="font-medium sm:text-right">{bankPreview.bankAddress}</dd>
+        </div>
       </dl>
 
       <div className="rounded-2xl border border-accent/25 bg-[linear-gradient(135deg,rgba(37,99,235,0.08),rgba(220,38,38,0.06))] p-5">

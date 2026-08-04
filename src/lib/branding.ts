@@ -48,8 +48,15 @@ export function getBrand() {
       "accounts@lbglobal.com.au",
     invoiceAccountNumber:
       process.env.BRAND_INVOICE_ACCOUNT_NUMBER?.trim() || "CA216212900",
+    /** Business ABN shown on airfare invoices (replaces legacy TPN). */
     invoiceBusinessTpn:
-      process.env.BRAND_INVOICE_BUSINESS_TPN?.trim() || "LAC00357",
+      process.env.BRAND_INVOICE_BUSINESS_ABN?.trim() ||
+      process.env.BRAND_INVOICE_BUSINESS_TPN?.trim() ||
+      "47 649 045 714",
+    invoiceBusinessAbn:
+      process.env.BRAND_INVOICE_BUSINESS_ABN?.trim() ||
+      process.env.BRAND_INVOICE_BUSINESS_TPN?.trim() ||
+      "47 649 045 714",
     charterTagline:
       process.env.BRAND_CHARTER_TAGLINE?.trim() ||
       "YOUR JOURNEY, OUR COMMITMENT",

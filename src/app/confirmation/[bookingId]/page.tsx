@@ -6,6 +6,7 @@ import { canAccessBooking, withAccessToken } from "@/lib/documentAccess";
 import { prisma } from "@/lib/db";
 import { airportLabel, formatFlightTime } from "@/lib/format";
 import { formatAud } from "@/lib/pricing";
+import { getBankTransferDetails } from "@/lib/payments/bank";
 
 // Re-emailing the invoice generates a PDF attachment via headless Chromium,
 // which can take longer than the platform default.
@@ -21,6 +22,7 @@ export default async function ConfirmationPage({
   const { bookingId } = await params;
   const query = await searchParams;
   const brand = getBrand();
+  const bankDetails = getBankTransferDetails();
   const booking = await prisma.booking.findUnique({
     where: { id: bookingId },
     include: { flight: true, returnFlight: true, invoice: true, quote: true },
@@ -295,6 +297,22 @@ export default async function ConfirmationPage({
                       {invoice.bankAccountNumber}
                     </dd>
                   </div>
+                  {bankDetails?.swiftCode ? (
+                    <div className="flex flex-col gap-1 min-[420px]:flex-row min-[420px]:justify-between min-[420px]:gap-4">
+                      <dt className="shrink-0 text-muted">Swift code</dt>
+                      <dd className="min-w-0 break-all font-medium">
+                        {bankDetails.swiftCode}
+                      </dd>
+                    </div>
+                  ) : null}
+                  {bankDetails?.bankAddress ? (
+                    <div className="flex flex-col gap-1 min-[420px]:flex-row min-[420px]:justify-between min-[420px]:gap-4">
+                      <dt className="shrink-0 text-muted">Bank address</dt>
+                      <dd className="min-w-0 break-words font-medium">
+                        {bankDetails.bankAddress}
+                      </dd>
+                    </div>
+                  ) : null}
                   <div className="flex justify-between gap-4">
                     <dt className="text-muted">Payment reference</dt>
                     <dd className="font-semibold text-accent-deep">

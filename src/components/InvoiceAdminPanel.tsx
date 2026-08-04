@@ -809,10 +809,11 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                         />
                       </label>
                       <label className="block text-xs text-muted">
-                        Business TPN
+                        Business ABN
                         <input
                           name="businessTpn"
                           defaultValue={active.businessTpn}
+                          placeholder="47 649 045 714"
                           className={fieldClass}
                         />
                       </label>

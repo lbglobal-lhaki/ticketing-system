@@ -10,6 +10,7 @@ import {
 } from "@/lib/documents/invoiceFields";
 import { PDF_FONT_FAMILY, pdfFontFaceCss } from "@/lib/documents/pdfFonts";
 import type { BookingDocumentData } from "@/lib/documents/templates";
+import { getBankTransferDetails } from "@/lib/payments/bank";
 
 function esc(value: string | number | null | undefined) {
   return String(value ?? "")
@@ -90,7 +91,13 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     gstOverrideCents: invoice.gstOverrideCents || 0,
   });
   const unpaid = invoice.status === "unpaid";
-  const bankName = process.env.BANK_NAME?.trim() || "Brule Bank";
+  const bank = getBankTransferDetails();
+  const bankName =
+    bank?.bankName || process.env.BANK_NAME?.trim() || "Commonwealth Bank";
+  const bankSwift = bank?.swiftCode || "CTBAAU2S";
+  const bankAddress =
+    bank?.bankAddress ||
+    "Commonwealth Bank of Australia, 217a Main St, Osborne Park WA 6017";
   const routeLabel =
     invoice.routeLabel ||
     `${cityName(data.flight.origin)}-${cityName(data.flight.destination)}`;
@@ -389,7 +396,11 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
           <div><b>Invoice Date:</b> ${esc(longDate(invoice.createdAt))}</div>
           <div><b>Invoice Number:</b> ${esc(invoice.invoiceNumber)}</div>
           <div><b>Account Number:</b> ${esc(invoice.accountNumber || brand.invoiceAccountNumber)}</div>
-          <div><b>Business TPN Number:</b> ${esc(invoice.businessTpn || brand.invoiceBusinessTpn)}</div>
+          <div><b>Business ABN:</b> ${esc(
+            !invoice.businessTpn?.trim() || invoice.businessTpn.trim() === "LAC00357"
+              ? brand.invoiceBusinessAbn
+              : invoice.businessTpn,
+          )}</div>
           ${
             invoice.dueAt
               ? `<div class="due">INVOICE DUE DATE:<br />${esc(longDate(invoice.dueAt))}</div>`
@@ -465,6 +476,8 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
         <div class="row"><span>Bank:</span><span>${esc(bankName)}</span></div>
         <div class="row"><span>BSB:</span><span>${esc(invoice.bankBsb || "—")}</span></div>
         <div class="row"><span>Account no. :</span><span>${esc(invoice.bankAccountNumber || "—")}</span></div>
+        <div class="row"><span>Swift Code:</span><span>${esc(bankSwift)}</span></div>
+        <div class="row"><span>Bank Address:</span><span>${esc(bankAddress)}</span></div>
         <div class="ref">Reference: Invoice Number / Passenger Name</div>
         <p style="margin:8px 0 0;font-size:12px;color:#444">Please use <strong>${esc(invoice.bankReference || invoice.invoiceNumber)} / ${esc(data.passengerName)}</strong> as the payment reference.</p>
         <p style="margin:10px 0 0;font-size:12px;color:#444"><strong>Transaction instructions:</strong> This invoice is unpaid. After you transfer the funds, email a screenshot of the payment to <strong>${esc(brand.paymentProofEmail)}</strong> so your booking can be confirmed.</p>`

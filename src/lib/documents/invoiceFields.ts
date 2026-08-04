@@ -131,7 +131,7 @@ export function defaultInvoiceIdentity() {
   const brand = getBrand();
   return {
     accountNumber: brand.invoiceAccountNumber,
-    businessTpn: brand.invoiceBusinessTpn,
+    businessTpn: brand.invoiceBusinessAbn,
   };
 }
 
