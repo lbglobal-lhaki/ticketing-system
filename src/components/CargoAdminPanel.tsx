@@ -14,6 +14,8 @@ import {
   SelectAllCheckbox,
   useBulkSelection,
 } from "@/components/BulkSelectBar";
+import { SubmitButton } from "@/components/SubmitButton";
+import { Spinner } from "@/components/Spinner";
 
 export type AdminCargoRow = {
   id: string;
@@ -143,6 +145,9 @@ export function CargoAdminPanel({
   const [filter, setFilter] = useState<"all" | AdminCargoRow["status"]>("all");
   const [pairs, setPairs] = useState<AnswerPair[]>(DEFAULT_FIELDS);
   const [localError, setLocalError] = useState<string | null>(null);
+  // Which row + action is in flight (e.g. "abc123:delete") — lets a specific
+  // row's button show its own spinner instead of every row dimming the same way.
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     if (filter === "all") return submissions;
@@ -197,6 +202,7 @@ export function CargoAdminPanel({
   function handleDelete(id: string) {
     if (!confirm("Delete this cargo enquiry permanently?")) return;
     setLocalError(null);
+    setPendingKey(`${id}:delete`);
     const fd = new FormData();
     fd.set("id", id);
     startTransition(() => {
@@ -207,6 +213,7 @@ export function CargoAdminPanel({
 
   function handleSetPaid(id: string, paid: boolean) {
     setLocalError(null);
+    setPendingKey(`${id}:paid`);
     const fd = new FormData();
     fd.set("id", id);
     fd.set("paid", paid ? "true" : "false");
@@ -387,19 +394,35 @@ export function CargoAdminPanel({
                   </button>
                   <button
                     type="button"
-                    className={btnClass}
+                    className={`${btnClass} disabled:cursor-not-allowed disabled:opacity-60`}
                     disabled={pending}
                     onClick={() => handleSetPaid(row.id, !row.paid)}
                   >
-                    {row.paid ? "Unpaid" : "Paid"}
+                    {pending && pendingKey === `${row.id}:paid` ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Spinner className="size-3.5" />
+                        Updating…
+                      </span>
+                    ) : row.paid ? (
+                      "Unpaid"
+                    ) : (
+                      "Paid"
+                    )}
                   </button>
                   <button
                     type="button"
-                    className={`${btnClass} border-red-200 text-red-700 hover:border-red-400 hover:text-red-800`}
+                    className={`${btnClass} border-red-200 text-red-700 hover:border-red-400 hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-60`}
                     disabled={pending}
                     onClick={() => handleDelete(row.id)}
                   >
-                    Delete
+                    {pending && pendingKey === `${row.id}:delete` ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Spinner className="size-3.5" />
+                        Deleting…
+                      </span>
+                    ) : (
+                      "Delete"
+                    )}
                   </button>
                 </div>
               </div>
@@ -529,11 +552,20 @@ export function CargoAdminPanel({
                   </button>
                   <button
                     type="button"
-                    className={btnClass}
+                    className={`${btnClass} disabled:cursor-not-allowed disabled:opacity-60`}
                     disabled={pending}
                     onClick={() => handleSetPaid(active.id, !active.paid)}
                   >
-                    {active.paid ? "Mark unpaid" : "Mark paid"}
+                    {pending && pendingKey === `${active.id}:paid` ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Spinner className="size-3.5" />
+                        Updating…
+                      </span>
+                    ) : active.paid ? (
+                      "Mark unpaid"
+                    ) : (
+                      "Mark paid"
+                    )}
                   </button>
                   <button
                     type="button"
@@ -544,10 +576,18 @@ export function CargoAdminPanel({
                   </button>
                   <button
                     type="button"
-                    className={`${btnClass} border-red-200 text-red-700`}
+                    className={`${btnClass} border-red-200 text-red-700 disabled:cursor-not-allowed disabled:opacity-60`}
+                    disabled={pending}
                     onClick={() => handleDelete(active.id)}
                   >
-                    Delete
+                    {pending && pendingKey === `${active.id}:delete` ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Spinner className="size-3.5" />
+                        Deleting…
+                      </span>
+                    ) : (
+                      "Delete"
+                    )}
                   </button>
                 </div>
                 <dl className="mt-5 space-y-3 border-t border-line pt-4">
@@ -735,12 +775,12 @@ export function CargoAdminPanel({
                 </label>
 
                 <div className="flex flex-wrap gap-3">
-                  <button
-                    type="submit"
-                    className="btn-cta rounded-xl px-4 py-2.5 text-sm"
+                  <SubmitButton
+                    pendingLabel={mode === "create" ? "Creating…" : "Saving…"}
+                    className="btn-cta rounded-xl px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {mode === "create" ? "Create" : "Save changes"}
-                  </button>
+                  </SubmitButton>
                   {mode === "edit" && active && (
                     <button
                       type="button"

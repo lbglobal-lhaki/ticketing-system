@@ -19,6 +19,8 @@ import {
   SelectAllCheckbox,
   useBulkSelection,
 } from "@/components/BulkSelectBar";
+import { SubmitButton } from "@/components/SubmitButton";
+import { Spinner } from "@/components/Spinner";
 
 export type AdminInvoiceRow = {
   id: string;
@@ -91,6 +93,12 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // Which specific action is in flight — lets the modal disable every button
+  // (no cross-action races) while only the one actually running shows a
+  // spinner, instead of all four looking identically "stuck".
+  const [pendingAction, setPendingAction] = useState<
+    "save" | "generate" | "send" | "delete" | null
+  >(null);
 
   const invoiceIds = useMemo(() => invoices.map((i) => i.id), [invoices]);
   const bulk = useBulkSelection(invoiceIds);
@@ -136,8 +144,10 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
   function onSave(formData: FormData) {
     setStatusMsg(null);
     setErrorMsg(null);
+    setPendingAction("save");
     startTransition(async () => {
       const result = await saveInvoiceDocumentModalAction(formData);
+      setPendingAction(null);
       if (!result.ok) {
         setErrorMsg(result.error);
         return;
@@ -151,11 +161,13 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
     if (!active) return;
     setStatusMsg(null);
     setErrorMsg(null);
+    setPendingAction("generate");
     const isTravel = docTab === "travel";
     startTransition(async () => {
       const result = isTravel
         ? await generateTravelDocumentModalAction(active.id)
         : await generateAirfareInvoiceModalAction(active.id);
+      setPendingAction(null);
       if (!result.ok) {
         setErrorMsg(result.error);
         return;
@@ -180,9 +192,11 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
     }
     setStatusMsg(null);
     setErrorMsg(null);
+    setPendingAction("delete");
     startTransition(async () => {
       const result = await deleteInvoiceModalAction(active.id);
       if (!result.ok) {
+        setPendingAction(null);
         setErrorMsg(result.error);
         return;
       }
@@ -214,11 +228,13 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
     if (!active) return;
     setStatusMsg(null);
     setErrorMsg(null);
+    setPendingAction("send");
     const isTravel = docTab === "travel";
     startTransition(async () => {
       const result = isTravel
         ? await sendTravelDocumentEmailModalAction(active.id)
         : await sendAirfareInvoiceEmailModalAction(active.id);
+      setPendingAction(null);
       if (!result.ok) {
         setErrorMsg(result.error);
         return;
@@ -347,28 +363,28 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                   {invoice.status !== "paid" ? (
                     <form action={markInvoicePaidAction}>
                       <input type="hidden" name="id" value={invoice.id} />
-                      <button
-                        type="submit"
-                        className="border border-line px-3 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground"
+                      <SubmitButton
+                        pendingLabel="Confirming…"
+                        className="border border-line px-3 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Mark paid
-                      </button>
+                      </SubmitButton>
                     </form>
                   ) : (
                     <form action={markInvoiceUnpaidAction}>
                       <input type="hidden" name="id" value={invoice.id} />
-                      <button
-                        type="submit"
-                        className="border border-line px-3 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground"
+                      <SubmitButton
+                        pendingLabel="Updating…"
+                        className="border border-line px-3 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Mark unpaid
-                      </button>
+                      </SubmitButton>
                     </form>
                   )}
                   <form action={deleteInvoiceAction}>
                     <input type="hidden" name="id" value={invoice.id} />
-                    <button
-                      type="submit"
+                    <SubmitButton
+                      pendingLabel="Deleting…"
                       onClick={(e) => {
                         if (
                           !confirm(
@@ -378,10 +394,10 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                           e.preventDefault();
                         }
                       }}
-                      className="px-3 py-2 text-sm font-medium text-muted/70 transition hover:text-red-700"
+                      className="px-3 py-2 text-sm font-medium text-muted/70 transition hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Delete
-                    </button>
+                    </SubmitButton>
                   </form>
                 </div>
               </div>
@@ -775,28 +791,53 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                   <button
                     type="submit"
                     disabled={pending}
-                    className="bg-accent-deep px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent disabled:opacity-60"
+                    className="bg-accent-deep px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {pending ? "Working…" : "Save & refresh preview"}
+                    {pendingAction === "save" ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Spinner className="size-3.5" />
+                        Saving…
+                      </span>
+                    ) : (
+                      "Save & refresh preview"
+                    )}
                   </button>
                   <button
                     type="button"
                     disabled={pending}
                     onClick={onGenerate}
-                    className="border border-line px-4 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground disabled:opacity-60"
+                    className="border border-line px-4 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {docTab === "travel"
-                      ? "Generate travel document"
-                      : "Generate airfare invoice"}
+                    {pendingAction === "generate" ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Spinner className="size-3.5" />
+                        Generating…
+                      </span>
+                    ) : docTab === "travel" ? (
+                      "Generate travel document"
+                    ) : (
+                      "Generate airfare invoice"
+                    )}
                   </button>
                   <button
                     type="button"
                     disabled={pending}
                     onClick={onSend}
-                    className="border border-line px-4 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground disabled:opacity-60"
+                    className="border border-line px-4 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {active.sentAt ? "Resend" : "Send"}{" "}
-                    {docTab === "travel" ? "travel document" : "airfare invoice"}
+                    {pendingAction === "send" ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Spinner className="size-3.5" />
+                        Sending…
+                      </span>
+                    ) : (
+                      <>
+                        {active.sentAt ? "Resend" : "Send"}{" "}
+                        {docTab === "travel"
+                          ? "travel document"
+                          : "airfare invoice"}
+                      </>
+                    )}
                   </button>
                   <a
                     href={previewUrl(active, docTab, previewBust)}
@@ -810,9 +851,16 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                     type="button"
                     disabled={pending}
                     onClick={onDelete}
-                    className="border border-line px-4 py-2 text-sm font-medium text-muted/70 transition hover:border-red-300 hover:text-red-700 disabled:opacity-60"
+                    className="border border-line px-4 py-2 text-sm font-medium text-muted/70 transition hover:border-red-300 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Delete invoice
+                    {pendingAction === "delete" ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Spinner className="size-3.5" />
+                        Deleting…
+                      </span>
+                    ) : (
+                      "Delete invoice"
+                    )}
                   </button>
                 </div>
               </form>

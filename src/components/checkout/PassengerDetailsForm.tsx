@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { savePassengerDetailsAction } from "@/lib/actions/passengers";
+import { SubmitButton } from "@/components/SubmitButton";
 
 const fieldClass =
   "mt-1.5 w-full rounded-lg border border-line bg-white px-3.5 py-3 text-sm text-foreground outline-none transition focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/35";
@@ -256,12 +257,12 @@ export function PassengerDetailsForm({
       </label>
 
       <div className="flex justify-end">
-        <button
-          type="submit"
-          className="btn-cta min-h-12 px-10 text-sm"
+        <SubmitButton
+          pendingLabel="Saving…"
+          className="btn-cta min-h-12 px-10 text-sm disabled:cursor-not-allowed disabled:opacity-70"
         >
           Continue
-        </button>
+        </SubmitButton>
       </div>
     </form>
   );

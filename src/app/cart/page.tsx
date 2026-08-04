@@ -3,6 +3,7 @@ import { removeCartItemAction } from "@/lib/actions/cart";
 import { getActiveCartQuotes } from "@/lib/cart";
 import { airportCity, formatFlightTime } from "@/lib/format";
 import { formatAud } from "@/lib/pricing";
+import { SubmitButton } from "@/components/SubmitButton";
 
 type CartQuote = Awaited<ReturnType<typeof getActiveCartQuotes>>[number];
 
@@ -67,12 +68,12 @@ function CartItem({ quote }: { quote: CartQuote }) {
           </Link>
           <form action={removeCartItemAction} className="sm:inline">
             <input type="hidden" name="quoteId" value={quote.id} />
-            <button
-              type="submit"
-              className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-line px-5 py-2.5 text-sm font-semibold text-muted transition hover:border-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 sm:w-auto"
+            <SubmitButton
+              pendingLabel="Removing…"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-line px-5 py-2.5 text-sm font-semibold text-muted transition hover:border-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
             >
               Remove
-            </button>
+            </SubmitButton>
           </form>
         </div>
       </article>

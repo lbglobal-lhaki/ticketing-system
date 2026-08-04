@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   bulkUpdateFareTierPriceAction,
@@ -36,6 +36,8 @@ import {
 } from "@/components/CargoAdminPanel";
 import { SystemAnalyticsSection } from "@/components/SystemAnalyticsSection";
 import { MoneyInput } from "@/components/MoneyInput";
+import { SubmitButton } from "@/components/SubmitButton";
+import { Spinner } from "@/components/Spinner";
 import {
   BulkSelectBar,
   SelectAllCheckbox,
@@ -298,6 +300,40 @@ export function AdminDashboard({
   const [walkInTripType, setWalkInTripType] = useState<TripType>("one_way");
   const [bulkPending, startBulkTransition] = useTransition();
 
+  // Every save/delete/etc. here submits a form (or a bulk action) that
+  // redirects back to /admin?tab=...&saved=... . Next keeps the *old*
+  // dashboard on screen while that round trip is in flight (that's how
+  // transitions avoid a jarring flash of loading.tsx on a route you're
+  // already viewing) — which otherwise looks like the click did nothing.
+  // This overlay makes that wait visible across the whole dashboard, not
+  // just on the one button that was clicked.
+  const [busy, setBusy] = useState(false);
+  const busySafetyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function markBusy() {
+    setBusy(true);
+    if (busySafetyTimeout.current) clearTimeout(busySafetyTimeout.current);
+    // Walk-in confirmations / invoice resends render a PDF via headless
+    // Chromium and can legitimately take a while — never get stuck longer
+    // than the route's own server timeout budget.
+    busySafetyTimeout.current = setTimeout(() => setBusy(false), 55_000);
+  }
+
+  // The redirect target always carries a fresh (or cleared) query string —
+  // that's the one reliable signal that the new dashboard has arrived. Clear
+  // the overlay as soon as it changes (React's documented pattern for
+  // resetting state in response to a value changing, done during render
+  // rather than in an effect, so it can't cause a visible extra frame).
+  const searchKey = searchParams.toString();
+  const [settledSearchKey, setSettledSearchKey] = useState(searchKey);
+  if (searchKey !== settledSearchKey) {
+    setSettledSearchKey(searchKey);
+    // Don't touch the safety-timeout ref here — refs can't be read/written
+    // during render. The stale timer firing later is harmless: it just
+    // calls setBusy(false) again once busy is already false.
+    if (busy) setBusy(false);
+  }
+
   const walkInOutboundFlight = useMemo(
     () => flights.find((f) => f.id === walkInOutboundChoice) ?? null,
     [flights, walkInOutboundChoice],
@@ -346,6 +382,7 @@ export function AdminDashboard({
     }
     const fd = new FormData();
     for (const id of ids) fd.append("id", id);
+    markBusy();
     startBulkTransition(() => {
       void deleteFlightAction(fd);
     });
@@ -363,6 +400,7 @@ export function AdminDashboard({
     }
     const fd = new FormData();
     for (const id of ids) fd.append("id", id);
+    markBusy();
     startBulkTransition(() => {
       void deleteBookingAction(fd);
     });
@@ -419,7 +457,21 @@ export function AdminDashboard({
   }
 
   return (
-    <div className="space-y-8">
+    <div className="relative space-y-8" onSubmitCapture={markBusy}>
+      {busy && (
+        <div
+          aria-live="polite"
+          aria-busy="true"
+          className="fixed inset-0 z-[150] flex items-center justify-center bg-white/70 backdrop-blur-[2px]"
+        >
+          <div className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-white px-8 py-6 shadow-[0_16px_40px_rgba(15,23,42,0.15)]">
+            <Spinner className="size-8 text-accent" />
+            <p className="text-sm font-medium text-foreground">
+              Updating dashboard…
+            </p>
+          </div>
+        </div>
+      )}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <nav className="flex flex-wrap gap-1 border-b border-line">
           {TABS.map((item) => {
@@ -577,12 +629,12 @@ export function AdminDashboard({
                 Only fill in unpriced releases
               </label>
               <div className="sm:col-span-4">
-                <button
-                  type="submit"
-                  className="bg-accent-deep px-5 py-3 text-sm font-semibold tracking-wide text-white transition hover:bg-accent"
+                <SubmitButton
+                  pendingLabel="Applying…"
+                  className="bg-accent-deep px-5 py-3 text-sm font-semibold tracking-wide text-white transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Apply to matching flights
-                </button>
+                </SubmitButton>
               </div>
             </form>
           </div>
@@ -663,28 +715,28 @@ export function AdminDashboard({
                       {f.active ? (
                         <form action={removeFlightAction}>
                           <input type="hidden" name="id" value={f.id} />
-                          <button
-                            type="submit"
-                            className="text-muted transition hover:text-red-700"
+                          <SubmitButton
+                            pendingLabel="Removing…"
+                            className="text-muted transition hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             Remove
-                          </button>
+                          </SubmitButton>
                         </form>
                       ) : (
                         <form action={restoreFlightAction}>
                           <input type="hidden" name="id" value={f.id} />
-                          <button
-                            type="submit"
-                            className="text-muted transition hover:text-accent"
+                          <SubmitButton
+                            pendingLabel="Restoring…"
+                            className="text-muted transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             Restore
-                          </button>
+                          </SubmitButton>
                         </form>
                       )}
                       <form action={deleteFlightAction}>
                         <input type="hidden" name="id" value={f.id} />
-                        <button
-                          type="submit"
+                        <SubmitButton
+                          pendingLabel="Deleting…"
                           onClick={(e) => {
                             if (
                               !confirm(
@@ -694,10 +746,10 @@ export function AdminDashboard({
                               e.preventDefault();
                             }
                           }}
-                          className="text-muted/70 transition hover:text-red-700"
+                          className="text-muted/70 transition hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           Delete
-                        </button>
+                        </SubmitButton>
                       </form>
                     </div>
                   </div>
@@ -730,12 +782,12 @@ export function AdminDashboard({
                             className="w-44 border border-line bg-white py-2 pr-3 outline-none focus:border-accent"
                           />
                         </label>
-                        <button
-                          type="submit"
-                          className="bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-deep"
+                        <SubmitButton
+                          pendingLabel="Saving…"
+                          className="bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-deep disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           Update price
-                        </button>
+                        </SubmitButton>
                       </form>
                     ))}
                   </div>
@@ -1015,12 +1067,12 @@ export function AdminDashboard({
             </div>
 
             <div className="flex flex-wrap gap-3 sm:col-span-2">
-              <button
-                type="submit"
-                className="bg-accent-deep px-5 py-3 text-sm font-semibold tracking-wide text-white transition hover:bg-accent"
+              <SubmitButton
+                pendingLabel={editing ? "Saving…" : "Publishing…"}
+                className="bg-accent-deep px-5 py-3 text-sm font-semibold tracking-wide text-white transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {editing ? "Save changes" : "Publish flight"}
-              </button>
+              </SubmitButton>
               <button
                 type="button"
                 onClick={() => {
@@ -1310,12 +1362,12 @@ export function AdminDashboard({
                 </select>
               </label>
               <div className="sm:col-span-2">
-                <button
-                  type="submit"
-                  className="bg-accent-deep px-5 py-3 text-sm font-semibold text-white transition hover:bg-accent"
+                <SubmitButton
+                  pendingLabel="Creating booking…"
+                  className="bg-accent-deep px-5 py-3 text-sm font-semibold text-white transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Create walk-in booking
-                </button>
+                </SubmitButton>
               </div>
             </form>
           </div>
@@ -1415,24 +1467,24 @@ export function AdminDashboard({
                         b.status === "pending_payment" ? (
                           <form action={markBookingPaidAction}>
                             <input type="hidden" name="id" value={b.id} />
-                            <button
-                              type="submit"
-                              className="bg-accent-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-accent"
+                            <SubmitButton
+                              pendingLabel="Confirming…"
+                              className="bg-accent-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               Mark paid
-                            </button>
+                            </SubmitButton>
                           </form>
                         ) : null}
                         {b.paymentMethod === "bank_transfer" &&
                         b.status === "confirmed" ? (
                           <form action={markBookingUnpaidAction}>
                             <input type="hidden" name="id" value={b.id} />
-                            <button
-                              type="submit"
-                              className="border border-line px-3 py-1.5 text-xs font-medium text-muted transition hover:border-accent"
+                            <SubmitButton
+                              pendingLabel="Updating…"
+                              className="border border-line px-3 py-1.5 text-xs font-medium text-muted transition hover:border-accent disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               Mark unpaid
-                            </button>
+                            </SubmitButton>
                           </form>
                         ) : null}
                         {b.paymentMethod === "card" ||
@@ -1449,8 +1501,8 @@ export function AdminDashboard({
                           className="mt-1.5 inline"
                         >
                           <input type="hidden" name="id" value={b.id} />
-                          <button
-                            type="submit"
+                          <SubmitButton
+                            pendingLabel="Deleting…"
                             onClick={(e) => {
                               if (
                                 !confirm(
@@ -1460,10 +1512,10 @@ export function AdminDashboard({
                                 e.preventDefault();
                               }
                             }}
-                            className="block text-xs text-muted/70 transition hover:text-red-700"
+                            className="block text-xs text-muted/70 transition hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             Delete
-                          </button>
+                          </SubmitButton>
                         </form>
                       </td>
                     </tr>

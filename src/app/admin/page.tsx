@@ -2,6 +2,7 @@ import { timingSafeEqual } from "crypto";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { AdminDashboard } from "@/components/AdminDashboard";
+import { SubmitButton } from "@/components/SubmitButton";
 import {
   clearAdminSessionCookie,
   isAdminAuthed,
@@ -138,12 +139,12 @@ export default async function AdminPage({
                 className="w-full border-0 border-b border-line bg-transparent py-3 outline-none transition focus:border-accent"
               />
             </label>
-            <button
-              type="submit"
-              className="btn-cta w-full rounded-xl py-3.5 text-sm tracking-wide"
+            <SubmitButton
+              pendingLabel="Signing in…"
+              className="btn-cta w-full rounded-xl py-3.5 text-sm tracking-wide disabled:cursor-not-allowed disabled:opacity-70"
             >
               Enter dashboard
-            </button>
+            </SubmitButton>
           </form>
           {params.error && (
             <p className="mt-4 text-sm text-red-700">
@@ -293,12 +294,12 @@ export default async function AdminPage({
             </p>
           </div>
           <form action={logout}>
-            <button
-              type="submit"
-              className="border border-line bg-surface px-4 py-2.5 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground"
+            <SubmitButton
+              pendingLabel="Signing out…"
+              className="border border-line bg-surface px-4 py-2.5 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-70"
             >
               Sign out
-            </button>
+            </SubmitButton>
           </form>
         </div>
 

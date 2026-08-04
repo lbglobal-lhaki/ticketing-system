@@ -1,6 +1,7 @@
 "use client";
 
 import { MoneyInput } from "@/components/MoneyInput";
+import { SubmitButton } from "@/components/SubmitButton";
 import { updateCharterFareAction } from "@/lib/actions/charterFares";
 import { formatAud } from "@/lib/pricing";
 
@@ -334,12 +335,12 @@ function FareGroup({
             </label>
           </div>
 
-          <button
-            type="submit"
-            className="rounded-full bg-accent-deep px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent"
+          <SubmitButton
+            pendingLabel="Saving…"
+            className="rounded-full bg-accent-deep px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
           >
             Save {fare.name}
-          </button>
+          </SubmitButton>
         </form>
       ))}
     </div>

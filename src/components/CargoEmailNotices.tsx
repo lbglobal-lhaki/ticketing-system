@@ -9,6 +9,7 @@ import {
   updateCargoEmailNoticeAction,
   type AdminCargoEmailNotice,
 } from "@/lib/actions/cargoEmail";
+import { Spinner } from "@/components/Spinner";
 
 const fieldClass =
   "w-full min-w-0 border-0 border-b border-line bg-transparent py-2 text-sm text-foreground outline-none transition focus:border-accent";
@@ -44,6 +45,17 @@ export function CargoEmailNotices({
     arrivalNote: "",
   });
   const [previewBust, setPreviewBust] = useState(0);
+  // Which specific action is running — shows a spinner + label on just that
+  // button while every button stays disabled (via `pending`) to block races.
+  const [pendingAction, setPendingAction] = useState<
+    | "generate-sender"
+    | "generate-receiver"
+    | "generate-both"
+    | "save"
+    | "send"
+    | "delete"
+    | null
+  >(null);
 
   const active = useMemo(
     () => notices.find((n) => n.id === activeId) ?? null,
@@ -96,6 +108,13 @@ export function CargoEmailNotices({
   function onGenerate(roles: Array<"sender" | "receiver">) {
     setStatusMsg(null);
     setErrorMsg(null);
+    setPendingAction(
+      roles.length === 2
+        ? "generate-both"
+        : roles[0] === "sender"
+          ? "generate-sender"
+          : "generate-receiver",
+    );
     startTransition(async () => {
       const result = await generateCargoEmailNoticesAction({
         cargoId,
@@ -104,6 +123,7 @@ export function CargoEmailNotices({
         arrivalNote,
         overwriteDrafts: true,
       });
+      setPendingAction(null);
       if (!result.ok) {
         setErrorMsg(result.error);
         return;
@@ -135,11 +155,13 @@ export function CargoEmailNotices({
     if (!active) return;
     setStatusMsg(null);
     setErrorMsg(null);
+    setPendingAction("save");
     startTransition(async () => {
       const result = await updateCargoEmailNoticeAction({
         id: active.id,
         ...draft,
       });
+      setPendingAction(null);
       if (!result.ok) {
         setErrorMsg(result.error);
         return;
@@ -163,6 +185,7 @@ export function CargoEmailNotices({
     }
     setStatusMsg(null);
     setErrorMsg(null);
+    setPendingAction("send");
     startTransition(async () => {
       // Save latest edits before send.
       const saved = await updateCargoEmailNoticeAction({
@@ -170,10 +193,12 @@ export function CargoEmailNotices({
         ...draft,
       });
       if (!saved.ok) {
+        setPendingAction(null);
         setErrorMsg(saved.error);
         return;
       }
       const result = await sendCargoEmailNoticeAction(active.id);
+      setPendingAction(null);
       if (!result.ok) {
         setErrorMsg(result.error);
         return;
@@ -193,8 +218,10 @@ export function CargoEmailNotices({
     if (!confirm("Delete this email notice?")) return;
     setStatusMsg(null);
     setErrorMsg(null);
+    setPendingAction("delete");
     startTransition(async () => {
       const result = await deleteCargoEmailNoticeAction(id);
+      setPendingAction(null);
       if (!result.ok) {
         setErrorMsg(result.error);
         return;
@@ -250,11 +277,18 @@ export function CargoEmailNotices({
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          className="btn-cta rounded-xl px-4 py-2.5 text-sm"
+          className="btn-cta rounded-xl px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
           disabled={pending}
           onClick={() => onGenerate(["sender", "receiver"])}
         >
-          Generate both drafts
+          {pendingAction === "generate-both" ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Spinner className="size-3.5" />
+              Generating…
+            </span>
+          ) : (
+            "Generate both drafts"
+          )}
         </button>
         <button
           type="button"
@@ -262,7 +296,14 @@ export function CargoEmailNotices({
           disabled={pending}
           onClick={() => onGenerate(["sender"])}
         >
-          Generate sender
+          {pendingAction === "generate-sender" ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Spinner className="size-3.5" />
+              Generating…
+            </span>
+          ) : (
+            "Generate sender"
+          )}
         </button>
         <button
           type="button"
@@ -270,7 +311,14 @@ export function CargoEmailNotices({
           disabled={pending}
           onClick={() => onGenerate(["receiver"])}
         >
-          Generate receiver
+          {pendingAction === "generate-receiver" ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Spinner className="size-3.5" />
+              Generating…
+            </span>
+          ) : (
+            "Generate receiver"
+          )}
         </button>
       </div>
 
@@ -324,27 +372,50 @@ export function CargoEmailNotices({
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    className={btnClass}
+                    className={`${btnClass} disabled:cursor-not-allowed`}
                     disabled={pending}
                     onClick={onSave}
                   >
-                    Save
+                    {pendingAction === "save" ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Spinner className="size-3.5" />
+                        Saving…
+                      </span>
+                    ) : (
+                      "Save"
+                    )}
                   </button>
                   <button
                     type="button"
-                    className="btn-cta rounded-lg px-3 py-1.5 text-sm"
+                    className="btn-cta rounded-lg px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={pending}
                     onClick={onSend}
                   >
-                    {active.status === "sent" ? "Resend" : "Send email"}
+                    {pendingAction === "send" ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Spinner className="size-3.5" />
+                        Sending…
+                      </span>
+                    ) : active.status === "sent" ? (
+                      "Resend"
+                    ) : (
+                      "Send email"
+                    )}
                   </button>
                   <button
                     type="button"
-                    className={`${btnClass} border-red-200 text-red-700`}
+                    className={`${btnClass} border-red-200 text-red-700 disabled:cursor-not-allowed`}
                     disabled={pending}
                     onClick={() => onDelete(active.id)}
                   >
-                    Delete
+                    {pendingAction === "delete" ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Spinner className="size-3.5" />
+                        Deleting…
+                      </span>
+                    ) : (
+                      "Delete"
+                    )}
                   </button>
                 </div>
               </div>
