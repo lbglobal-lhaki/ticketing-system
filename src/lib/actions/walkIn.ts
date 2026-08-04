@@ -17,6 +17,7 @@ import { recordDeletion } from "@/lib/audit/deletionLog";
 import { prisma } from "@/lib/db";
 import {
   buildRouteLabel,
+  computeInvoiceTotals,
   defaultEndorsementText,
   defaultFareCalculationLine,
   defaultInvoiceIdentity,
@@ -49,6 +50,8 @@ const walkInSchema = z.object({
   extraBaggageAud: z.coerce.number().min(0).max(100000).default(0),
   bookingSource: z.enum(["walk_in", "online"]).default("walk_in"),
   customPriceAud: z.string().trim().optional().or(z.literal("")),
+  gstMode: z.enum(["none", "exclusive", "inclusive"]).default("none"),
+  customGstAud: z.string().trim().optional().or(z.literal("")),
 });
 
 const CUSTOM_FLIGHT_VALUE = "__custom__";
@@ -179,6 +182,8 @@ export async function createWalkInBookingAction(formData: FormData) {
     extraBaggageAud: formData.get("extraBaggageAud") || "0",
     bookingSource: formData.get("bookingSource") || "walk_in",
     customPriceAud: formData.get("customPriceAud") || "",
+    gstMode: formData.get("gstMode") || "none",
+    customGstAud: formData.get("customGstAud") || "",
   });
 
   if (!parsed.success) {
@@ -324,7 +329,7 @@ export async function createWalkInBookingAction(formData: FormData) {
     const chargeableSubtotalCents = flightFareCents + baggageCents;
 
     const paidUpfront = data.paymentMethod !== "bank_transfer";
-    const fee =
+    const cardOrBase =
       data.paymentMethod === "card"
         ? calculateCardServiceFee(chargeableSubtotalCents, {
             includeGst: false,
@@ -336,10 +341,51 @@ export async function createWalkInBookingAction(formData: FormData) {
             totalCents: chargeableSubtotalCents,
           };
 
+    const gstMode = data.gstMode;
+    let gstRateBps = gstMode === "none" ? 0 : 1000;
+    let gstIncluded = gstMode === "inclusive";
+    let gstOverrideCents = 0;
+    const customGstRaw = data.customGstAud?.trim();
+    if (customGstRaw) {
+      const gstAud = Number(customGstRaw);
+      if (!Number.isFinite(gstAud) || gstAud < 0) {
+        redirect(
+          `/admin?tab=bookings&error=${encodeURIComponent("Custom GST must be a valid amount")}`,
+        );
+      }
+      gstOverrideCents = Math.round(gstAud * 100);
+      if (gstOverrideCents > 0) {
+        // Custom amount is always an exclusive add-on.
+        gstIncluded = false;
+        if (gstRateBps === 0) gstRateBps = 1000; // still show as GST on invoice
+      }
+    }
+
+    const totals = computeInvoiceTotals({
+      airfareCents: flightFareCents,
+      airportTaxesCents: 0,
+      extraBaggageCents: baggageCents,
+      travelInsuranceCents: 0,
+      otherChargesCents: 0,
+      serviceFeeCents: cardOrBase.serviceFeeCents,
+      gstRateBps,
+      gstIncluded,
+      gstOverrideCents,
+    });
+
     const bank = getBankTransferDetails();
     const holdExpiresAt = paidUpfront
       ? null
       : bankHoldExpiresAt(new Date(), 48);
+
+    const gstNote =
+      gstOverrideCents > 0
+        ? ` · custom GST $${(gstOverrideCents / 100).toFixed(2)}`
+        : gstMode === "exclusive"
+          ? " · GST exclusive 10%"
+          : gstMode === "inclusive"
+            ? " · GST inclusive 10%"
+            : "";
 
     const created = await prisma.$transaction(async (tx) => {
       await decrementSeats(
@@ -376,8 +422,8 @@ export async function createWalkInBookingAction(formData: FormData) {
           passportNumber: data.passportNumber || "",
           nationality: data.nationality || "",
           seatsBooked: data.seatsBooked,
-          amountPaidCents: fee.totalCents,
-          serviceFeeCents: fee.serviceFeeCents,
+          amountPaidCents: totals.amountCents,
+          serviceFeeCents: cardOrBase.serviceFeeCents,
           paymentMethod: data.paymentMethod,
           source: data.bookingSource,
           status: paidUpfront ? "confirmed" : "pending_payment",
@@ -401,16 +447,17 @@ export async function createWalkInBookingAction(formData: FormData) {
           bookingId: booking.id,
           paymentMethod: data.paymentMethod,
           status: paidUpfront ? "paid" : "unpaid",
-          amountCents: fee.totalCents,
-          fareCents: fee.fareCents,
-          serviceFeeCents: fee.serviceFeeCents,
+          amountCents: totals.amountCents,
+          fareCents: flightFareCents,
+          serviceFeeCents: cardOrBase.serviceFeeCents,
           airfareCents: flightFareCents,
           airportTaxesCents: 0,
           extraBaggageCents: baggageCents,
           travelInsuranceCents: 0,
           otherChargesCents: 0,
-          gstRateBps: 0,
-          gstIncluded: false,
+          gstRateBps,
+          gstIncluded,
+          gstOverrideCents,
           accountNumber: identity.accountNumber,
           businessTpn: identity.businessTpn,
           routeLabel,
@@ -435,7 +482,8 @@ export async function createWalkInBookingAction(formData: FormData) {
             (paidUpfront
               ? `Walk-in booking · paid by ${data.paymentMethod}`
               : "Walk-in booking · awaiting bank transfer (48h hold)") +
-            (usingCustomPrice ? " · custom admin-set price" : ""),
+            (usingCustomPrice ? " · custom admin-set price" : "") +
+            gstNote,
           dueAt: holdExpiresAt,
           paidAt: paidUpfront ? new Date() : null,
           markedPaidByAdmin: paidUpfront,

@@ -50,6 +50,7 @@ export type BookingDocumentData = {
     otherChargesCents: number;
     gstRateBps: number;
     gstIncluded: boolean;
+    gstOverrideCents?: number;
     accountNumber: string;
     businessTpn: string;
     routeLabel: string;

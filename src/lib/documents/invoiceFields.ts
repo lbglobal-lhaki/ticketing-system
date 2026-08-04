@@ -62,6 +62,9 @@ export function gstIncludedPortion(amountCents: number, gstRateBps: number) {
  *
  * Legacy (gstIncluded=true): line items already include GST; gstCents is the
  * embedded portion for disclosure only and is not added again.
+ *
+ * gstOverrideCents: when > 0, use that exact GST amount as an exclusive add-on
+ * (admin custom GST), ignoring rate / inclusive mode for the GST figure.
  */
 export function computeInvoiceTotals(input: {
   airfareCents: number;
@@ -72,12 +75,28 @@ export function computeInvoiceTotals(input: {
   serviceFeeCents?: number;
   gstRateBps?: number;
   gstIncluded?: boolean;
+  gstOverrideCents?: number;
 }) {
   const lines = invoiceLineSubtotal(input);
   const serviceFeeCents = input.serviceFeeCents ?? 0;
   const gstRateBps = input.gstRateBps ?? 1000;
   const gstIncluded = input.gstIncluded ?? false;
   const taxableCents = lines + serviceFeeCents;
+  const override = Math.max(0, Math.round(input.gstOverrideCents ?? 0));
+
+  if (override > 0) {
+    return {
+      linesCents: lines,
+      taxableCents,
+      subtotalCents: taxableCents,
+      gstCents: override,
+      serviceFeeCents,
+      amountCents: taxableCents + override,
+      gstRateBps,
+      gstIncluded: false as const,
+      gstOverrideCents: override,
+    };
+  }
 
   if (gstIncluded) {
     const gstCents = gstIncludedPortion(taxableCents, gstRateBps);
@@ -90,6 +109,7 @@ export function computeInvoiceTotals(input: {
       amountCents: taxableCents,
       gstRateBps,
       gstIncluded: true as const,
+      gstOverrideCents: 0,
     };
   }
 
@@ -103,6 +123,7 @@ export function computeInvoiceTotals(input: {
     amountCents: taxableCents + gstCents,
     gstRateBps,
     gstIncluded: false as const,
+    gstOverrideCents: 0,
   };
 }
 

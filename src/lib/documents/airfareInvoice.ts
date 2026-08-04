@@ -87,6 +87,7 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     serviceFeeCents: invoice.serviceFeeCents || 0,
     gstRateBps: invoice.gstRateBps,
     gstIncluded: invoice.gstIncluded,
+    gstOverrideCents: invoice.gstOverrideCents || 0,
   });
   const unpaid = invoice.status === "unpaid";
   const bankName = process.env.BANK_NAME?.trim() || "Brule Bank";
@@ -493,8 +494,14 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
         ${
           totals.gstCents > 0
             ? `<div class="line tax"><span>GST / Tax ${
-                totals.gstIncluded ? "(incl.)" : "(excl.)"
-              }</span><span>${esc(taxPct)}%</span></div>
+                (invoice.gstOverrideCents || 0) > 0
+                  ? "(custom)"
+                  : totals.gstIncluded
+                    ? "(incl.)"
+                    : "(excl.)"
+              }</span><span>${
+                (invoice.gstOverrideCents || 0) > 0 ? "" : `${esc(taxPct)}%`
+              }</span></div>
         <div class="line"><span></span><span>${esc(money(totals.gstCents))}</span></div>`
             : ""
         }

@@ -231,8 +231,19 @@ async function persistInvoiceDocument(formData: FormData) {
   const otherChargesCents = moneyAud(formData.get("otherChargesAud"));
   const serviceFeeCents = moneyAud(formData.get("serviceFeeAud"));
   const gstMode = parsed.data.gstMode ?? "none";
-  const gstRateBps = gstMode === "none" ? 0 : 1000;
-  const gstIncluded = gstMode === "inclusive";
+  let gstRateBps = gstMode === "none" ? 0 : 1000;
+  let gstIncluded = gstMode === "inclusive";
+  // Empty custom field clears override; omit field (travel tab) keeps existing.
+  const customGstRaw = formData.get("customGstAud");
+  let gstOverrideCents = existing.gstOverrideCents ?? 0;
+  if (customGstRaw !== null) {
+    const raw = String(customGstRaw).trim();
+    gstOverrideCents = raw ? moneyAud(raw) : 0;
+  }
+  if (gstOverrideCents > 0) {
+    gstIncluded = false;
+    if (gstRateBps === 0) gstRateBps = 1000;
+  }
 
   const totals = computeInvoiceTotals({
     airfareCents,
@@ -243,6 +254,7 @@ async function persistInvoiceDocument(formData: FormData) {
     serviceFeeCents,
     gstRateBps,
     gstIncluded,
+    gstOverrideCents,
   });
 
   let dueAt: Date | null = existing.dueAt;
@@ -274,6 +286,7 @@ async function persistInvoiceDocument(formData: FormData) {
       serviceFeeCents,
       gstRateBps,
       gstIncluded: totals.gstIncluded,
+      gstOverrideCents,
       amountCents: totals.amountCents,
       dueAt,
       // Line items / customer details changed — invalidate cached PDF.
@@ -329,6 +342,7 @@ async function persistInvoiceDocument(formData: FormData) {
       serviceFeeCents,
       gstIncluded: totals.gstIncluded,
       gstRateBps,
+      gstOverrideCents,
       amountCents: totals.amountCents,
       dueAt: dueAt?.toISOString() ?? null,
     },
@@ -441,6 +455,7 @@ async function generateAirfareInvoiceFields(id: string) {
   });
   const gstRateBps = invoice.gstRateBps ?? 0;
   const gstIncluded = Boolean(invoice.gstIncluded) && gstRateBps > 0;
+  const gstOverrideCents = invoice.gstOverrideCents ?? 0;
   const totals = computeInvoiceTotals({
     airfareCents: airfare,
     airportTaxesCents: invoice.airportTaxesCents,
@@ -450,6 +465,7 @@ async function generateAirfareInvoiceFields(id: string) {
     serviceFeeCents: invoice.serviceFeeCents,
     gstRateBps,
     gstIncluded,
+    gstOverrideCents,
   });
 
   await prisma.invoice.update({
@@ -462,6 +478,7 @@ async function generateAirfareInvoiceFields(id: string) {
       routeLabel,
       gstRateBps,
       gstIncluded,
+      gstOverrideCents,
       amountCents: totals.amountCents,
       pdfBlobUrl: null,
       pdfBlobPathname: null,
@@ -490,6 +507,7 @@ async function generateAirfareInvoiceFields(id: string) {
       routeLabel,
       gstIncluded,
       gstRateBps,
+      gstOverrideCents,
       amountCents: totals.amountCents,
     },
   };

@@ -15,6 +15,7 @@ import {
   InvoiceAdminPanel,
   type AdminInvoiceRow,
 } from "@/components/InvoiceAdminPanel";
+import { GstModeFields } from "@/components/GstModeFields";
 import {
   createWalkInBookingAction,
   deleteBookingAction,
@@ -1119,8 +1120,8 @@ export function AdminDashboard({
             </h3>
             <p className="mt-1 text-sm text-muted">
               Counter / phone bookings. Cash or card = confirmed immediately.
-              Bank transfer = 48h seat hold. No GST is added automatically —
-              enable it on the invoice when needed, then send from Invoices.
+              Bank transfer = 48h seat hold. Choose GST mode below — it is
+              written onto the invoice. Docs are not emailed automatically.
             </p>
             <form
               action={createWalkInBookingAction}
@@ -1380,9 +1381,24 @@ export function AdminDashboard({
                   <option value="cash">Cash (mark paid now)</option>
                   <option value="card">Credit card at counter (mark paid now)</option>
                   <option value="bank_transfer">
-                    Bank transfer (48h hold + invoice email)
+                    Bank transfer (48h unpaid hold)
                   </option>
                 </select>
+              </label>
+              <GstModeFields defaultMode="none" className="sm:col-span-2" />
+              <label className="space-y-1 text-sm sm:col-span-2">
+                <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                  Custom GST (AUD) — optional
+                </span>
+                <MoneyInput
+                  name="customGstAud"
+                  defaultValue=""
+                  className={fieldClass}
+                />
+                <span className="block text-xs text-muted">
+                  Leave blank to use None / Exclusive / Inclusive above. Enter an
+                  amount to set GST exactly (added on top of the fare).
+                </span>
               </label>
               <div className="sm:col-span-2">
                 <SubmitButton

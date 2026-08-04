@@ -258,6 +258,8 @@ model Invoice {
   otherChargesCents    Int         @default(0)
   gstRateBps           Int         @default(1000)
   gstIncluded          Boolean     @default(true)
+  /// When > 0, use this exact GST amount (cents) instead of rate-based calc.
+  gstOverrideCents     Int         @default(0)
   accountNumber        String      @default("")
   businessTpn          String      @default("")
   routeLabel           String      @default("")

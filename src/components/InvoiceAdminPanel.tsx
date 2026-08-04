@@ -21,6 +21,10 @@ import {
 } from "@/components/BulkSelectBar";
 import { SubmitButton } from "@/components/SubmitButton";
 import { Spinner } from "@/components/Spinner";
+import {
+  GstModeFields,
+  resolveGstMode,
+} from "@/components/GstModeFields";
 
 export type AdminInvoiceRow = {
   id: string;
@@ -37,6 +41,7 @@ export type AdminInvoiceRow = {
   otherChargesCents: number;
   gstRateBps: number;
   gstIncluded: boolean;
+  gstOverrideCents: number;
   accountNumber: string;
   businessTpn: string;
   routeLabel: string;
@@ -73,65 +78,6 @@ function dueInputValue(iso: string | null) {
   if (Number.isNaN(d.getTime())) return "";
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function invoiceGstMode(invoice: {
-  gstRateBps: number;
-  gstIncluded: boolean;
-}): "none" | "exclusive" | "inclusive" {
-  if ((invoice.gstRateBps ?? 0) <= 0) return "none";
-  return invoice.gstIncluded ? "inclusive" : "exclusive";
-}
-
-const gstModeBtnClass = (active: boolean) =>
-  `flex-1 border px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] transition ${
-    active
-      ? "border-accent-deep bg-accent-deep text-white"
-      : "border-line bg-white text-muted hover:border-accent hover:text-foreground"
-  }`;
-
-function GstModeFields({
-  gstRateBps,
-  gstIncluded,
-}: {
-  gstRateBps: number;
-  gstIncluded: boolean;
-}) {
-  const [mode, setMode] = useState(invoiceGstMode({ gstRateBps, gstIncluded }));
-  return (
-    <fieldset className="sm:col-span-2 space-y-2">
-      <legend className="text-xs text-muted">GST (10%)</legend>
-      <div className="flex flex-wrap gap-2">
-        {(
-          [
-            ["none", "None"],
-            ["exclusive", "Exclusive"],
-            ["inclusive", "Inclusive"],
-          ] as const
-        ).map(([value, label]) => (
-          <label key={value} className={gstModeBtnClass(mode === value)}>
-            <input
-              type="radio"
-              name="gstMode"
-              value={value}
-              checked={mode === value}
-              onChange={() => setMode(value)}
-              className="sr-only"
-            />
-            {label}
-          </label>
-        ))}
-      </div>
-      <p className="text-xs text-muted">
-        {mode === "exclusive"
-          ? "Exclusive: 10% GST is added on top of all line items."
-          : mode === "inclusive"
-            ? "Inclusive: line amounts already include GST; the GST portion is shown but not added again."
-            : "None: no GST on this invoice."}{" "}
-        Save to update the preview.
-      </p>
-    </fieldset>
-  );
 }
 
 const fieldClass =
@@ -742,7 +688,16 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                       <input
                         type="hidden"
                         name="gstMode"
-                        value={invoiceGstMode(active)}
+                        value={resolveGstMode(active)}
+                      />
+                      <input
+                        type="hidden"
+                        name="customGstAud"
+                        value={
+                          (active.gstOverrideCents ?? 0) > 0
+                            ? aud(active.gstOverrideCents)
+                            : ""
+                        }
                       />
                     </>
                   ) : (
@@ -880,9 +835,30 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                         />
                       </label>
                       <GstModeFields
-                        gstRateBps={active.gstRateBps ?? 0}
-                        gstIncluded={active.gstIncluded}
+                        defaultMode={resolveGstMode(active)}
+                        className="sm:col-span-2"
                       />
+                      <label className="block text-xs text-muted sm:col-span-2">
+                        Custom GST (AUD) — optional
+                        <input
+                          name="customGstAud"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          defaultValue={
+                            (active.gstOverrideCents ?? 0) > 0
+                              ? aud(active.gstOverrideCents)
+                              : ""
+                          }
+                          placeholder="Leave blank for mode above"
+                          className={fieldClass}
+                        />
+                        <span className="mt-1 block text-xs text-muted">
+                          Enter an amount to set GST exactly (added on top).
+                          Clear the field and save to go back to None /
+                          Exclusive / Inclusive.
+                        </span>
+                      </label>
                     </>
                   )}
 

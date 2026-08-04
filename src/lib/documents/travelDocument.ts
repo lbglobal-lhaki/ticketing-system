@@ -217,6 +217,7 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
     serviceFeeCents: serviceFee,
     gstRateBps: invoice?.gstRateBps ?? 1000,
     gstIncluded: invoice?.gstIncluded ?? false,
+    gstOverrideCents: invoice?.gstOverrideCents ?? 0,
   });
   const totalCents = totals.amountCents;
   const fop = paymentMethodLabel(data.paymentMethod);

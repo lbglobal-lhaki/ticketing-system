@@ -100,6 +100,7 @@ export async function loadBookingDocumentData(
           otherChargesCents: booking.invoice.otherChargesCents,
           gstRateBps: booking.invoice.gstRateBps,
           gstIncluded: booking.invoice.gstIncluded,
+          gstOverrideCents: booking.invoice.gstOverrideCents,
           accountNumber: booking.invoice.accountNumber,
           businessTpn: booking.invoice.businessTpn,
           routeLabel: booking.invoice.routeLabel,

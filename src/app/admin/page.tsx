@@ -445,6 +445,7 @@ export default async function AdminPage({
               otherChargesCents: invoice.otherChargesCents,
               gstRateBps: invoice.gstRateBps,
               gstIncluded: invoice.gstIncluded,
+              gstOverrideCents: invoice.gstOverrideCents,
               accountNumber: invoice.accountNumber,
               businessTpn: invoice.businessTpn,
               routeLabel: invoice.routeLabel,
