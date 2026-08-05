@@ -41,7 +41,9 @@ async function invoiceAttachment(
   try {
     return {
       filename: `Airfare-Invoice-${invoiceNumber}.pdf`,
-      content: await getOrCreateInvoicePdf(data),
+      // Always regenerate so existing bookings pick up the current template
+      // (multi-page layout, party mix, etc.) instead of a stale Blob PDF.
+      content: await getOrCreateInvoicePdf(data, { forceRefresh: true }),
       contentType: "application/pdf",
     };
   } catch (error) {
