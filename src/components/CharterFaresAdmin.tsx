@@ -14,6 +14,8 @@ export type AdminCharterFare = {
   sortOrder: number;
   priceCents: number;
   roundTripPriceCents: number;
+  /** Used to force a fresh mount after every save so no field goes stale. */
+  updatedAt: string;
   tagline: string;
   recommended: boolean;
   mostPopular: boolean;
@@ -114,7 +116,16 @@ function FareGroup({
         {title}
       </h3>
       {fares.map((fare) => (
-        <FareForm key={fare.id} fare={fare} tripMode={tripMode} />
+        // Remount on every save (updatedAt changes) — otherwise React keeps
+        // reusing the old DOM nodes for every defaultValue/defaultChecked
+        // field below, so a second save can silently resubmit stale values
+        // (most visibly: the price reverting to what it was before the
+        // previous edit).
+        <FareForm
+          key={`${fare.id}-${fare.updatedAt}`}
+          fare={fare}
+          tripMode={tripMode}
+        />
       ))}
     </div>
   );
@@ -188,10 +199,11 @@ function FareForm({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <label className="space-y-1 text-sm">
           <span className="text-xs uppercase tracking-[0.12em] text-muted">
-            {isRoundTrip ? "Round-trip total (AUD)" : "One-way price (AUD)"}
+            {isRoundTrip ? "Round-trip total (AUD)" : "One-way price (AUD)"} ·
+            saved {formatAud(activeCents)}
           </span>
           <MoneyInput
-            key={`${fare.id}-${tripMode}`}
+            key={`${fare.id}-${tripMode}-${activeCents}`}
             name={isRoundTrip ? "roundTripPriceAud" : "priceAud"}
             defaultValue={(activeCents / 100).toFixed(2)}
             required

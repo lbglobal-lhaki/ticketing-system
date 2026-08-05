@@ -255,7 +255,7 @@ export default async function AdminPage({
     "bookings-deleted":
       "Bookings (and their invoices, if any) deleted — logged in the Deleted tab.",
     "walk-in":
-      "Walk-in booking created. Documents/email are sending in the background.",
+      "Walk-in booking created. Edit and send documents from the Invoices tab when ready.",
     "fare-updated": "Charter fare product saved.",
     "cargo-updated": "Cargo submission updated.",
     "cargo-created": "Cargo enquiry created.",
@@ -348,6 +348,7 @@ export default async function AdminPage({
               sortOrder: f.sortOrder,
               priceCents: f.priceCents,
               roundTripPriceCents: f.roundTripPriceCents ?? 0,
+              updatedAt: f.updatedAt.toISOString(),
               tagline: f.tagline,
               recommended: f.recommended,
               mostPopular: f.mostPopular,

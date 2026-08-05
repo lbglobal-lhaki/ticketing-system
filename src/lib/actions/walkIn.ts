@@ -133,7 +133,10 @@ async function resolveLegFlightId(
           sortOrder: 1,
           totalSeats: seats,
           remainingSeats: seats,
+          // Same amount for both trip types — custom legs are priced per seat
+          // for that leg; RT walk-ins sum the two legs' release prices.
           priceCents: Math.round(data.priceAud * 100),
+          roundTripPriceCents: Math.round(data.priceAud * 100),
           active: true,
         },
       },
@@ -272,6 +275,19 @@ export async function createWalkInBookingAction(formData: FormData) {
         include: { fareReleases: { orderBy: { sortOrder: "asc" } } },
       });
       if (!returnFlight) throw new Error("Return flight not found");
+      if (returnFlight.departureAt <= flight.departureAt) {
+        throw new Error(
+          "Return flight must depart after the outbound flight",
+        );
+      }
+      if (
+        returnFlight.origin !== flight.destination ||
+        returnFlight.destination !== flight.origin
+      ) {
+        throw new Error(
+          "Return flight must match the reverse route of the outbound flight",
+        );
+      }
       returnCurrent = getCurrentFareRelease(returnFlight.fareReleases);
       if (!returnCurrent) {
         throw new Error("Return flight has no active fare release");
@@ -331,6 +347,11 @@ export async function createWalkInBookingAction(formData: FormData) {
         outboundLegCents = split.outboundCents;
         returnLegCents = split.returnCents;
       } else {
+        if (product.priceCents <= 0) {
+          throw new Error(
+            "Selected one-way fare is not priced — set a charter one-way price first",
+          );
+        }
         outboundLegCents = product.priceCents;
       }
     }

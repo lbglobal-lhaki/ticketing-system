@@ -147,7 +147,11 @@ export function toUiFareProduct(
     tagline: row.tagline,
     recommended: row.recommended,
     mostPopular: row.mostPopular,
-    available: available && row.active && row.priceCents > 0,
+    // Available if either trip type is priced — UI filters per trip type.
+    available:
+      available &&
+      row.active &&
+      (row.priceCents > 0 || row.roundTripPriceCents > 0),
     highlights: {
       flightChange: row.flightChangeLabel,
       refund: row.refundLabel,

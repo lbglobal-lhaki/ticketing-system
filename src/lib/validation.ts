@@ -88,6 +88,7 @@ export function parseFareReleasesFromForm(formData: FormData) {
   const prices = formData.getAll("farePriceAud").map(String);
   const roundTripPrices = formData.getAll("fareRoundTripPriceAud").map(String);
   const orders = formData.getAll("fareSortOrder").map(String);
+  const ids = formData.getAll("fareReleaseId").map(String);
 
   const releases = names.map((name, i) =>
     fareReleaseInputSchema.parse({
@@ -109,7 +110,8 @@ export function parseFareReleasesFromForm(formData: FormData) {
     throw new Error("Total seats across fare releases must be at least 1");
   }
 
-  return releases.map((r) => ({
+  return releases.map((r, i) => ({
+    id: ids[i]?.trim() || undefined,
     name: r.name,
     sortOrder: r.sortOrder,
     totalSeats: r.totalSeats,

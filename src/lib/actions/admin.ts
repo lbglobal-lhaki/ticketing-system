@@ -162,8 +162,82 @@ export async function updateFlightAction(formData: FormData) {
 
   const returnLegFlightId = parseReturnLegFlightId(formData, id);
 
+  const existingFlight = await prisma.flight.findUnique({
+    where: { id },
+    select: {
+      active: true,
+      fareReleases: { select: { id: true } },
+    },
+  });
+  if (!existingFlight) {
+    redirectFormError("Flight not found");
+  }
+
   await prisma.$transaction(async (tx) => {
-    await tx.fareRelease.deleteMany({ where: { flightId: id } });
+    // Update releases in place so booking/quote FKs stay intact. Recreating
+    // every release used to null out fareReleaseId on existing bookings.
+    const existingIds = new Set(existingFlight.fareReleases.map((r) => r.id));
+    const keptIds = new Set<string>();
+
+    for (const r of releases) {
+      const releaseData = {
+        name: r.name,
+        sortOrder: r.sortOrder,
+        totalSeats: r.totalSeats,
+        remainingSeats: r.remainingSeats,
+        priceCents: r.priceCents,
+        roundTripPriceCents: r.roundTripPriceCents,
+        active: true,
+      };
+      if (r.id && existingIds.has(r.id)) {
+        await tx.fareRelease.update({
+          where: { id: r.id },
+          data: releaseData,
+        });
+        keptIds.add(r.id);
+      } else {
+        const created = await tx.fareRelease.create({
+          data: { flightId: id, ...releaseData },
+        });
+        keptIds.add(created.id);
+      }
+    }
+
+    const removedIds = existingFlight.fareReleases
+      .map((r) => r.id)
+      .filter((releaseId) => !keptIds.has(releaseId));
+    if (removedIds.length > 0) {
+      // Soft-disable referenced releases; delete only when nothing points at them.
+      for (const releaseId of removedIds) {
+        const [bookingRefs, quoteRefs] = await Promise.all([
+          tx.booking.count({
+            where: {
+              OR: [
+                { fareReleaseId: releaseId },
+                { returnFareReleaseId: releaseId },
+              ],
+            },
+          }),
+          tx.priceQuote.count({
+            where: {
+              OR: [
+                { fareReleaseId: releaseId },
+                { returnFareReleaseId: releaseId },
+              ],
+            },
+          }),
+        ]);
+        if (bookingRefs + quoteRefs > 0) {
+          await tx.fareRelease.update({
+            where: { id: releaseId },
+            data: { active: false, remainingSeats: 0 },
+          });
+        } else {
+          await tx.fareRelease.delete({ where: { id: releaseId } });
+        }
+      }
+    }
+
     await tx.flight.update({
       where: { id },
       data: {
@@ -176,19 +250,9 @@ export async function updateFlightAction(formData: FormData) {
         cabinClass: data.cabinClass,
         totalSeats: totals.totalSeats,
         remainingSeats: totals.remainingSeats,
-        active: true,
+        // Preserve hidden/removed status — editing must not republish a flight.
+        active: existingFlight.active,
         returnLegFlightId,
-        fareReleases: {
-          create: releases.map((r) => ({
-            name: r.name,
-            sortOrder: r.sortOrder,
-            totalSeats: r.totalSeats,
-            remainingSeats: r.remainingSeats,
-            priceCents: r.priceCents,
-            roundTripPriceCents: r.roundTripPriceCents,
-            active: true,
-          })),
-        },
       },
     });
   });

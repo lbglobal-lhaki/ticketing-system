@@ -55,7 +55,12 @@ export function TripTypeFareSection({
             ? `${p.notes} · round-trip total (both legs)`
             : "Round-trip total (both legs)",
         }))
-    : products;
+    : products
+        .filter((p) => p.priceCents > 0)
+        .map((p) => ({
+          ...p,
+          available: p.available && p.priceCents > 0,
+        }));
 
   return (
     <div className="space-y-6">

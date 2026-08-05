@@ -427,7 +427,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                         Mark paid
                       </SubmitButton>
                     </form>
-                  ) : (
+                  ) : invoice.paymentMethod === "bank_transfer" ? (
                     <form action={markInvoiceUnpaidAction}>
                       <input type="hidden" name="id" value={invoice.id} />
                       <SubmitButton
@@ -437,7 +437,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                         Mark unpaid
                       </SubmitButton>
                     </form>
-                  )}
+                  ) : null}
                   <form action={deleteInvoiceAction}>
                     <input type="hidden" name="id" value={invoice.id} />
                     <SubmitButton
@@ -503,6 +503,8 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                 type="button"
                 onClick={() => {
                   setDocTab("travel");
+                  // Bust preview only — do NOT remount the form or unsaved
+                  // edits on the other tab are wiped by defaultValue reset.
                   setPreviewBust(Date.now());
                 }}
                 className={`px-3 py-2 text-sm font-semibold transition ${
@@ -542,7 +544,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
 
             <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-2 lg:overflow-hidden">
               <form
-                key={`${active.id}-${previewBust}-form`}
+                key={`${active.id}-form`}
                 action={onSave}
                 data-skip-busy
                 className="space-y-4 border-b border-line px-4 py-4 sm:px-6 lg:min-h-0 lg:overflow-y-auto lg:border-b-0 lg:border-r"
@@ -583,8 +585,12 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                     />
                   </label>
 
-                  {docTab === "travel" ? (
-                    <>
+                  {/* Keep both tab field sets mounted so switching tabs does
+                      not drop unsaved edits (hidden inputs used to resubmit
+                      stale `active` values from the last save). */}
+                  <div
+                    className={docTab === "travel" ? "contents" : "hidden"}
+                  >
                       <label className="block text-xs text-muted">
                         Passport number
                         <input
@@ -634,104 +640,10 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                           className={fieldClass}
                         />
                       </label>
-                      {/* Keep airfare values in form when editing travel tab */}
-                      <input
-                        type="hidden"
-                        name="airfareAud"
-                        value={aud(active.airfareCents || active.fareCents)}
-                      />
-                      <input
-                        type="hidden"
-                        name="airportTaxesAud"
-                        value={aud(active.airportTaxesCents)}
-                      />
-                      <input
-                        type="hidden"
-                        name="extraBaggageAud"
-                        value={aud(active.extraBaggageCents)}
-                      />
-                      <input
-                        type="hidden"
-                        name="travelInsuranceAud"
-                        value={aud(active.travelInsuranceCents)}
-                      />
-                      <input
-                        type="hidden"
-                        name="otherChargesAud"
-                        value={aud(active.otherChargesCents)}
-                      />
-                      <input
-                        type="hidden"
-                        name="serviceFeeAud"
-                        value={aud(active.serviceFeeCents)}
-                      />
-                      <input
-                        type="hidden"
-                        name="accountNumber"
-                        value={active.accountNumber}
-                      />
-                      <input
-                        type="hidden"
-                        name="businessTpn"
-                        value={active.businessTpn}
-                      />
-                      <input
-                        type="hidden"
-                        name="routeLabel"
-                        value={active.routeLabel}
-                      />
-                      <input
-                        type="hidden"
-                        name="dueAt"
-                        value={dueInputValue(active.dueAt)}
-                      />
-                      <input
-                        type="hidden"
-                        name="gstMode"
-                        value={resolveGstMode(active)}
-                      />
-                      <input
-                        type="hidden"
-                        name="customGstAud"
-                        value={
-                          (active.gstOverrideCents ?? 0) > 0
-                            ? aud(active.gstOverrideCents)
-                            : ""
-                        }
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <input
-                        type="hidden"
-                        name="passportNumber"
-                        value={active.passportNumber}
-                      />
-                      <input
-                        type="hidden"
-                        name="nationality"
-                        value={active.nationality}
-                      />
-                      <input
-                        type="hidden"
-                        name="seatLabel"
-                        value={active.seatLabel}
-                      />
-                      <input
-                        type="hidden"
-                        name="nameRef"
-                        value={active.nameRef}
-                      />
-                      <input
-                        type="hidden"
-                        name="fareCalculationLine"
-                        value={active.fareCalculationLine}
-                      />
-                      <input
-                        type="hidden"
-                        name="endorsementText"
-                        value={active.endorsementText}
-                      />
+                  </div>
+                  <div
+                    className={docTab === "airfare" ? "contents" : "hidden"}
+                  >
                       <label className="block text-xs text-muted">
                         Airfare (AUD)
                         <input
@@ -860,8 +772,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                           Exclusive / Inclusive.
                         </span>
                       </label>
-                    </>
-                  )}
+                  </div>
 
                   <label className="block text-xs text-muted sm:col-span-2">
                     Notes

@@ -295,6 +295,9 @@ export function AdminDashboard({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [cabinClass, setCabinClass] = useState<CabinClass>("business");
   const [bulkPriceCabin, setBulkPriceCabin] = useState<CabinClass>("business");
+  const [bulkTierName, setBulkTierName] = useState(
+    () => BUSINESS_FARE_TEMPLATE[0]!.name,
+  );
   const [fareTripMode, setFareTripMode] = useState<TripType>("one_way");
   const [fareRows, setFareRows] = useState<FareRow[]>(() =>
     templateToRows("business"),
@@ -330,12 +333,32 @@ export function AdminDashboard({
   // rather than in an effect, so it can't cause a visible extra frame).
   const searchKey = searchParams.toString();
   const [settledSearchKey, setSettledSearchKey] = useState(searchKey);
+  // Bumped after every successful walk-in booking to force the whole form
+  // (including uncontrolled fields and GstModeFields' internal state) to
+  // remount and clear. AdminDashboard itself is never unmounted across the
+  // redirect, so without this, passenger/payment/GST/custom-price details
+  // from the last walk-in booking would silently carry over into the next.
+  const [walkInFormKey, setWalkInFormKey] = useState(0);
   if (searchKey !== settledSearchKey) {
     setSettledSearchKey(searchKey);
     // Don't touch the safety-timeout ref here — refs can't be read/written
     // during render. The stale timer firing later is harmless: it just
     // calls setBusy(false) again once busy is already false.
     if (busy) setBusy(false);
+    if (searchParams.get("saved") === "walk-in") {
+      setWalkInFormKey((k) => k + 1);
+      setWalkInOutboundChoice("");
+      setWalkInReturnChoice("");
+      setWalkInTripType("one_way");
+    }
+    // After a successful flight add/edit, drop out of "edit" mode — otherwise
+    // the redirect lands back on the Flights tab but the "Add / Edit" nav tab
+    // silently stays pointed at the flight that was just edited, so clicking
+    // it to add a *new* flight would instead reopen that same edit form.
+    const saved = searchParams.get("saved");
+    if (saved === "added" || saved === "updated") {
+      setEditingId(null);
+    }
   }
 
   const walkInOutboundFlight = useMemo(
@@ -620,6 +643,7 @@ export function AdminDashboard({
               flight one by one.
             </p>
             <form
+              key={`bulk-${fareTripMode}-${searchParams.get("saved")}-${searchParams.get("count")}`}
               action={bulkUpdateFareTierPriceAction}
               className="mt-4 grid gap-4 sm:grid-cols-4"
             >
@@ -631,9 +655,15 @@ export function AdminDashboard({
                 <select
                   name="cabinClass"
                   value={bulkPriceCabin}
-                  onChange={(e) =>
-                    setBulkPriceCabin(e.target.value as CabinClass)
-                  }
+                  onChange={(e) => {
+                    const next = e.target.value as CabinClass;
+                    setBulkPriceCabin(next);
+                    const template =
+                      next === "economy"
+                        ? ECONOMY_FARE_TEMPLATE
+                        : BUSINESS_FARE_TEMPLATE;
+                    setBulkTierName(template[0]!.name);
+                  }}
                   className={fieldClass}
                 >
                   <option value="business">Business</option>
@@ -644,7 +674,12 @@ export function AdminDashboard({
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
                   Fare tier
                 </span>
-                <select name="tierName" className={fieldClass}>
+                <select
+                  name="tierName"
+                  value={bulkTierName}
+                  onChange={(e) => setBulkTierName(e.target.value)}
+                  className={fieldClass}
+                >
                   {(bulkPriceCabin === "economy"
                     ? ECONOMY_FARE_TEMPLATE
                     : BUSINESS_FARE_TEMPLATE
@@ -673,12 +708,16 @@ export function AdminDashboard({
                   type="checkbox"
                   name="onlyUnpriced"
                   value="true"
-                  defaultChecked
                   className="size-4 accent-accent-deep"
                 />
                 Only fill in unpriced releases
               </label>
               <div className="sm:col-span-4">
+                <p className="mb-3 text-xs text-muted">
+                  Leave the checkbox unchecked to overwrite every matching
+                  flight with this price. Check it only when you want to fill
+                  blanks without changing flights that already have a price.
+                </p>
                 <SubmitButton
                   pendingLabel="Applying…"
                   className="bg-accent-deep px-5 py-3 text-sm font-semibold tracking-wide text-white transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
@@ -814,11 +853,11 @@ export function AdminDashboard({
                     {f.fareReleases.map((release) => {
                       const activeCents =
                         fareTripMode === "round_trip"
-                          ? release.roundTripPriceCents
-                          : release.priceCents;
+                          ? (release.roundTripPriceCents ?? 0)
+                          : (release.priceCents ?? 0);
                       return (
                       <form
-                        key={`${release.id}-${fareTripMode}`}
+                        key={`${release.id}-${fareTripMode}-${activeCents}`}
                         action={updateFarePriceAction}
                         className="flex flex-wrap items-end gap-3"
                       >
@@ -832,6 +871,7 @@ export function AdminDashboard({
                           <p className="text-sm font-medium">{release.name}</p>
                           <p className="text-xs text-muted">
                             {release.remainingSeats}/{release.totalSeats} seats
+                            · saved {formatAud(activeCents)}
                           </p>
                         </div>
                         <label className="space-y-1 text-sm">
@@ -1026,10 +1066,11 @@ export function AdminDashboard({
               </div>
               {fareRows.map((row, index) => (
                 <div
-                  key={`${row.name}-${index}`}
+                  key={`${row.id ?? "new"}-${index}`}
                   className="grid gap-3 border-t border-line pt-4 sm:grid-cols-4"
                 >
                   <input type="hidden" name="fareSortOrder" value={row.sortOrder} />
+                  <input type="hidden" name="fareReleaseId" value={row.id ?? ""} />
                   <label className="space-y-1 text-sm sm:col-span-2">
                     <span className="text-xs uppercase tracking-[0.12em] text-muted">
                       Release name
@@ -1078,17 +1119,7 @@ export function AdminDashboard({
                     <MoneyInput
                       name="farePriceAud"
                       required
-                      value={(row.priceCents / 100).toFixed(2)}
-                      onChange={(e) => {
-                        const next = [...fareRows];
-                        next[index] = {
-                          ...row,
-                          priceCents: Math.round(
-                            (Number(e.target.value) || 0) * 100,
-                          ),
-                        };
-                        setFareRows(next);
-                      }}
+                      defaultValue={(row.priceCents / 100).toFixed(2)}
                       className={fieldClass}
                     />
                   </label>
@@ -1099,17 +1130,7 @@ export function AdminDashboard({
                     <MoneyInput
                       name="fareRoundTripPriceAud"
                       required
-                      value={(row.roundTripPriceCents / 100).toFixed(2)}
-                      onChange={(e) => {
-                        const next = [...fareRows];
-                        next[index] = {
-                          ...row,
-                          roundTripPriceCents: Math.round(
-                            (Number(e.target.value) || 0) * 100,
-                          ),
-                        };
-                        setFareRows(next);
-                      }}
+                      defaultValue={(row.roundTripPriceCents / 100).toFixed(2)}
                       className={fieldClass}
                     />
                   </label>
@@ -1203,6 +1224,7 @@ export function AdminDashboard({
               written onto the invoice. Docs are not emailed automatically.
             </p>
             <form
+              key={walkInFormKey}
               action={createWalkInBookingAction}
               className="mt-6 grid gap-4 sm:grid-cols-2"
             >
