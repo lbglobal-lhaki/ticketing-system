@@ -128,7 +128,9 @@ function FareForm({
   tripMode: "one_way" | "round_trip";
 }) {
   const isRoundTrip = tripMode === "round_trip";
-  const activeCents = isRoundTrip ? fare.roundTripPriceCents : fare.priceCents;
+  const oneWayCents = fare.priceCents ?? 0;
+  const roundTripCents = fare.roundTripPriceCents ?? 0;
+  const activeCents = isRoundTrip ? roundTripCents : oneWayCents;
 
   return (
     <form
@@ -141,8 +143,8 @@ function FareForm({
         name={isRoundTrip ? "priceAud" : "roundTripPriceAud"}
         value={
           isRoundTrip
-            ? (fare.priceCents / 100).toFixed(2)
-            : (fare.roundTripPriceCents / 100).toFixed(2)
+            ? (oneWayCents / 100).toFixed(2)
+            : (roundTripCents / 100).toFixed(2)
         }
       />
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -151,8 +153,8 @@ function FareForm({
             {fare.name}
           </p>
           <p className="text-xs text-muted">
-            code: {fare.code} · one-way {formatAud(fare.priceCents)} · RT{" "}
-            {formatAud(fare.roundTripPriceCents)}
+            code: {fare.code} · one-way {formatAud(oneWayCents)} · RT{" "}
+            {formatAud(roundTripCents)}
           </p>
         </div>
         <div className="flex flex-wrap gap-4 text-sm">
@@ -191,7 +193,7 @@ function FareForm({
           <MoneyInput
             key={`${fare.id}-${tripMode}`}
             name={isRoundTrip ? "roundTripPriceAud" : "priceAud"}
-            defaultValue={Math.round(activeCents / 100)}
+            defaultValue={(activeCents / 100).toFixed(2)}
             required
             className={fieldClass}
           />

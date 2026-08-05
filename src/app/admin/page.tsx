@@ -347,7 +347,7 @@ export default async function AdminPage({
               cabinClass: f.cabinClass as "economy" | "business",
               sortOrder: f.sortOrder,
               priceCents: f.priceCents,
-              roundTripPriceCents: f.roundTripPriceCents,
+              roundTripPriceCents: f.roundTripPriceCents ?? 0,
               tagline: f.tagline,
               recommended: f.recommended,
               mostPopular: f.mostPopular,
