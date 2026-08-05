@@ -241,280 +241,18 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     assetDataUri("header-wide.png") || assetDataUri("header-page1.png");
   const taxPct = ((invoice.gstRateBps ?? 0) / 100).toFixed(0);
 
-  const styles = `
-    ${pdfFontFaceCss()}
-    @page { size: A4; margin: 0; }
-    * { box-sizing: border-box; }
-    html, body {
-      margin: 0;
-      /* White so PDF never shows grey band below a short page. */
-      background: #fff;
-      color: #111;
-      font-family: ${PDF_FONT_FAMILY};
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-    .page {
-      width: 210mm;
-      /* Fill exactly one A4 sheet and pin the footer to the bottom. */
-      min-height: 297mm;
-      height: 297mm;
-      margin: 0 auto;
-      background: #fff;
-      display: flex;
-      flex-direction: column;
-    }
-    .header-img { display: block; width: 100%; height: auto; flex-shrink: 0; }
-    .topbar-fallback { height: 12px; background: #0b2c5a; flex-shrink: 0; }
-    .body {
-      padding: 12px 36px 4px;
-      flex: 1 1 auto;
-      min-height: 0;
-    }
-    .meta-row {
-      display: grid;
-      grid-template-columns: 1.15fr 0.95fr;
-      gap: 18px;
-      align-items: start;
-      margin-bottom: 6px;
-      break-inside: avoid;
-    }
-    .invoice-title {
-      margin: 6px 0 12px;
-      font-size: 40px;
-      font-weight: 800;
-      letter-spacing: 0.02em;
-      line-height: 1;
-    }
-    .meta {
-      text-align: right;
-      font-size: 12.5px;
-      line-height: 1.7;
-      padding-top: 4px;
-    }
-    .meta b { font-weight: 700; }
-    .due {
-      margin-top: 10px;
-      font-size: 13px;
-      font-weight: 800;
-    }
-    .section-label {
-      margin: 0 0 8px;
-      font-size: 13px;
-      font-weight: 800;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-    }
-    .invoice-to {
-      font-size: 13px;
-      line-height: 1.65;
-      margin-bottom: 12px;
-    }
-    .invoice-to .row {
-      display: grid;
-      grid-template-columns: 110px 1fr;
-      gap: 8px;
-    }
-    .invoice-to .row span:first-child { font-weight: 700; }
-    .pax-block {
-      margin-top: 10px;
-      padding-top: 8px;
-      border-top: 1px dashed #c5ced8;
-    }
-    .pax-block .pax-heading {
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      margin-bottom: 6px;
-    }
-    .pax-line {
-      font-size: 12.5px;
-      line-height: 1.45;
-      margin: 3px 0;
-    }
-    .pax-n { font-weight: 700; color: #0b2c5a; }
-    .pax-meta, .pax-ticket, .pax-pass { color: #444; font-weight: 500; }
-    .flight {
-      margin: 4px 0 14px;
-      font-size: 13px;
-      line-height: 1.6;
-      break-inside: avoid;
-    }
-    .flight .row {
-      display: grid;
-      grid-template-columns: 175px 1fr;
-      gap: 8px;
-      margin: 4px 0;
-      align-items: start;
-    }
-    .flight .row > span:first-child {
-      font-weight: 800;
-      letter-spacing: 0.03em;
-      text-transform: uppercase;
-      font-size: 12px;
-      white-space: nowrap;
-    }
-    .routes {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px 16px;
-    }
-    .route {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12.5px;
-    }
-    .box {
-      width: 13px;
-      height: 13px;
-      border: 1.5px solid #222;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 10px;
-      font-weight: 800;
-      line-height: 1;
-      flex-shrink: 0;
-    }
-    .box.on { background: #0b2c5a; border-color: #0b2c5a; color: #fff; }
-    table.items {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-      margin-top: 6px;
-      break-inside: avoid;
-    }
-    table.items tr { break-inside: avoid; }
-    table.items th {
-      text-align: left;
-      font-size: 12px;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      padding: 6px 6px;
-      border-bottom: 1.5px solid #c5ced8;
-    }
-    table.items th.num, table.items td.num { text-align: right; }
-    table.items td {
-      padding: 7px 6px;
-      border-bottom: 1px solid #d7dde5;
-      vertical-align: middle;
-    }
-    table.items td:first-child { font-weight: 600; }
-    .pay-totals-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 24px;
-      margin-top: 8px;
-      break-inside: avoid;
-    }
-    .totals {
-      width: 260px;
-      flex-shrink: 0;
-      font-size: 13px;
-    }
-    .totals .line {
-      display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 5px 0;
-    }
-    .totals .line.tax span:last-child { color: #333; }
-    .totals .rule {
-      border-top: 2px solid #111;
-      margin: 6px 0 4px;
-    }
-    .totals .grand {
-      display: flex;
-      justify-content: space-between;
-      font-size: 16px;
-      font-weight: 800;
-      padding-top: 4px;
-    }
-    .pay {
-      font-size: 13px;
-      line-height: 1.55;
-      max-width: 420px;
-      flex: 1;
-    }
-    .pay h3 {
-      margin: 0 0 8px;
-      font-size: 14px;
-      font-weight: 800;
-    }
-    .pay .row {
-      display: grid;
-      grid-template-columns: 120px 1fr;
-      gap: 6px;
-    }
-    .ref {
-      margin-top: 8px;
-      font-weight: 800;
-      font-size: 13px;
-    }
-    .status {
-      display: inline-block;
-      margin-top: 8px;
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: ${unpaid ? "#8a3b12" : "#0f3d2e"};
-    }
-    .footer {
-      margin-top: auto;
-      border-top: 2px solid #f5c518;
-      padding: 10px 28px 14px;
-      flex-shrink: 0;
-      break-inside: avoid;
-    }
-    .footer-row {
-      display: grid;
-      grid-template-columns: 1.2fr 1fr 1.1fr;
-      gap: 10px;
-      font-size: 12px;
-      color: #333;
-      font-weight: 500;
-    }
-    .footer .item { display: flex; align-items: center; gap: 8px; }
-    .footer .dot {
-      width: 22px; height: 22px; border-radius: 50%;
-      background: #f5c518; color: #fff;
-      display: inline-flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
-    }
-    .footer .dot svg { display: block; }
-    @media print {
-      html, body { background: #fff; }
-      .page {
-        margin: 0;
-        width: 210mm;
-        min-height: 297mm;
-        height: 297mm;
-      }
-      .footer, table.items tr, .pay-totals-row, .flight, .meta-row {
-        break-inside: avoid;
-      }
-    }
-  `;
+  const headerHtml = headerUri
+    ? `<img class="header-img" src="${headerUri}" alt="L&B Global · Drukair" />`
+    : `<div class="topbar-fallback"></div>`;
+  const footerHtml = `<div class="footer">
+      <div class="footer-row">
+        <div class="item"><span class="dot">${ICON_PHONE}</span>${esc(brand.agentPhonePrimary)} | ${esc(brand.agentPhoneSecondary)}</div>
+        <div class="item"><span class="dot">${ICON_GLOBE}</span>${esc(brand.agentWebsite)}</div>
+        <div class="item"><span class="dot">${ICON_MAIL}</span>${esc(brand.agentEmail)}</div>
+      </div>
+    </div>`;
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>Invoice ${esc(invoice.invoiceNumber)}</title>
-  <style>${styles}</style>
-</head>
-<body>
-  <section class="page">
-    ${
-      headerUri
-        ? `<img class="header-img" src="${headerUri}" alt="L&B Global · Drukair" />`
-        : `<div class="topbar-fallback"></div>`
-    }
-    <div class="body">
+  const introHtml = `
       <div class="meta-row">
         <div>
           <div class="invoice-title">INVOICE</div>
@@ -575,19 +313,26 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
             : ""
         }</span></div>
         <div class="row"><span>Booking Reference:</span><span><strong>${esc(data.bookingRef)}</strong></span></div>
-      </div>
+      </div>`;
 
-      <table class="items">
+  const continuationTitleHtml = `
+      <div class="continue-banner">
+        <div class="invoice-title continue-title">INVOICE</div>
+        <p class="continue-meta">${esc(invoice.invoiceNumber)} · ${esc(data.bookingRef)} · continued</p>
+      </div>`;
+
+  function itemsTableHtml(rows: ItemRow[], opts?: { continuedFrom?: boolean }) {
+    return `<table class="items">
         <thead>
           <tr>
-            <th>Item</th>
+            <th>Item${opts?.continuedFrom ? " (continued)" : ""}</th>
             <th class="num">Qty</th>
             <th class="num">Unit Price</th>
             <th class="num">Total</th>
           </tr>
         </thead>
         <tbody>
-          ${itemRows
+          ${rows
             .map(
               (row) => `<tr>
                 <td>${esc(row.name)}</td>
@@ -598,8 +343,10 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
             )
             .join("")}
         </tbody>
-      </table>
+      </table>`;
+  }
 
+  const payTotalsHtml = `
       <div class="pay-totals-row">
       <div class="pay">
         <h3>Payment Information</h3>
@@ -655,17 +402,348 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
         <div class="rule"></div>
         <div class="grand"><span>Total</span><span>${esc(money(totals.amountCents))}</span></div>
       </div>
-      </div>
-    </div>
+      </div>`;
 
-    <div class="footer">
-      <div class="footer-row">
-        <div class="item"><span class="dot">${ICON_PHONE}</span>${esc(brand.agentPhonePrimary)} | ${esc(brand.agentPhoneSecondary)}</div>
-        <div class="item"><span class="dot">${ICON_GLOBE}</span>${esc(brand.agentWebsite)}</div>
-        <div class="item"><span class="dot">${ICON_MAIL}</span>${esc(brand.agentEmail)}</div>
-      </div>
+  // Split line items across A4 pages so content never paints over the footer.
+  // Page 1 has the intro (meta + passengers + flight); later pages are items-only.
+  // The payment/totals block always sits on the last page.
+  const paxPenalty = Math.max(0, travellers.length - 2);
+  const firstPageWithTotals = Math.max(2, 6 - Math.ceil(paxPenalty / 2));
+  const firstPageWithoutTotals = Math.max(3, 11 - Math.ceil(paxPenalty / 2));
+  const contWithTotals = 9;
+  const contWithoutTotals = 16;
+
+  const itemChunks: ItemRow[][] = [];
+  if (itemRows.length <= firstPageWithTotals) {
+    itemChunks.push(itemRows);
+  } else {
+    let remaining = itemRows.slice();
+    itemChunks.push(remaining.splice(0, firstPageWithoutTotals));
+    while (remaining.length > 0) {
+      const isLastChunk = remaining.length <= contWithTotals;
+      const take = isLastChunk ? remaining.length : contWithoutTotals;
+      // If the leftover after a full cont page would be tiny and totals need
+      // room, prefer leaving enough for the last page with totals.
+      if (
+        !isLastChunk &&
+        remaining.length - contWithoutTotals > 0 &&
+        remaining.length - contWithoutTotals < 2
+      ) {
+        itemChunks.push(remaining.splice(0, Math.max(1, remaining.length - 2)));
+      } else {
+        itemChunks.push(remaining.splice(0, take));
+      }
+    }
+  }
+
+  const pageCount = itemChunks.length;
+  const pagesHtml = itemChunks
+    .map((chunk, pageIndex) => {
+      const isFirst = pageIndex === 0;
+      const isLast = pageIndex === pageCount - 1;
+      const continued = !isFirst;
+      return `<section class="page">
+    ${headerHtml}
+    <div class="body">
+      ${isFirst ? introHtml : continuationTitleHtml}
+      ${itemsTableHtml(chunk, { continuedFrom: continued })}
+      ${
+        isLast
+          ? payTotalsHtml
+          : `<p class="page-continued">Continued on page ${pageIndex + 2} of ${pageCount}…</p>`
+      }
     </div>
-  </section>
+    ${footerHtml}
+  </section>`;
+    })
+    .join("\n");
+
+  const styles = `
+    ${pdfFontFaceCss()}
+    @page { size: A4; margin: 0; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      background: #fff;
+      color: #111;
+      font-family: ${PDF_FONT_FAMILY};
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      height: 297mm;
+      max-height: 297mm;
+      margin: 0 auto 12px;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0,0,0,.08);
+    }
+    .header-img { display: block; width: 100%; height: auto; flex-shrink: 0; }
+    .topbar-fallback { height: 12px; background: #0b2c5a; flex-shrink: 0; }
+    .body {
+      padding: 12px 36px 4px;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .meta-row {
+      display: grid;
+      grid-template-columns: 1.15fr 0.95fr;
+      gap: 18px;
+      align-items: start;
+      margin-bottom: 6px;
+    }
+    .invoice-title {
+      margin: 6px 0 12px;
+      font-size: 40px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      line-height: 1;
+    }
+    .continue-banner { margin-bottom: 10px; }
+    .continue-title { font-size: 28px; margin: 4px 0 4px; }
+    .continue-meta {
+      margin: 0 0 8px;
+      font-size: 12px;
+      color: #555;
+      font-weight: 600;
+    }
+    .page-continued {
+      margin: 14px 0 0;
+      font-size: 12px;
+      font-weight: 700;
+      color: #0b2c5a;
+      letter-spacing: 0.02em;
+    }
+    .meta {
+      text-align: right;
+      font-size: 12.5px;
+      line-height: 1.7;
+      padding-top: 4px;
+    }
+    .meta b { font-weight: 700; }
+    .due {
+      margin-top: 10px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .section-label {
+      margin: 0 0 8px;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .invoice-to {
+      font-size: 13px;
+      line-height: 1.65;
+      margin-bottom: 12px;
+    }
+    .invoice-to .row {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 8px;
+    }
+    .invoice-to .row span:first-child { font-weight: 700; }
+    .pax-block {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px dashed #c5ced8;
+    }
+    .pax-block .pax-heading {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .pax-line {
+      font-size: 12.5px;
+      line-height: 1.45;
+      margin: 3px 0;
+    }
+    .pax-n { font-weight: 700; color: #0b2c5a; }
+    .pax-meta, .pax-ticket, .pax-pass { color: #444; font-weight: 500; }
+    .flight {
+      margin: 4px 0 14px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .flight .row {
+      display: grid;
+      grid-template-columns: 175px 1fr;
+      gap: 8px;
+      margin: 4px 0;
+      align-items: start;
+    }
+    .flight .row > span:first-child {
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .routes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+    }
+    .route {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12.5px;
+    }
+    .box {
+      width: 13px;
+      height: 13px;
+      border: 1.5px solid #222;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .box.on { background: #0b2c5a; border-color: #0b2c5a; color: #fff; }
+    table.items {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 6px;
+    }
+    table.items th {
+      text-align: left;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 6px 6px;
+      border-bottom: 1.5px solid #c5ced8;
+    }
+    table.items th.num, table.items td.num { text-align: right; }
+    table.items td {
+      padding: 7px 6px;
+      border-bottom: 1px solid #d7dde5;
+      vertical-align: middle;
+    }
+    table.items td:first-child { font-weight: 600; }
+    .pay-totals-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 24px;
+      margin-top: 8px;
+    }
+    .totals {
+      width: 260px;
+      flex-shrink: 0;
+      font-size: 13px;
+    }
+    .totals .line {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 5px 0;
+    }
+    .totals .line.tax span:last-child { color: #333; }
+    .totals .rule {
+      border-top: 2px solid #111;
+      margin: 6px 0 4px;
+    }
+    .totals .grand {
+      display: flex;
+      justify-content: space-between;
+      font-size: 16px;
+      font-weight: 800;
+      padding-top: 4px;
+    }
+    .pay {
+      font-size: 13px;
+      line-height: 1.55;
+      max-width: 420px;
+      flex: 1;
+    }
+    .pay h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      font-weight: 800;
+    }
+    .pay .row {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 6px;
+    }
+    .ref {
+      margin-top: 8px;
+      font-weight: 800;
+      font-size: 13px;
+    }
+    .status {
+      display: inline-block;
+      margin-top: 8px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: ${unpaid ? "#8a3b12" : "#0f3d2e"};
+    }
+    .footer {
+      margin-top: auto;
+      border-top: 2px solid #f5c518;
+      padding: 10px 28px 14px;
+      flex-shrink: 0;
+    }
+    .footer-row {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1.1fr;
+      gap: 10px;
+      font-size: 12px;
+      color: #333;
+      font-weight: 500;
+    }
+    .footer .item { display: flex; align-items: center; gap: 8px; }
+    .footer .dot {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: #f5c518; color: #fff;
+      display: inline-flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .footer .dot svg { display: block; }
+    @media print {
+      html, body { background: #fff; }
+      .page {
+        box-shadow: none;
+        margin: 0;
+        width: 210mm;
+        height: 297mm;
+        min-height: 297mm;
+        max-height: 297mm;
+        page-break-after: always;
+        break-after: page;
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      .page:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+    }
+  `;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Invoice ${esc(invoice.invoiceNumber)}</title>
+  <style>${styles}</style>
+</head>
+<body>
+  ${pagesHtml}
 </body>
 </html>`;
 }
