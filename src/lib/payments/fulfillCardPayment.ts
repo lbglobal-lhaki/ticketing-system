@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
 import { confirmBooking } from "@/lib/booking/confirmBooking";
+import { quotePartyFareCents } from "@/lib/booking/passengers";
 import { passengerDraftFromQuote } from "@/lib/checkout/passengerDraft";
 import { prisma } from "@/lib/db";
 import { calculateCardServiceFee } from "@/lib/payments/fees";
@@ -143,7 +144,7 @@ export async function fulfillCardPayment(input: {
     };
   }
 
-  const fareCents = quote.quotedPriceCents * seatsBooked;
+  const fareCents = quotePartyFareCents(quote);
   const { totalCents, serviceFeeCents } = calculateCardServiceFee(fareCents);
 
   if (intent.amount !== totalCents) {

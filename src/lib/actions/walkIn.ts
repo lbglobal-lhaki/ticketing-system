@@ -29,6 +29,11 @@ import {
   decrementFareAndFlight,
   restoreFareAndFlight,
 } from "@/lib/booking/inventory";
+import {
+  allocatesSeat,
+  parseCompanionTravellers,
+  type TravellerDetail,
+} from "@/lib/booking/passengers";
 import { parseDateTimeLocal } from "@/lib/datetime";
 import { getCurrentFareRelease } from "@/lib/fares/current";
 import {
@@ -38,22 +43,6 @@ import {
 import { calculateCardServiceFee } from "@/lib/payments/fees";
 import { priceFlight, splitRoundTripPackageCents } from "@/lib/pricing/service";
 import { z } from "zod";
-
-const passengerDetailSchema = z.object({
-  fullName: z.string().trim().min(2).max(120),
-  email: z
-    .string()
-    .trim()
-    .max(120)
-    .refine((v) => v === "" || z.string().email().safeParse(v).success, {
-      message: "Invalid email",
-    }),
-  phone: z.string().trim().max(40).optional().or(z.literal("")),
-  passportNumber: z.string().trim().max(40).optional().or(z.literal("")),
-  nationality: z.string().trim().max(60).optional().or(z.literal("")),
-});
-
-type PassengerDetail = z.infer<typeof passengerDetailSchema>;
 
 const walkInSchema = z.object({
   flightId: z.string().min(1),
@@ -72,35 +61,6 @@ const walkInSchema = z.object({
   gstMode: z.enum(["none", "exclusive", "inclusive"]).default("none"),
   customGstAud: z.string().trim().optional().or(z.literal("")),
 });
-
-function parseExtraPassengers(formData: FormData): PassengerDetail[] {
-  const names = formData.getAll("extraPassengerName").map(String);
-  const emails = formData.getAll("extraPassengerEmail").map(String);
-  const phones = formData.getAll("extraPassengerPhone").map(String);
-  const passports = formData.getAll("extraPassengerPassport").map(String);
-  const nationalities = formData.getAll("extraPassengerNationality").map(String);
-
-  if (names.length === 0) return [];
-  if (names.length > 8) {
-    throw new Error("Maximum 8 extra passengers (9 travellers total)");
-  }
-
-  return names.map((fullName, i) => {
-    const parsed = passengerDetailSchema.safeParse({
-      fullName,
-      email: emails[i] ?? "",
-      phone: phones[i] ?? "",
-      passportNumber: passports[i] ?? "",
-      nationality: nationalities[i] ?? "",
-    });
-    if (!parsed.success) {
-      throw new Error(
-        `Extra passenger ${i + 1}: ${parsed.error.issues[0]?.message ?? "invalid details"}`,
-      );
-    }
-    return parsed.data;
-  });
-}
 
 const CUSTOM_FLIGHT_VALUE = "__custom__";
 
@@ -247,20 +207,30 @@ export async function createWalkInBookingAction(formData: FormData) {
     );
   }
 
-  let extraPassengers: PassengerDetail[] = [];
+  let companions;
   try {
-    extraPassengers = parseExtraPassengers(formData);
+    companions = parseCompanionTravellers(formData);
   } catch (e) {
     redirect(
       `/admin?tab=bookings&error=${encodeURIComponent(
-        e instanceof Error ? e.message : "Invalid extra passenger details",
+        e instanceof Error ? e.message : "Invalid passenger details",
+      )}`,
+    );
+  }
+
+  // Seats = primary adult + extra adults + children. Infants take no seat.
+  const seatsBooked = 1 + companions.seatedCount;
+  if (seatsBooked < 1 || seatsBooked > 9) {
+    redirect(
+      `/admin?tab=bookings&error=${encodeURIComponent(
+        "Seated travellers (adults + children) must be between 1 and 9",
       )}`,
     );
   }
 
   const data = {
     ...parsed.data,
-    seatsBooked: 1 + extraPassengers.length,
+    seatsBooked,
   };
   if (data.paymentMethod === "bank_transfer" && !isBankTransferConfigured()) {
     redirect(
@@ -423,14 +393,19 @@ export async function createWalkInBookingAction(formData: FormData) {
     }
 
     // Custom price wins over everything above — it's a flat total for the
-    // whole booking (all seats/legs included), not a per-leg or per-seat rate.
+    // whole booking (all seats/legs + child/infant fares included).
     if (usingCustomPrice && !usingFareOverride) {
       outboundReleaseName = "Custom price (admin-set)";
     }
 
+    // Adults (primary + extras) use system/override fare per seat.
+    // Children and infants use their admin-entered prices (infants = no seat).
+    const adultSeatCount = 1 + companions.adults.length;
     const flightFareCents = usingCustomPrice
       ? (customTotalCents as number)
-      : (outboundLegCents + returnLegCents) * data.seatsBooked;
+      : (outboundLegCents + returnLegCents) * adultSeatCount +
+        companions.childFareCents +
+        companions.infantFareCents;
     const baggageCents = Math.round(data.extraBaggageAud * 100);
     const chargeableSubtotalCents = flightFareCents + baggageCents;
 
@@ -510,15 +485,17 @@ export async function createWalkInBookingAction(formData: FormData) {
       }
 
       const bookingRef = makeBookingRef();
-      const allPassengers: PassengerDetail[] = [
+      const allPassengers: TravellerDetail[] = [
         {
           fullName: data.passengerName,
           email: data.email,
           phone: data.passengerPhone || "",
           passportNumber: data.passportNumber || "",
           nationality: data.nationality || "",
+          passengerType: "adult",
+          priceCents: 0,
         },
-        ...extraPassengers,
+        ...companions.all,
       ];
       const passengerTickets = allPassengers.map(() => makeTicketNumber());
 
@@ -557,6 +534,9 @@ export async function createWalkInBookingAction(formData: FormData) {
               phone: pax.phone || "",
               passportNumber: pax.passportNumber || "",
               nationality: pax.nationality || "",
+              passengerType: pax.passengerType,
+              priceCents: pax.priceCents,
+              allocatesSeat: allocatesSeat(pax.passengerType),
               ticketNumber: passengerTickets[index]!,
             })),
           },
@@ -899,7 +879,7 @@ function airfareCentsForTargetAmount(
 async function syncAllBookingPassengers(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
   bookingId: string,
-  allPassengers: PassengerDetail[],
+  allPassengers: TravellerDetail[],
   primaryTicketNumber: string,
 ) {
   const existing = await tx.bookingPassenger.findMany({
@@ -910,6 +890,7 @@ async function syncAllBookingPassengers(
   for (let i = 0; i < allPassengers.length; i++) {
     const pax = allPassengers[i]!;
     const row = existing[i];
+    const seat = allocatesSeat(pax.passengerType);
     if (row) {
       await tx.bookingPassenger.update({
         where: { id: row.id },
@@ -920,6 +901,9 @@ async function syncAllBookingPassengers(
           phone: pax.phone || "",
           passportNumber: pax.passportNumber || "",
           nationality: pax.nationality || "",
+          passengerType: pax.passengerType,
+          priceCents: pax.priceCents,
+          allocatesSeat: seat,
         },
       });
     } else {
@@ -932,6 +916,9 @@ async function syncAllBookingPassengers(
           phone: pax.phone || "",
           passportNumber: pax.passportNumber || "",
           nationality: pax.nationality || "",
+          passengerType: pax.passengerType,
+          priceCents: pax.priceCents,
+          allocatesSeat: seat,
           ticketNumber: i === 0 ? primaryTicketNumber : makeTicketNumber(),
         },
       });
@@ -969,29 +956,38 @@ export async function updateBookingAction(formData: FormData) {
     );
   }
 
-  let extraPassengers: PassengerDetail[] = [];
+  let companions;
   try {
-    extraPassengers = parseExtraPassengers(formData);
+    companions = parseCompanionTravellers(formData);
   } catch (e) {
     redirect(
       `/admin?tab=bookings&error=${encodeURIComponent(
-        e instanceof Error ? e.message : "Invalid extra passenger details",
+        e instanceof Error ? e.message : "Invalid passenger details",
       )}`,
     );
   }
 
   const data = parsed.data;
-  const seatsBooked = 1 + extraPassengers.length;
+  const seatsBooked = 1 + companions.seatedCount;
+  if (seatsBooked < 1 || seatsBooked > 9) {
+    redirect(
+      `/admin?tab=bookings&error=${encodeURIComponent(
+        "Seated travellers (adults + children) must be between 1 and 9",
+      )}`,
+    );
+  }
   const amountPaidCents = Math.round(data.amountAud * 100);
-  const allPassengers: PassengerDetail[] = [
+  const allPassengers: TravellerDetail[] = [
     {
       fullName: data.passengerName,
       email: data.email,
       phone: data.passengerPhone || "",
       passportNumber: data.passportNumber || "",
       nationality: data.nationality || "",
+      passengerType: "adult",
+      priceCents: 0,
     },
-    ...extraPassengers,
+    ...companions.all,
   ];
 
   try {

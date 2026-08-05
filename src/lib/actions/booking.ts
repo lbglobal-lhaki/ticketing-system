@@ -5,6 +5,12 @@ import { redirect } from "next/navigation";
 import { createPriceQuote } from "@/lib/booking/confirmBooking";
 import { getSessionId } from "@/lib/session";
 
+function parseCount(raw: FormDataEntryValue | null, fallback: number, max: number) {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(0, Math.floor(n)));
+}
+
 export async function startCheckoutAction(
   flightId: string,
   returnFlightId?: string,
@@ -16,6 +22,9 @@ export async function startCheckoutAction(
     returnFlightId,
     sessionId,
     fareProductId,
+    adults: 1,
+    children: 0,
+    infants: 0,
   });
   if (!result.ok) {
     return { error: result.error };
@@ -29,6 +38,9 @@ export async function startCheckoutFormAction(formData: FormData) {
     const returnRaw = String(formData.get("returnFlightId") ?? "").trim();
     const fareProductId = String(formData.get("fareProductId") ?? "").trim();
     const returnFlightId = returnRaw || undefined;
+    const adults = Math.max(1, parseCount(formData.get("adults"), 1, 9));
+    const children = parseCount(formData.get("children"), 0, 8);
+    const infants = parseCount(formData.get("infants"), 0, 9);
 
     if (!flightId) {
       redirect("/?error=Missing+flight");
@@ -38,6 +50,13 @@ export async function startCheckoutFormAction(formData: FormData) {
         `/flights/${flightId}?error=${encodeURIComponent("Please select a fare")}`,
       );
     }
+    if (adults + children > 9) {
+      redirect(
+        `/flights/${flightId}?error=${encodeURIComponent(
+          "Adults + children cannot exceed 9 seats",
+        )}`,
+      );
+    }
 
     const sessionId = await getSessionId();
     const result = await createPriceQuote({
@@ -45,6 +64,9 @@ export async function startCheckoutFormAction(formData: FormData) {
       returnFlightId,
       sessionId,
       fareProductId,
+      adults,
+      children,
+      infants,
     });
 
     if (!result.ok) {

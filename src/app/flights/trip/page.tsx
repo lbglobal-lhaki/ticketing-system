@@ -6,13 +6,32 @@ import { getBrand } from "@/lib/branding";
 import { prisma } from "@/lib/db";
 import { buildCharterFareProducts } from "@/lib/fares/charter";
 
+function parseCount(raw: string | undefined, fallback: number, min: number, max: number) {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(n)));
+}
+
 export default async function TripReviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ outboundId?: string; returnId?: string }>;
+  searchParams: Promise<{
+    outboundId?: string;
+    returnId?: string;
+    adults?: string;
+    children?: string;
+    infants?: string;
+    passengers?: string;
+  }>;
 }) {
-  const { outboundId, returnId } = await searchParams;
+  const raw = await searchParams;
+  const { outboundId, returnId } = raw;
   if (!outboundId || !returnId) notFound();
+
+  const adults = parseCount(raw.adults, parseCount(raw.passengers, 1, 1, 9), 1, 9);
+  let children = parseCount(raw.children, 0, 0, 8);
+  const infants = parseCount(raw.infants, 0, 0, 9);
+  if (adults + children > 9) children = Math.max(0, 9 - adults);
 
   const brand = getBrand();
   const [outbound, returnFlight] = await Promise.all([
@@ -47,11 +66,18 @@ export default async function TripReviewPage({
         : "Round-trip total (both legs)",
     }));
 
+  const backQs = new URLSearchParams({
+    adults: String(adults),
+    children: String(children),
+    infants: String(infants),
+    passengers: String(adults + children),
+  });
+
   return (
     <main className="page-shell bg-background pb-safe">
       <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
         <Link
-          href="/"
+          href={`/?${backQs.toString()}`}
           className="text-sm font-medium text-accent transition hover:text-accent-deep"
         >
           ← Back to results
@@ -69,8 +95,11 @@ export default async function TripReviewPage({
             returnFlightId={returnFlight.id}
             supportEmail={brand.supportEmail}
             disabled={soldOut}
+            adults={adults}
+            children={children}
+            infants={infants}
             title="Choose your round-trip fare"
-            subtitle="Prices below are for both legs · Perth ⇄ Paro charter rules apply"
+            subtitle="Prices below are per adult · child 75% · infant 10% (no seat)"
           />
         </div>
       </div>

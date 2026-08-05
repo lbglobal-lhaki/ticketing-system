@@ -13,6 +13,7 @@ import {
 } from "@/lib/documents/invoiceFields";
 import { PDF_FONT_FAMILY, pdfFontFaceCss } from "@/lib/documents/pdfFonts";
 import type { BookingDocumentData } from "@/lib/documents/templates";
+import { passengerTypeLabel } from "@/lib/booking/passengers";
 
 function esc(value: string | number | null | undefined) {
   return String(value ?? "")
@@ -677,15 +678,30 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
             nationality: data.nationality,
             email: data.email,
             phone: data.passengerPhone,
+            passengerType: "adult" as const,
+            priceCents: 0,
+            allocatesSeat: true,
           },
         ];
 
+  // Infants travel on a ticket but do not receive a seat / boarding pass.
+  const boardedTravellers = travellers.filter(
+    (pax) => pax.allocatesSeat !== false && pax.passengerType !== "infant",
+  );
+  const infantTravellers = travellers.filter(
+    (pax) => pax.allocatesSeat === false || pax.passengerType === "infant",
+  );
+
   const boardingPasses = unpaid
     ? ""
-    : travellers
+    : boardedTravellers
         .flatMap((pax) => {
+          const typeLabel = passengerTypeLabel(pax.passengerType || "adult");
           const opts = {
-            passengerName: pax.fullName,
+            passengerName:
+              pax.passengerType && pax.passengerType !== "adult"
+                ? `${pax.fullName} (${typeLabel})`
+                : pax.fullName,
             ticketCode: displayTicketCode(pax.ticketNumber),
             issueDate: data.createdAt,
             seat,
@@ -700,11 +716,39 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
         })
         .join("\n");
 
+  const infantNotices =
+    !unpaid && infantTravellers.length > 0
+      ? infantTravellers
+          .map(
+            (pax) => `
+    <div class="awaiting-pay" style="margin-top:12px">
+      <strong>Infant (no seat) — ${esc(pax.fullName)}</strong>
+      <p>Ticket ${esc(displayTicketCode(pax.ticketNumber))}. Travels with accompanying adult; no seat allocated.${
+        (pax.priceCents ?? 0) > 0
+          ? ` Fare: ${esc(formatAud(pax.priceCents ?? 0))}.`
+          : ""
+      }</p>
+    </div>`,
+          )
+          .join("\n")
+      : "";
+
   const guestRows = travellers
-    .map(
-      (pax, i) => `
-          <div><b>${travellers.length > 1 ? `Passenger ${i + 1}:` : "Guest Name:"}</b> ${esc(pax.fullName)}</div>
+    .map((pax, i) => {
+      const typeLabel = passengerTypeLabel(pax.passengerType || "adult");
+      const seatNote =
+        pax.passengerType === "infant" || pax.allocatesSeat === false
+          ? " · no seat"
+          : "";
+      return `
+          <div><b>${travellers.length > 1 ? `Passenger ${i + 1}:` : "Guest Name:"}</b> ${esc(pax.fullName)} <span style="color:#666">(${esc(typeLabel)}${esc(seatNote)})</span></div>
           <div><b>Ticket Number:</b> ${esc(displayTicketCode(pax.ticketNumber))}</div>
+          ${
+            (pax.priceCents ?? 0) > 0 &&
+            (pax.passengerType === "child" || pax.passengerType === "infant")
+              ? `<div><b>${esc(typeLabel)} fare:</b> ${esc(formatAud(pax.priceCents ?? 0))}</div>`
+              : ""
+          }
           ${
             pax.passportNumber
               ? `<div><b>Passport:</b> ${esc(pax.passportNumber)}</div>`
@@ -714,8 +758,8 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
             pax.nationality
               ? `<div><b>Nationality:</b> ${esc(pax.nationality)}</div>`
               : ""
-          }`,
-    )
+          }`;
+    })
     .join("");
 
   return `<!DOCTYPE html>
@@ -821,7 +865,7 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
             <strong>Awaiting payment confirmation</strong>
             <p>Boarding passes are issued only after your bank transfer is verified. This page is a reservation summary, not a travel document.</p>
           </div>`
-        : boardingPasses
+        : `${boardingPasses}${infantNotices}`
     }
 
     <div class="mid-split">

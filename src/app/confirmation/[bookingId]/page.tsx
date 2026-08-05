@@ -62,7 +62,9 @@ export default async function ConfirmationPage({
   const fareOnlyCents =
     invoice?.fareCents ||
     (booking.quote
-      ? booking.quote.quotedPriceCents * booking.seatsBooked
+      ? (booking.quote.unitAdultFareCents ?? 0) > 0
+        ? booking.quote.quotedPriceCents
+        : booking.quote.quotedPriceCents * booking.seatsBooked
       : Math.max(0, booking.amountPaidCents - booking.serviceFeeCents));
   const cardServiceFeeCents =
     booking.paymentMethod === "card" ? booking.serviceFeeCents || 0 : 0;

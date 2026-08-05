@@ -22,15 +22,55 @@ export type FlightSearchParams = {
   returnDate?: string;
   outboundId?: string;
   passengers?: string;
+  adults?: string;
+  children?: string;
+  infants?: string;
   cabinClass?: string;
   /** When "1", list every flight in the search window (not only the selected day). */
   allTickets?: string;
 };
 
-function parsePassengers(raw?: string) {
+function parseCount(raw: string | undefined, fallback: number, min: number, max: number) {
   const n = Number(raw);
-  if (!Number.isFinite(n)) return 1;
-  return Math.min(9, Math.max(1, Math.round(n)));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+
+function parsePassengers(raw?: string) {
+  return parseCount(raw, 1, 1, 9);
+}
+
+function parsePartyMix(raw: FlightSearchParams) {
+  const adults = parseCount(raw.adults, parsePassengers(raw.passengers), 1, 9);
+  let children = parseCount(raw.children, 0, 0, 8);
+  const infants = parseCount(raw.infants, 0, 0, 9);
+  if (adults + children > 9) children = Math.max(0, 9 - adults);
+  return { adults, children, infants, seated: adults + children };
+}
+
+function partyQuery(adults: number, children: number, infants: number) {
+  const qs = new URLSearchParams({
+    adults: String(adults),
+    children: String(children),
+    infants: String(infants),
+    passengers: String(adults + children),
+  });
+  return qs.toString();
+}
+
+function withPartyParams(
+  base: Record<string, string>,
+  adults: number,
+  children: number,
+  infants: number,
+) {
+  return {
+    ...base,
+    passengers: String(adults + children),
+    adults: String(adults),
+    children: String(children),
+    infants: String(infants),
+  };
 }
 
 function parseCabinClass(raw?: string): "economy" | "business" {
@@ -135,7 +175,7 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
 
   const { origin, destination, date, tripType, returnDate } = parsed.data;
   const isRoundTrip = tripType === "round_trip";
-  const passengers = parsePassengers(raw.passengers);
+  const { adults, children, infants, seated: passengers } = parsePartyMix(raw);
   const cabinClass = parseCabinClass(raw.cabinClass);
   const allTickets = raw.allTickets === "1" || raw.allTickets === "true";
   const {
@@ -217,11 +257,12 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
 
     // One result row per inventory flight. Same schedule with both cabins
     // (economy + business rows in the DB) merges into a single card.
+    const partyQs = partyQuery(adults, children, infants);
     const grouped = groupFlightResults(
       priced.map(({ flight, price }) => ({
         flight,
         price,
-        href: `/flights/${flight.id}`,
+        href: `/flights/${flight.id}?${partyQs}`,
         ctaLabel: "Select",
       })),
     );
@@ -232,6 +273,9 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
       date,
       tripType,
       passengers: String(passengers),
+      adults: String(adults),
+      children: String(children),
+      infants: String(infants),
       cabinClass,
     };
     if (returnDate) baseParams.returnDate = returnDate;
@@ -254,6 +298,9 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
         returnDate={returnDate}
         tripType={tripType}
         passengers={passengers}
+        adults={adults}
+        children={children}
+        infants={infants}
         cabinClass={cabinClass}
         allTickets
         summaryTitle="All available tickets"
@@ -337,6 +384,9 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
           outboundId: outbound.id,
           returnId: flight.id,
           passengers: String(passengers),
+          adults: String(adults),
+          children: String(children),
+          infants: String(infants),
           cabinClass,
         });
         return {
@@ -388,15 +438,19 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
       row.lowestFareCents = prices.length ? Math.min(...prices) : null;
     }
 
-    const baseParams: Record<string, string> = {
-      origin,
-      destination,
-      date,
-      tripType: "round_trip",
-      outboundId: outbound.id,
-      passengers: String(passengers),
-      cabinClass,
-    };
+    const baseParams: Record<string, string> = withPartyParams(
+      {
+        origin,
+        destination,
+        date,
+        tripType: "round_trip",
+        outboundId: outbound.id,
+        cabinClass,
+      },
+      adults,
+      children,
+      infants,
+    );
     if (returnDate) baseParams.returnDate = returnDate;
 
     return (
@@ -407,6 +461,9 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
         returnDate={activeReturnDate}
         tripType="round_trip"
         passengers={passengers}
+        adults={adults}
+        children={children}
+        infants={infants}
         cabinClass={cabinClass}
         allTickets={allTickets}
         summaryTitle="Choose your return"
@@ -465,11 +522,12 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
   // step on /flights/[id] offers "Round trip" inline (auto-attaching the
   // paired return leg), so there's no separate manual return-flight search
   // to send customers through here, even when they searched "Round trip".
+  const partyQs = partyQuery(adults, children, infants);
   const grouped = groupFlightResults(
     displayRows.map(({ flight, price }) => ({
       flight,
       price,
-      href: `/flights/${flight.id}`,
+      href: `/flights/${flight.id}?${partyQs}`,
       ctaLabel: "Select",
     })),
   ).map((row) =>
@@ -494,14 +552,18 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
     });
   }
 
-  const baseParams: Record<string, string> = {
-    origin,
-    destination,
-    date,
-    tripType,
-    passengers: String(passengers),
-    cabinClass,
-  };
+  const baseParams: Record<string, string> = withPartyParams(
+    {
+      origin,
+      destination,
+      date,
+      tripType,
+      cabinClass,
+    },
+    adults,
+    children,
+    infants,
+  );
   if (returnDate) baseParams.returnDate = returnDate;
 
   return (
@@ -512,6 +574,9 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
       returnDate={returnDate}
       tripType={tripType}
       passengers={passengers}
+      adults={adults}
+      children={children}
+      infants={infants}
       cabinClass={cabinClass}
       allTickets={allTickets}
       summaryTitle={isRoundTrip ? "Choose outbound" : undefined}

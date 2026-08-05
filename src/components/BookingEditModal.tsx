@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MoneyInput } from "@/components/MoneyInput";
+import {
+  PassengerGroupFields,
+  type CompanionDraft,
+} from "@/components/PassengerGroupFields";
 import { SubmitButton } from "@/components/SubmitButton";
 import { updateBookingAction } from "@/lib/actions/walkIn";
 import { formatAud } from "@/lib/pricing";
@@ -13,6 +17,9 @@ export type EditablePassenger = {
   passportNumber: string;
   nationality: string;
   ticketNumber: string;
+  passengerType: "adult" | "child" | "infant";
+  priceCents: number;
+  allocatesSeat: boolean;
 };
 
 export type EditableBooking = {
@@ -31,32 +38,31 @@ export type EditableBooking = {
   status: string;
   paymentMethod: string | null;
   flightLabel: string;
-  /** Extra travellers only (primary is the booking contact fields). */
   passengers: EditablePassenger[];
 };
 
 const fieldClass =
   "w-full border-0 border-b border-line bg-transparent py-3 text-sm text-foreground outline-none transition focus:border-accent";
 
-function emptyExtra(): EditablePassenger {
+function toDraft(p: EditablePassenger): CompanionDraft {
   return {
-    fullName: "",
-    email: "",
-    phone: "",
-    passportNumber: "",
-    nationality: "",
-    ticketNumber: "",
+    fullName: p.fullName,
+    email: p.email,
+    phone: p.phone,
+    passportNumber: p.passportNumber,
+    nationality: p.nationality,
+    priceAud: ((p.priceCents || 0) / 100).toFixed(2),
+    ticketNumber: p.ticketNumber,
   };
 }
 
-function initialExtras(booking: EditableBooking): EditablePassenger[] {
-  // Prefer stored BookingPassenger extras (skip primary at index 0).
-  const storedExtras =
-    booking.passengers.length > 0 ? booking.passengers.slice(1) : [];
-  if (storedExtras.length > 0) return storedExtras;
-  // Older bookings may only have seatsBooked with no named extras yet.
-  const needed = Math.max(0, booking.seatsBooked - 1);
-  return Array.from({ length: needed }, emptyExtra);
+function splitCompanions(passengers: EditablePassenger[]) {
+  const rest = passengers.length > 0 ? passengers.slice(1) : [];
+  return {
+    adults: rest.filter((p) => p.passengerType === "adult").map(toDraft),
+    children: rest.filter((p) => p.passengerType === "child").map(toDraft),
+    infants: rest.filter((p) => p.passengerType === "infant").map(toDraft),
+  };
 }
 
 export function BookingEditModal({
@@ -69,9 +75,13 @@ export function BookingEditModal({
   const canEditSeats =
     booking.status === "pending_payment" || booking.status === "confirmed";
 
-  const [extras, setExtras] = useState<EditablePassenger[]>(() =>
-    initialExtras(booking),
+  const initial = useMemo(
+    () => splitCompanions(booking.passengers),
+    [booking.passengers],
   );
+  const [adults, setAdults] = useState<CompanionDraft[]>(initial.adults);
+  const [children, setChildren] = useState<CompanionDraft[]>(initial.children);
+  const [infants, setInfants] = useState<CompanionDraft[]>(initial.infants);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -86,16 +96,7 @@ export function BookingEditModal({
     };
   }, [onClose]);
 
-  function updateExtra(
-    index: number,
-    patch: Partial<EditablePassenger>,
-  ) {
-    setExtras((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index]!, ...patch };
-      return next;
-    });
-  }
+  const seated = 1 + adults.length + children.length;
 
   return (
     <div
@@ -141,7 +142,7 @@ export function BookingEditModal({
 
           <div className="space-y-3 border border-line bg-white/50 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-              Primary passenger (contact)
+              Primary passenger (adult contact)
             </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="space-y-1 text-sm sm:col-span-2">
@@ -200,182 +201,51 @@ export function BookingEditModal({
             </div>
           </div>
 
-          <div className="space-y-3 border border-line bg-white/50 p-4">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                  Extra passengers
-                </p>
-                <p className="mt-1 text-sm text-muted">
-                  Each gets their own ticket on the travel document and is
-                  listed on the invoice. Total seats = 1 + extras (max 9).
-                </p>
-              </div>
-              {canEditSeats ? (
-                <label className="space-y-1 text-sm">
-                  <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                    How many extras
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={8}
-                    value={extras.length}
-                    onChange={(e) => {
-                      const n = Math.min(
-                        8,
-                        Math.max(0, Number(e.target.value) || 0),
-                      );
-                      setExtras((prev) => {
-                        if (n === prev.length) return prev;
-                        if (n < prev.length) return prev.slice(0, n);
-                        return [
-                          ...prev,
-                          ...Array.from({ length: n - prev.length }, () => ({
-                            fullName: "",
-                            email: "",
-                            phone: "",
-                            passportNumber: "",
-                            nationality: "",
-                            ticketNumber: "",
-                          })),
-                        ];
-                      });
-                    }}
-                    className={fieldClass}
-                  />
-                </label>
-              ) : (
-                <p className="text-xs text-amber-800">
-                  Passenger count locked on {booking.status.replaceAll("_", " ")}{" "}
-                  bookings
-                </p>
-              )}
-            </div>
-
-            {canEditSeats && (
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExtras((prev) =>
-                      prev.length >= 8
-                        ? prev
-                        : [
-                            ...prev,
-                            {
-                              fullName: "",
-                              email: "",
-                              phone: "",
-                              passportNumber: "",
-                              nationality: "",
-                              ticketNumber: "",
-                            },
-                          ],
-                    )
-                  }
-                  className="border border-line bg-white px-3 py-2 text-sm font-medium text-accent transition hover:border-accent"
-                >
-                  Add extra passenger
-                </button>
-                {extras.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setExtras((prev) => prev.slice(0, -1))}
-                    className="border border-line bg-white px-3 py-2 text-sm font-medium text-muted transition hover:text-red-700"
-                  >
-                    Remove last
-                  </button>
-                )}
-              </div>
-            )}
-
-            <p className="text-sm text-muted">
-              Seats for this booking:{" "}
-              <span className="font-medium text-foreground">
-                {1 + extras.length}
-              </span>
+          {!canEditSeats ? (
+            <p className="text-xs text-amber-800">
+              Passenger count locked on {booking.status.replaceAll("_", " ")}{" "}
+              bookings — details can still be edited.
             </p>
+          ) : null}
 
-            {extras.map((pax, i) => (
-              <div
-                key={`extra-edit-${i}-${pax.ticketNumber || "new"}`}
-                className="grid gap-4 border-t border-line pt-4 sm:grid-cols-2"
-              >
-                <p className="sm:col-span-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                  Extra passenger {i + 1}
-                  {pax.ticketNumber ? (
-                    <span className="ml-2 font-normal normal-case tracking-normal text-muted">
-                      · ticket {pax.ticketNumber}
-                    </span>
-                  ) : null}
-                </p>
-                <label className="space-y-1 text-sm">
-                  <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                    Full name
-                  </span>
-                  <input
-                    name="extraPassengerName"
-                    required
-                    value={pax.fullName}
-                    onChange={(e) =>
-                      updateExtra(i, { fullName: e.target.value })
-                    }
-                    className={fieldClass}
-                  />
-                </label>
-                <label className="space-y-1 text-sm">
-                  <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                    Email
-                  </span>
-                  <input
-                    name="extraPassengerEmail"
-                    type="email"
-                    value={pax.email}
-                    onChange={(e) => updateExtra(i, { email: e.target.value })}
-                    className={fieldClass}
-                  />
-                </label>
-                <label className="space-y-1 text-sm">
-                  <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                    Phone
-                  </span>
-                  <input
-                    name="extraPassengerPhone"
-                    value={pax.phone}
-                    onChange={(e) => updateExtra(i, { phone: e.target.value })}
-                    className={fieldClass}
-                  />
-                </label>
-                <label className="space-y-1 text-sm">
-                  <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                    Passport
-                  </span>
-                  <input
-                    name="extraPassengerPassport"
-                    value={pax.passportNumber}
-                    onChange={(e) =>
-                      updateExtra(i, { passportNumber: e.target.value })
-                    }
-                    className={fieldClass}
-                  />
-                </label>
-                <label className="space-y-1 text-sm sm:col-span-2">
-                  <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                    Nationality
-                  </span>
-                  <input
-                    name="extraPassengerNationality"
-                    value={pax.nationality}
-                    onChange={(e) =>
-                      updateExtra(i, { nationality: e.target.value })
-                    }
-                    className={fieldClass}
-                  />
-                </label>
-              </div>
-            ))}
-          </div>
+          <PassengerGroupFields
+            type="adult"
+            prefix="extra"
+            items={adults}
+            onChange={setAdults}
+            canChangeCount={canEditSeats}
+            description="Extra adults each get a seat."
+          />
+          <PassengerGroupFields
+            type="child"
+            prefix="child"
+            items={children}
+            onChange={setChildren}
+            canChangeCount={canEditSeats}
+            description="Children get a seat and their own price."
+          />
+          <PassengerGroupFields
+            type="infant"
+            prefix="infant"
+            items={infants}
+            onChange={setInfants}
+            canChangeCount={canEditSeats}
+            description="Infants get a ticket and price but no seat."
+          />
+
+          <p className="text-sm text-muted">
+            Seats (adults + children):{" "}
+            <span className="font-medium text-foreground">{seated}</span>
+            {infants.length > 0 ? (
+              <>
+                {" "}
+                · Infants (no seat):{" "}
+                <span className="font-medium text-foreground">
+                  {infants.length}
+                </span>
+              </>
+            ) : null}
+          </p>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="space-y-1 text-sm">
@@ -412,8 +282,8 @@ export function BookingEditModal({
                 className={fieldClass}
               />
               <span className="block text-xs text-muted">
-                Update the total to cover extra seats. Invoice / travel docs
-                list every passenger after save.
+                Update the total to include child/infant prices. Travel docs and
+                invoices list every traveller after save.
               </span>
             </label>
           </div>

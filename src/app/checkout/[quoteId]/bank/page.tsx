@@ -6,6 +6,7 @@ import {
   QuoteBlockedMessage,
   QuoteSummaryCard,
 } from "@/components/checkout/CheckoutShell";
+import { quotePartyFareCents } from "@/lib/booking/passengers";
 import { getCheckoutQuoteState } from "@/lib/checkout/loadQuote";
 import { passengerDraftFromQuote } from "@/lib/checkout/passengerDraft";
 import { getBrand } from "@/lib/branding";
@@ -59,7 +60,7 @@ export default async function BankCheckoutPage({
             <BankCheckoutForm
               quoteId={quoteId}
               maxSeats={state.maxSeats}
-              unitPriceCents={state.quote.quotedPriceCents}
+              partyFareCents={quotePartyFareCents(state.quote)}
               paymentProofEmail={brand.paymentProofEmail}
               initialPassenger={draft}
               bankPreview={bank}

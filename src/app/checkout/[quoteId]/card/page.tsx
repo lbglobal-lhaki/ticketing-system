@@ -7,6 +7,7 @@ import {
   QuoteBlockedMessage,
   QuoteSummaryCard,
 } from "@/components/checkout/CheckoutShell";
+import { quotePartyFareCents } from "@/lib/booking/passengers";
 import { getCheckoutQuoteState } from "@/lib/checkout/loadQuote";
 import { passengerDraftFromQuote } from "@/lib/checkout/passengerDraft";
 import { calculateCardServiceFee } from "@/lib/payments/fees";
@@ -42,9 +43,9 @@ export default async function CardCheckoutPage({
   if (state.available) {
     const seatsBooked = Math.min(
       Math.max(1, draft.seatsBooked ?? 1),
-      Math.min(9, Math.max(1, state.maxSeats)),
+      Math.min(9, Math.max(1, state.maxSeats + (state.quote.heldSeats || 0))),
     );
-    const fareCents = state.quote.quotedPriceCents * seatsBooked;
+    const fareCents = quotePartyFareCents(state.quote);
     const fee = calculateCardServiceFee(fareCents);
     const sessionId = await getSessionId();
     const idempotencyKey = createHash("sha256")
@@ -74,6 +75,8 @@ export default async function CardCheckoutPage({
     }
   }
 
+  const partyFareCents = quotePartyFareCents(state.quote);
+
   return (
     <CheckoutShell
       backHref={`/checkout/${quoteId}`}
@@ -90,7 +93,7 @@ export default async function CardCheckoutPage({
             <CardCheckoutForm
               quoteId={quoteId}
               maxSeats={state.maxSeats}
-              unitPriceCents={state.quote.quotedPriceCents}
+              partyFareCents={partyFareCents}
               initialPassenger={draft}
               stripe={{
                 publishableKey: stripe.publishableKey,

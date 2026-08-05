@@ -10,6 +10,7 @@ import {
 } from "@/lib/documents/invoiceFields";
 import { PDF_FONT_FAMILY, pdfFontFaceCss } from "@/lib/documents/pdfFonts";
 import type { BookingDocumentData } from "@/lib/documents/templates";
+import { passengerTypeLabel } from "@/lib/booking/passengers";
 import { getBankTransferDetails } from "@/lib/payments/bank";
 
 function esc(value: string | number | null | undefined) {
@@ -394,12 +395,25 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
               (data.passengers?.length ?? 0) > 1
                 ? `<div class="row"><span>Passengers:</span><span>${esc(
                     data.passengers
-                      .map(
-                        (p) =>
-                          `${p.fullName}${
-                            p.passportNumber ? ` (${p.passportNumber})` : ""
-                          }`,
-                      )
+                      .map((p) => {
+                        const type = passengerTypeLabel(
+                          p.passengerType || "adult",
+                        );
+                        const seat =
+                          p.passengerType === "infant" ||
+                          p.allocatesSeat === false
+                            ? ", no seat"
+                            : "";
+                        const price =
+                          (p.priceCents ?? 0) > 0 &&
+                          (p.passengerType === "child" ||
+                            p.passengerType === "infant")
+                            ? ` · ${money(p.priceCents ?? 0)}`
+                            : "";
+                        return `${p.fullName} (${type}${seat}${price})${
+                          p.passportNumber ? ` ${p.passportNumber}` : ""
+                        }`;
+                      })
                       .join("; "),
                   )}</span></div>
                 <div class="row"><span>Tickets:</span><span>${esc(

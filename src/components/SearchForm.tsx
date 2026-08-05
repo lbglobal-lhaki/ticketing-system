@@ -20,6 +20,9 @@ export type SearchFormValues = {
   returnDate?: string;
   tripType?: "one_way" | "round_trip";
   passengers?: number;
+  adults?: number;
+  children?: number;
+  infants?: number;
   cabinClass?: "economy" | "business";
 };
 
@@ -56,14 +59,28 @@ export function SearchForm({
   const [returnDate, setReturnDate] = useState(
     initialValues?.returnDate ?? defaultDate(7),
   );
-  const [passengers, setPassengers] = useState(
-    Math.min(9, Math.max(1, initialValues?.passengers ?? 1)),
+  const [adults, setAdults] = useState(
+    Math.min(9, Math.max(1, initialValues?.adults ?? initialValues?.passengers ?? 1)),
+  );
+  const [children, setChildren] = useState(
+    Math.min(8, Math.max(0, initialValues?.children ?? 0)),
+  );
+  const [infants, setInfants] = useState(
+    Math.min(9, Math.max(0, initialValues?.infants ?? 0)),
   );
   const [cabinClass, setCabinClass] = useState<"economy" | "business">(
     initialValues?.cabinClass ?? "economy",
   );
   const [paxOpen, setPaxOpen] = useState(false);
   const paxRef = useRef<HTMLDivElement>(null);
+  const seated = adults + children;
+  const paxSummary = [
+    `${adults} adult${adults === 1 ? "" : "s"}`,
+    children > 0 ? `${children} child${children === 1 ? "" : "ren"}` : null,
+    infants > 0 ? `${infants} infant${infants === 1 ? "" : "s"}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   useEffect(() => {
     if (tripType === "round_trip" && returnDate < departDate) {
@@ -273,7 +290,7 @@ export function SearchForm({
                 Passengers / Class
               </p>
               <p className="mt-1 text-sm font-semibold text-foreground">
-                {passengers} / {cabinLabel}
+                {paxSummary} / {cabinLabel}
               </p>
             </div>
             <span
@@ -328,44 +345,33 @@ export function SearchForm({
                   <p className="mb-2 text-sm font-bold text-accent-deep">
                     Passengers
                   </p>
-                  <div className="flex items-center justify-between gap-3 border-b border-line py-3">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">
-                        Adult
-                      </p>
-                      <p className="text-xs text-muted">12+ years</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        aria-label="Decrease adults"
-                        disabled={passengers <= 1}
-                        onClick={() =>
-                          setPassengers((n) => Math.max(1, n - 1))
-                        }
-                        className="inline-flex size-9 items-center justify-center rounded-lg bg-accent/10 text-lg font-semibold text-accent-deep transition hover:bg-accent/20 disabled:opacity-40"
-                      >
-                        −
-                      </button>
-                      <span className="w-6 text-center text-base font-bold text-foreground">
-                        {passengers}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label="Increase adults"
-                        disabled={passengers >= 9}
-                        onClick={() =>
-                          setPassengers((n) => Math.min(9, n + 1))
-                        }
-                        className="inline-flex size-9 items-center justify-center rounded-lg bg-accent/10 text-lg font-semibold text-accent-deep transition hover:bg-accent/20 disabled:opacity-40"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
+                  <PaxStepper
+                    label="Adult"
+                    hint="12+ years · full fare"
+                    value={adults}
+                    min={1}
+                    max={Math.max(1, 9 - children)}
+                    onChange={setAdults}
+                  />
+                  <PaxStepper
+                    label="Child"
+                    hint="2–11 years · 75% of adult fare · seat"
+                    value={children}
+                    min={0}
+                    max={Math.max(0, 9 - adults)}
+                    onChange={setChildren}
+                  />
+                  <PaxStepper
+                    label="Infant"
+                    hint="Under 2 · 10% of adult fare · no seat"
+                    value={infants}
+                    min={0}
+                    max={9}
+                    onChange={setInfants}
+                  />
                   <p className="pt-3 text-xs text-muted">
-                    Child and infant booking is handled with our team after you
-                    select flights.
+                    Seats needed: {seated} (adults + children). Infants do not
+                    take a seat.
                   </p>
                 </div>
               </div>
@@ -382,8 +388,10 @@ export function SearchForm({
           ) : null}
         </div>
 
-        {/* Kept for summary display; search still runs on route/date/tripType */}
-        <input type="hidden" name="passengers" value={String(passengers)} />
+        <input type="hidden" name="adults" value={String(adults)} />
+        <input type="hidden" name="children" value={String(children)} />
+        <input type="hidden" name="infants" value={String(infants)} />
+        <input type="hidden" name="passengers" value={String(seated)} />
         <input type="hidden" name="cabinClass" value={cabinClass} />
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
@@ -538,6 +546,11 @@ export function SearchForm({
             />
           </div>
         )}
+        <input type="hidden" name="adults" value={String(adults)} />
+        <input type="hidden" name="children" value={String(children)} />
+        <input type="hidden" name="infants" value={String(infants)} />
+        <input type="hidden" name="passengers" value={String(seated)} />
+        <input type="hidden" name="cabinClass" value={cabinClass} />
         <div className="flex items-end">
           <button
             type="submit"
@@ -553,6 +566,54 @@ export function SearchForm({
         <p className="text-sm text-red-700">{decodeURIComponent(error)}</p>
       )}
     </form>
+  );
+}
+
+function PaxStepper({
+  label,
+  hint,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (n: number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-line py-3">
+      <div>
+        <p className="text-sm font-semibold text-foreground">{label}</p>
+        <p className="text-xs text-muted">{hint}</p>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          aria-label={`Decrease ${label}`}
+          disabled={value <= min}
+          onClick={() => onChange(Math.max(min, value - 1))}
+          className="inline-flex size-9 items-center justify-center rounded-lg bg-accent/10 text-lg font-semibold text-accent-deep transition hover:bg-accent/20 disabled:opacity-40"
+        >
+          −
+        </button>
+        <span className="w-6 text-center text-base font-bold text-foreground">
+          {value}
+        </span>
+        <button
+          type="button"
+          aria-label={`Increase ${label}`}
+          disabled={value >= max}
+          onClick={() => onChange(Math.min(max, value + 1))}
+          className="inline-flex size-9 items-center justify-center rounded-lg bg-accent/10 text-lg font-semibold text-accent-deep transition hover:bg-accent/20 disabled:opacity-40"
+        >
+          +
+        </button>
+      </div>
+    </div>
   );
 }
 

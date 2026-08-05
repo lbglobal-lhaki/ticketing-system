@@ -8,6 +8,9 @@ export type BookingDocumentPassenger = {
   passportNumber?: string | null;
   nationality?: string | null;
   ticketNumber: string;
+  passengerType?: "adult" | "child" | "infant" | string;
+  priceCents?: number;
+  allocatesSeat?: boolean;
 };
 
 export type BookingDocumentData = {

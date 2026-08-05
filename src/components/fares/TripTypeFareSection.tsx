@@ -30,12 +30,18 @@ export function TripTypeFareSection({
   products,
   supportEmail,
   disabled,
+  adults = 1,
+  children = 0,
+  infants = 0,
 }: {
   outbound: Leg;
   pairedReturn: Leg | null;
   products: FareProduct[];
   supportEmail: string;
   disabled?: boolean;
+  adults?: number;
+  children?: number;
+  infants?: number;
 }) {
   const canRoundTrip = Boolean(pairedReturn && pairedReturn.remainingSeats > 0);
   const [tripType, setTripType] = useState<"one_way" | "round_trip">(
@@ -107,11 +113,14 @@ export function TripTypeFareSection({
         returnFlightId={isRoundTrip ? pairedReturn!.id : undefined}
         supportEmail={supportEmail}
         disabled={disabled}
+        adults={adults}
+        children={children}
+        infants={infants}
         title={isRoundTrip ? "Choose your round-trip fare" : "Choose your fare"}
         subtitle={
           isRoundTrip
-            ? "Prices below are for both legs · Perth ⇄ Paro charter rules apply"
-            : "Perth ⇄ Paro rules · prices are per passenger one-way"
+            ? "Adult package for both legs · child 75% · infant 10% (no seat)"
+            : "Adult fare per seat · child 75% · infant 10% (no seat)"
         }
       />
     </div>

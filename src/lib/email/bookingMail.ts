@@ -76,6 +76,9 @@ export async function loadBookingDocumentData(
           passportNumber: p.passportNumber,
           nationality: p.nationality,
           ticketNumber: p.ticketNumber,
+          passengerType: p.passengerType,
+          priceCents: p.priceCents,
+          allocatesSeat: p.allocatesSeat,
         }))
       : [
           {
@@ -85,6 +88,9 @@ export async function loadBookingDocumentData(
             passportNumber: booking.passportNumber,
             nationality: booking.nationality,
             ticketNumber: booking.ticketNumber,
+            passengerType: "adult" as const,
+            priceCents: 0,
+            allocatesSeat: true,
           },
         ];
 

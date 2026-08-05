@@ -123,7 +123,9 @@ export function QuoteSummaryCard({
 
         <div>
           <p className="text-xs uppercase tracking-[0.14em] text-muted">
-            Price per seat
+            {(quote.unitAdultFareCents ?? 0) > 0
+              ? "Party total"
+              : "Price per seat"}
           </p>
           <p className="mt-2 font-[family-name:var(--font-syne)] text-4xl font-semibold tracking-tight">
             {formatAud(quote.quotedPriceCents)}

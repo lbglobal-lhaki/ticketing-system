@@ -13,12 +13,28 @@ type SearchSummaryBarProps = {
   returnDate?: string;
   tripType: "one_way" | "round_trip";
   passengers?: number;
+  adults?: number;
+  children?: number;
+  infants?: number;
   cabinClass?: "economy" | "business";
   allTickets?: boolean;
   title?: string;
   airports: AirportOption[];
   searchParams?: Record<string, string>;
 };
+
+function partyLabel(adults: number, children: number, infants: number) {
+  const parts = [
+    `${adults} adult${adults === 1 ? "" : "s"}`,
+    children > 0
+      ? `${children} child${children === 1 ? "" : "ren"}`
+      : null,
+    infants > 0
+      ? `${infants} infant${infants === 1 ? "" : "s"}`
+      : null,
+  ].filter(Boolean);
+  return parts.join(", ");
+}
 
 function buildResultsHref(
   base: Record<string, string>,
@@ -38,6 +54,9 @@ export function SearchSummaryBar({
   returnDate,
   tripType,
   passengers = 1,
+  adults = 1,
+  children = 0,
+  infants = 0,
   cabinClass = "economy",
   allTickets = false,
   title,
@@ -46,6 +65,9 @@ export function SearchSummaryBar({
 }: SearchSummaryBarProps) {
   const [modifyOpen, setModifyOpen] = useState(false);
   const cabinLabel = cabinClass === "business" ? "Business" : "Economy";
+  const adultsN = Math.max(1, adults);
+  const childrenN = Math.max(0, children);
+  const infantsN = Math.max(0, infants);
 
   const baseParams = useMemo(() => {
     if (searchParams) return searchParams;
@@ -55,6 +77,9 @@ export function SearchSummaryBar({
       date,
       tripType,
       passengers: String(passengers),
+      adults: String(adultsN),
+      children: String(childrenN),
+      infants: String(infantsN),
       cabinClass,
     };
     if (returnDate) params.returnDate = returnDate;
@@ -66,6 +91,9 @@ export function SearchSummaryBar({
     date,
     tripType,
     passengers,
+    adultsN,
+    childrenN,
+    infantsN,
     cabinClass,
     returnDate,
   ]);
@@ -145,7 +173,7 @@ export function SearchSummaryBar({
                     <span className="hidden h-4 w-px bg-line sm:block" aria-hidden />
                     <p className="text-muted">
                       <span className="font-medium text-foreground">
-                        {passengers}
+                        {partyLabel(adultsN, childrenN, infantsN)}
                       </span>{" "}
                       / {cabinLabel}
                     </p>
@@ -192,6 +220,9 @@ export function SearchSummaryBar({
                   returnDate,
                   tripType,
                   passengers,
+                  adults: adultsN,
+                  children: childrenN,
+                  infants: infantsN,
                   cabinClass,
                 }}
               />

@@ -38,6 +38,10 @@ import {
 } from "@/components/CargoAdminPanel";
 import { SystemAnalyticsSection } from "@/components/SystemAnalyticsSection";
 import { MoneyInput } from "@/components/MoneyInput";
+import {
+  PassengerGroupFields,
+  type CompanionDraft,
+} from "@/components/PassengerGroupFields";
 import { SubmitButton } from "@/components/SubmitButton";
 import { Spinner } from "@/components/Spinner";
 import {
@@ -90,6 +94,9 @@ type BookingPassengerRow = {
   passportNumber: string;
   nationality: string;
   ticketNumber: string;
+  passengerType: "adult" | "child" | "infant";
+  priceCents: number;
+  allocatesSeat: boolean;
 };
 
 type BookingRow = {
@@ -320,7 +327,9 @@ export function AdminDashboard({
   const [walkInOutboundChoice, setWalkInOutboundChoice] = useState("");
   const [walkInReturnChoice, setWalkInReturnChoice] = useState("");
   const [walkInTripType, setWalkInTripType] = useState<TripType>("one_way");
-  const [extraPassengerCount, setExtraPassengerCount] = useState(0);
+  const [walkInAdults, setWalkInAdults] = useState<CompanionDraft[]>([]);
+  const [walkInChildren, setWalkInChildren] = useState<CompanionDraft[]>([]);
+  const [walkInInfants, setWalkInInfants] = useState<CompanionDraft[]>([]);
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
   const [bulkPending, startBulkTransition] = useTransition();
 
@@ -372,7 +381,9 @@ export function AdminDashboard({
       setWalkInOutboundChoice("");
       setWalkInReturnChoice("");
       setWalkInTripType("one_way");
-      setExtraPassengerCount(0);
+      setWalkInAdults([]);
+      setWalkInChildren([]);
+      setWalkInInfants([]);
     }
     // After a successful flight add/edit, drop out of "edit" mode — otherwise
     // the redirect lands back on the Flights tab but the "Add / Edit" nav tab
@@ -1493,122 +1504,46 @@ export function AdminDashboard({
                 </div>
               </div>
 
-              <div className="sm:col-span-2 space-y-3 border border-line bg-white/50 p-4">
-                <div className="flex flex-wrap items-end justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                      Extra passengers
-                    </p>
-                    <p className="mt-1 text-sm text-muted">
-                      Each gets their own ticket on the travel document and is
-                      listed on the invoice. Total seats = 1 + extras (max 9).
-                    </p>
-                  </div>
-                  <label className="space-y-1 text-sm">
-                    <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                      How many extras
-                    </span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={8}
-                      value={extraPassengerCount}
-                      onChange={(e) => {
-                        const n = Math.min(
-                          8,
-                          Math.max(0, Number(e.target.value) || 0),
-                        );
-                        setExtraPassengerCount(n);
-                      }}
-                      className={fieldClass}
-                    />
-                  </label>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setExtraPassengerCount((n) => Math.min(8, n + 1))
-                    }
-                    className="border border-line bg-white px-3 py-2 text-sm font-medium text-accent transition hover:border-accent"
-                  >
-                    Add extra passenger
-                  </button>
-                  {extraPassengerCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setExtraPassengerCount((n) => Math.max(0, n - 1))
-                      }
-                      className="border border-line bg-white px-3 py-2 text-sm font-medium text-muted transition hover:text-red-700"
-                    >
-                      Remove last
-                    </button>
-                  )}
-                </div>
+              <div className="sm:col-span-2 space-y-4">
+                <PassengerGroupFields
+                  type="adult"
+                  prefix="extra"
+                  items={walkInAdults}
+                  onChange={setWalkInAdults}
+                  canChangeCount
+                  description="Extra adults each get a seat and use the adult fare. Listed on travel docs and invoice."
+                />
+                <PassengerGroupFields
+                  type="child"
+                  prefix="child"
+                  items={walkInChildren}
+                  onChange={setWalkInChildren}
+                  canChangeCount
+                  description="Children get a seat and their own admin-set price (not the adult fare)."
+                />
+                <PassengerGroupFields
+                  type="infant"
+                  prefix="infant"
+                  items={walkInInfants}
+                  onChange={setWalkInInfants}
+                  canChangeCount
+                  description="Infants get a ticket and admin-set price but do not take a seat."
+                />
                 <p className="text-sm text-muted">
-                  Seats for this booking:{" "}
+                  Seats (adults + children):{" "}
                   <span className="font-medium text-foreground">
-                    {1 + extraPassengerCount}
+                    {1 + walkInAdults.length + walkInChildren.length}
                   </span>
+                  {walkInInfants.length > 0 ? (
+                    <>
+                      {" "}
+                      · Infants (no seat):{" "}
+                      <span className="font-medium text-foreground">
+                        {walkInInfants.length}
+                      </span>
+                    </>
+                  ) : null}
                 </p>
-                {Array.from({ length: extraPassengerCount }, (_, i) => (
-                  <div
-                    key={`extra-pax-${i}`}
-                    className="grid gap-4 border-t border-line pt-4 sm:grid-cols-2"
-                  >
-                    <p className="sm:col-span-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                      Extra passenger {i + 1}
-                    </p>
-                    <label className="space-y-1 text-sm">
-                      <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                        Full name
-                      </span>
-                      <input
-                        name="extraPassengerName"
-                        required
-                        className={fieldClass}
-                      />
-                    </label>
-                    <label className="space-y-1 text-sm">
-                      <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                        Email
-                      </span>
-                      <input
-                        name="extraPassengerEmail"
-                        type="email"
-                        className={fieldClass}
-                      />
-                    </label>
-                    <label className="space-y-1 text-sm">
-                      <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                        Phone
-                      </span>
-                      <input
-                        name="extraPassengerPhone"
-                        className={fieldClass}
-                      />
-                    </label>
-                    <label className="space-y-1 text-sm">
-                      <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                        Passport
-                      </span>
-                      <input
-                        name="extraPassengerPassport"
-                        className={fieldClass}
-                      />
-                    </label>
-                    <label className="space-y-1 text-sm sm:col-span-2">
-                      <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                        Nationality
-                      </span>
-                      <input
-                        name="extraPassengerNationality"
-                        className={fieldClass}
-                      />
-                    </label>
-                  </div>
-                ))}
               </div>
               <label className="space-y-1 text-sm">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
@@ -1760,11 +1695,28 @@ export function AdminDashboard({
                       <td className="px-4 py-4">
                         <p>{b.passengerName}</p>
                         <p className="text-xs text-muted">{b.email}</p>
-                        {b.seatsBooked > 1 ? (
-                          <p className="text-xs text-muted">
-                            {b.seatsBooked} passengers
-                          </p>
-                        ) : null}
+                        {(() => {
+                          const kids =
+                            b.passengers?.filter(
+                              (p) => p.passengerType === "child",
+                            ).length ?? 0;
+                          const infants =
+                            b.passengers?.filter(
+                              (p) => p.passengerType === "infant",
+                            ).length ?? 0;
+                          const parts = [
+                            b.seatsBooked > 1
+                              ? `${b.seatsBooked} seats`
+                              : null,
+                            kids > 0 ? `${kids} child` : null,
+                            infants > 0 ? `${infants} infant` : null,
+                          ].filter(Boolean);
+                          return parts.length ? (
+                            <p className="text-xs text-muted">
+                              {parts.join(" · ")}
+                            </p>
+                          ) : null;
+                        })()}
                       </td>
                       <td className="px-4 py-4 text-muted">
                         {b.flight.flightNumber} {b.flight.origin}→

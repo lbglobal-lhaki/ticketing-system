@@ -5,6 +5,9 @@ export function BookButton({
   flightId,
   returnFlightId,
   fareProductId,
+  adults = 1,
+  children = 0,
+  infants = 0,
   disabled,
   label = "Book at this price",
   buttonClassName,
@@ -12,6 +15,9 @@ export function BookButton({
   flightId: string;
   returnFlightId?: string;
   fareProductId?: string;
+  adults?: number;
+  children?: number;
+  infants?: number;
   disabled?: boolean;
   label?: string;
   buttonClassName?: string;
@@ -25,6 +31,17 @@ export function BookButton({
       {fareProductId ? (
         <input type="hidden" name="fareProductId" value={fareProductId} />
       ) : null}
+      <input type="hidden" name="adults" value={String(Math.max(1, adults))} />
+      <input
+        type="hidden"
+        name="children"
+        value={String(Math.max(0, children))}
+      />
+      <input
+        type="hidden"
+        name="infants"
+        value={String(Math.max(0, infants))}
+      />
       <BookSubmitButton
         disabled={disabled}
         label={label}

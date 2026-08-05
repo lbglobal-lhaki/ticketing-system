@@ -8,7 +8,7 @@ import { formatAud } from "@/lib/pricing";
 type BankCheckoutFormProps = {
   quoteId: string;
   maxSeats: number;
-  unitPriceCents: number;
+  partyFareCents: number;
   paymentProofEmail: string;
   initialPassenger: {
     passengerName: string;
@@ -31,7 +31,7 @@ type BankCheckoutFormProps = {
 export function BankCheckoutForm({
   quoteId,
   maxSeats,
-  unitPriceCents,
+  partyFareCents,
   paymentProofEmail,
   initialPassenger,
   bankPreview,
@@ -43,9 +43,9 @@ export function BankCheckoutForm({
 
   const seatsBooked = Math.min(
     Math.max(1, initialPassenger.seatsBooked ?? 1),
-    Math.min(9, Math.max(1, maxSeats)),
+    Math.min(9, Math.max(1, maxSeats || initialPassenger.seatsBooked || 1)),
   );
-  const totalCents = unitPriceCents * seatsBooked;
+  const totalCents = partyFareCents;
 
   return (
     <form action={action} className="space-y-8">

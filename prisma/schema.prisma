@@ -47,6 +47,12 @@ enum BookingSource {
   walk_in
 }
 
+enum PassengerType {
+  adult
+  child
+  infant
+}
+
 enum InvoiceStatus {
   unpaid
   paid
@@ -185,6 +191,14 @@ model PriceQuote {
   passportNumber         String      @default("")
   nationality            String      @default("")
   seatsBooked            Int         @default(1)
+  /// Party mix for online checkout (infants do not consume seats).
+  adultCount             Int         @default(1)
+  childCount             Int         @default(0)
+  infantCount            Int         @default(0)
+  /// Adult package fare used for 75%/10% child/infant rates (cents).
+  unitAdultFareCents     Int         @default(0)
+  /// Draft travellers collected on the passengers step (JSON array).
+  travellersDraft        Json        @default("[]")
   privacyAccepted        Boolean     @default(false)
   /// Soft inventory hold for quote TTL (seats already decremented when true)
   inventoryHeld          Boolean     @default(false)
@@ -246,18 +260,24 @@ model Booking {
 
 /// Named travellers on a booking (primary + extras). Online single-pax
 /// bookings may omit rows and fall back to Booking.passengerName fields.
+/// Infants do not consume a seat (`allocatesSeat=false`); children do.
 model BookingPassenger {
-  id             String   @id @default(cuid())
+  id             String        @id @default(cuid())
   bookingId      String
-  booking        Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  sortOrder      Int      @default(0)
+  booking        Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  sortOrder      Int           @default(0)
   fullName       String
-  email          String   @default("")
-  phone          String   @default("")
-  passportNumber String   @default("")
-  nationality    String   @default("")
-  ticketNumber   String   @unique
-  createdAt      DateTime @default(now())
+  email          String        @default("")
+  phone          String        @default("")
+  passportNumber String        @default("")
+  nationality    String        @default("")
+  passengerType  PassengerType @default(adult)
+  /// Admin-set fare for child/infant (cents). Adults keep 0 (system fare).
+  priceCents     Int           @default(0)
+  /// False for infants — they travel on a ticket but take no seat.
+  allocatesSeat  Boolean       @default(true)
+  ticketNumber   String        @unique
+  createdAt      DateTime      @default(now())
 
   @@index([bookingId])
 }

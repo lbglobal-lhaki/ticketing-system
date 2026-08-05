@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { FlightSummarySidebar } from "@/components/checkout/FlightSummarySidebar";
 import { PassengerDetailsForm } from "@/components/checkout/PassengerDetailsForm";
 import { QuoteBlockedMessage } from "@/components/checkout/CheckoutShell";
+import type { TravellerDraft } from "@/lib/booking/passengers";
 import { getCheckoutQuoteState } from "@/lib/checkout/loadQuote";
 
 export default async function PassengerDetailsPage({
@@ -19,8 +20,16 @@ export default async function PassengerDetailsPage({
 
   const q = state.quote;
   const changeHref = q.returnFlightId
-    ? `/flights/trip?outboundId=${q.flightId}&returnId=${q.returnFlightId}`
-    : `/flights/${q.flightId}`;
+    ? `/flights/trip?outboundId=${q.flightId}&returnId=${q.returnFlightId}&adults=${q.adultCount}&children=${q.childCount}&infants=${q.infantCount}`
+    : `/flights/${q.flightId}?adults=${q.adultCount}&children=${q.childCount}&infants=${q.infantCount}`;
+
+  const isPartyQuote = q.unitAdultFareCents > 0;
+  const adults = isPartyQuote ? Math.max(1, q.adultCount || 1) : 1;
+  const children = isPartyQuote ? Math.max(0, q.childCount || 0) : 0;
+  const infants = isPartyQuote ? Math.max(0, q.infantCount || 0) : 0;
+  const draftList = Array.isArray(q.travellersDraft)
+    ? (q.travellersDraft as TravellerDraft[])
+    : [];
 
   return (
     <main className="page-shell bg-background pb-safe">
@@ -46,7 +55,13 @@ export default async function PassengerDetailsPage({
               <PassengerDetailsForm
                 quoteId={quoteId}
                 maxSeats={state.maxSeats}
+                adults={adults}
+                children={children}
+                infants={infants}
+                unitAdultFareCents={q.unitAdultFareCents || q.quotedPriceCents}
+                legacySeatPicker={!isPartyQuote}
                 error={error ? decodeURIComponent(error) : null}
+                initialTravellers={draftList}
                 initial={{
                   title: q.passengerTitle || undefined,
                   firstName: q.passengerFirstName || undefined,

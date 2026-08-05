@@ -23,6 +23,16 @@ import {
   releaseQuoteHold,
   syncQuoteSeatHold,
 } from "@/lib/booking/inventory";
+import {
+  allocatesSeat,
+  childFareCents,
+  infantFareCents,
+  partyFareCents,
+  quotePartyFareCents,
+  seatedCountFromMix,
+  travellerDisplayName,
+  type TravellerDraft,
+} from "@/lib/booking/passengers";
 
 export async function createPriceQuote(input: {
   flightId: string;
@@ -30,6 +40,9 @@ export async function createPriceQuote(input: {
   sessionId: string;
   /** Selected charter fare product (Saver / Flexi / …) — locks catalogue price. */
   fareProductId?: string;
+  adults?: number;
+  children?: number;
+  infants?: number;
 }) {
   if (!input.sessionId || input.sessionId === "anonymous") {
     return { ok: false as const, error: "Missing browser session — refresh and try again" };
@@ -162,9 +175,31 @@ export async function createPriceQuote(input: {
     }
   }
 
-  const totalCents = outboundCents + returnCents;
+  const unitAdultFareCents = outboundCents + returnCents;
+  const adults = Math.min(9, Math.max(1, Math.floor(input.adults ?? 1)));
+  const children = Math.min(8, Math.max(0, Math.floor(input.children ?? 0)));
+  const infants = Math.min(9, Math.max(0, Math.floor(input.infants ?? 0)));
+  const holdSeats = seatedCountFromMix(adults, children);
+  if (holdSeats < 1 || holdSeats > 9) {
+    return {
+      ok: false as const,
+      error: "Seated travellers (adults + children) must be between 1 and 9",
+    };
+  }
+  if (flight.remainingSeats < holdSeats) {
+    return { ok: false as const, error: "Not enough seats on the outbound flight" };
+  }
+  if (returnFlight && returnFlight.remainingSeats < holdSeats) {
+    return { ok: false as const, error: "Not enough seats on the return flight" };
+  }
+
+  const totalCents = partyFareCents({
+    adultUnitFareCents: unitAdultFareCents,
+    adults,
+    children,
+    infants,
+  });
   const expiresAt = new Date(Date.now() + getQuoteTtlMinutes() * 60 * 1000);
-  const holdSeats = 1;
 
   // One active cart item per session — release any prior holds first.
   const priorQuotes = await prisma.priceQuote.findMany({
@@ -208,6 +243,10 @@ export async function createPriceQuote(input: {
             quotedPriceCents: totalCents,
             outboundPriceCents: outboundCents,
             returnPriceCents: returnCents,
+            unitAdultFareCents,
+            adultCount: adults,
+            childCount: children,
+            infantCount: infants,
             basePriceSnapshotCents:
               outboundCurrent.priceCents + (returnCurrent?.priceCents ?? 0),
             demandMultiplier: 1,
@@ -218,6 +257,7 @@ export async function createPriceQuote(input: {
             seatsBooked: holdSeats,
             heldSeats: holdSeats,
             inventoryHeld: true,
+            travellersDraft: [],
           },
         });
 
@@ -328,7 +368,7 @@ export async function confirmBooking(input: {
         const bookingRef = makeBookingRef();
         const ticketNumber = makeTicketNumber();
         const accessToken = makeAccessToken();
-        const fareCents = quote.quotedPriceCents * input.seatsBooked;
+        const fareCents = quotePartyFareCents(quote);
         const serviceFeeCents = input.serviceFeeCents ?? 0;
         const amountCents = input.amountCentsOverride ?? fareCents;
         const paid = input.invoiceStatus === "paid";
@@ -342,6 +382,81 @@ export async function confirmBooking(input: {
             : holdExpiresAt
               ? "Awaiting bank transfer · seats held for 48 hours."
               : "";
+
+        const draftRaw = quote.travellersDraft;
+        const draftList: TravellerDraft[] = Array.isArray(draftRaw)
+          ? (draftRaw as TravellerDraft[])
+          : [];
+        const unit = quote.unitAdultFareCents || quote.quotedPriceCents;
+        const adultsN = Math.max(1, quote.adultCount || input.seatsBooked || 1);
+        const childrenN = Math.max(0, quote.childCount || 0);
+        const infantsN = Math.max(0, quote.infantCount || 0);
+
+        // Build named travellers: prefer draft list; fill gaps from primary.
+        const travellers: Array<{
+          fullName: string;
+          email: string;
+          phone: string;
+          passportNumber: string;
+          nationality: string;
+          passengerType: "adult" | "child" | "infant";
+          priceCents: number;
+        }> = [];
+        const expected =
+          (quote.unitAdultFareCents > 0
+            ? adultsN + childrenN + infantsN
+            : input.seatsBooked) || 1;
+
+        for (let i = 0; i < expected; i++) {
+          const d = draftList[i];
+          let type: "adult" | "child" | "infant" = "adult";
+          if (quote.unitAdultFareCents > 0) {
+            if (i < adultsN) type = "adult";
+            else if (i < adultsN + childrenN) type = "child";
+            else type = "infant";
+          }
+          const priceCents =
+            type === "child"
+              ? childFareCents(unit)
+              : type === "infant"
+                ? infantFareCents(unit)
+                : 0;
+          if (d) {
+            travellers.push({
+              fullName: travellerDisplayName(d) || input.passengerName,
+              email: i === 0 ? input.email : d.email || "",
+              phone: i === 0 ? input.passengerPhone || "" : d.phone || "",
+              passportNumber: d.passportNumber || "",
+              nationality: d.nationality || "",
+              passengerType: d.passengerType || type,
+              priceCents,
+            });
+          } else if (i === 0) {
+            travellers.push({
+              fullName: input.passengerName,
+              email: input.email,
+              phone: input.passengerPhone || "",
+              passportNumber: input.passportNumber || "",
+              nationality: input.nationality || "",
+              passengerType: "adult",
+              priceCents: 0,
+            });
+          } else {
+            travellers.push({
+              fullName: `${type === "child" ? "Child" : type === "infant" ? "Infant" : "Passenger"} ${i + 1}`,
+              email: "",
+              phone: "",
+              passportNumber: "",
+              nationality: "",
+              passengerType: type,
+              priceCents,
+            });
+          }
+        }
+
+        const passengerTickets = travellers.map((_, i) =>
+          i === 0 ? ticketNumber : makeTicketNumber(),
+        );
 
         const booking = await tx.booking.create({
           data: {
@@ -369,6 +484,20 @@ export async function confirmBooking(input: {
             ticketNumber,
             accessToken,
             holdExpiresAt,
+            passengers: {
+              create: travellers.map((pax, index) => ({
+                sortOrder: index,
+                fullName: pax.fullName,
+                email: pax.email,
+                phone: pax.phone,
+                passportNumber: pax.passportNumber,
+                nationality: pax.nationality,
+                passengerType: pax.passengerType,
+                priceCents: pax.priceCents,
+                allocatesSeat: allocatesSeat(pax.passengerType),
+                ticketNumber: passengerTickets[index]!,
+              })),
+            },
           },
         });
 

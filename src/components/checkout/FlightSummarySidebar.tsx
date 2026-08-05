@@ -1,5 +1,10 @@
 import Link from "next/link";
 import {
+  childFareCents,
+  infantFareCents,
+  quotePartyFareCents,
+} from "@/lib/booking/passengers";
+import {
   formatCardDate,
   formatClock,
   formatDuration,
@@ -24,11 +29,27 @@ export function FlightSummarySidebar({
       .filter(Boolean)
       .join(" · ") || "Charter fare";
 
-  const adults = Math.max(1, quote.seatsBooked || 1);
-  const totalCents = quote.quotedPriceCents * adults;
+  const isParty = quote.unitAdultFareCents > 0;
+  const unit = quote.unitAdultFareCents || quote.quotedPriceCents;
+  const adults = isParty
+    ? Math.max(1, quote.adultCount || 1)
+    : Math.max(1, quote.seatsBooked || 1);
+  const children = isParty ? Math.max(0, quote.childCount || 0) : 0;
+  const infants = isParty ? Math.max(0, quote.infantCount || 0) : 0;
+  const totalCents = quotePartyFareCents(quote);
+
+  const mixParts = [
+    `${adults} adult${adults === 1 ? "" : "s"}`,
+    children > 0
+      ? `${children} child${children === 1 ? "" : "ren"}`
+      : null,
+    infants > 0
+      ? `${infants} infant${infants === 1 ? "" : "s"}`
+      : null,
+  ].filter(Boolean);
 
   return (
-    <aside className="rounded-2xl border border-line bg-white p-5 shadow-[0_10px_32px_rgba(15, 23, 42,0.08)] sm:p-6 lg:sticky lg:top-24">
+    <aside className="rounded-2xl border border-line bg-white p-5 shadow-[0_10px_32px_rgba(15,23,42,0.08)] sm:p-6 lg:sticky lg:top-24">
       <SegmentBlock
         label="Departure"
         origin={quote.flight.origin}
@@ -39,7 +60,7 @@ export function FlightSummarySidebar({
         flightNumber={quote.flight.flightNumber}
         fareLabel={fareLabel}
         changeHref={changeHref}
-        detailsHref={`/flights/${quote.flight.id}`}
+        detailsHref={`/flights/${quote.flight.id}?adults=${adults}&children=${children}&infants=${infants}`}
       />
 
       {isRound && quote.returnFlight ? (
@@ -56,16 +77,49 @@ export function FlightSummarySidebar({
               quote.returnFareReleaseName || quote.fareProductName || fareLabel
             }
             changeHref={changeHref}
-            detailsHref={`/flights/trip?outboundId=${quote.flightId}&returnId=${quote.returnFlightId}`}
+            detailsHref={`/flights/trip?outboundId=${quote.flightId}&returnId=${quote.returnFlightId}&adults=${adults}&children=${children}&infants=${infants}`}
           />
         </div>
       ) : null}
 
       <div className="mt-6 space-y-2.5 border-t border-dashed border-line pt-5 text-sm">
-        <div className="flex justify-between gap-4">
-          <span className="text-muted">Air Transportation Charge</span>
-          <span className="font-medium">{formatAud(totalCents)}</span>
-        </div>
+        {isParty ? (
+          <>
+            <div className="flex justify-between gap-4">
+              <span className="text-muted">
+                Adult × {adults}
+              </span>
+              <span className="font-medium">
+                {formatAud(unit * adults)}
+              </span>
+            </div>
+            {children > 0 ? (
+              <div className="flex justify-between gap-4">
+                <span className="text-muted">
+                  Child × {children} (75%)
+                </span>
+                <span className="font-medium">
+                  {formatAud(childFareCents(unit) * children)}
+                </span>
+              </div>
+            ) : null}
+            {infants > 0 ? (
+              <div className="flex justify-between gap-4">
+                <span className="text-muted">
+                  Infant × {infants} (10%)
+                </span>
+                <span className="font-medium">
+                  {formatAud(infantFareCents(unit) * infants)}
+                </span>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div className="flex justify-between gap-4">
+            <span className="text-muted">Air Transportation Charge</span>
+            <span className="font-medium">{formatAud(totalCents)}</span>
+          </div>
+        )}
         <div className="flex justify-between gap-4">
           <span className="text-muted">Taxes, Fees, and Charges</span>
           <span className="font-medium">{formatAud(0)}</span>
@@ -77,8 +131,8 @@ export function FlightSummarySidebar({
           </span>
         </div>
         <p className="text-xs text-muted">
-          {adults} Adult{adults === 1 ? "" : "s"}. Total trip price for all
-          passengers including taxes and fees.
+          {mixParts.join(", ")}. Total trip price for all travellers including
+          taxes and fees.
         </p>
       </div>
 

@@ -24,7 +24,8 @@ const AU_STATES = [
 type CardCheckoutFormProps = {
   quoteId: string;
   maxSeats: number;
-  unitPriceCents: number;
+  /** Total airfare for the party (or legacy unit×seats already applied). */
+  partyFareCents: number;
   initialPassenger: {
     passengerName: string;
     email: string;
@@ -53,7 +54,7 @@ function splitPassengerName(fullName: string) {
 export function CardCheckoutForm({
   quoteId,
   maxSeats,
-  unitPriceCents,
+  partyFareCents,
   initialPassenger,
   stripe,
 }: CardCheckoutFormProps) {
@@ -64,7 +65,7 @@ export function CardCheckoutForm({
   const nationality = (initialPassenger.nationality ?? "").trim();
   const seatsBooked = Math.min(
     Math.max(1, initialPassenger.seatsBooked ?? 1),
-    Math.min(9, Math.max(1, maxSeats)),
+    Math.min(9, Math.max(1, maxSeats || initialPassenger.seatsBooked || 1)),
   );
   const [billingLine1, setBillingLine1] = useState("");
   const [billingLine2, setBillingLine2] = useState("");
@@ -75,7 +76,7 @@ export function CardCheckoutForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const fareCents = unitPriceCents * seatsBooked;
+  const fareCents = partyFareCents;
   const fee = useMemo(() => calculateCardServiceFee(fareCents), [fareCents]);
 
   const passengerOk =

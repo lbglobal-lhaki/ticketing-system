@@ -19,6 +19,9 @@ type FlightResultsClientProps = {
   returnDate?: string;
   tripType: "one_way" | "round_trip";
   passengers?: number;
+  adults?: number;
+  children?: number;
+  infants?: number;
   cabinClass?: "economy" | "business";
   allTickets?: boolean;
   title?: string;
@@ -42,6 +45,9 @@ export function FlightResultsClient({
   returnDate,
   tripType,
   passengers = 1,
+  adults = 1,
+  children = 0,
+  infants = 0,
   cabinClass = "economy",
   allTickets = false,
   summaryTitle,
@@ -138,6 +144,9 @@ export function FlightResultsClient({
         returnDate={returnDate}
         tripType={tripType}
         passengers={passengers}
+        adults={adults}
+        children={children}
+        infants={infants}
         cabinClass={cabinClass}
         allTickets={allTickets}
         title={summaryTitle}

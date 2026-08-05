@@ -18,6 +18,9 @@ type FareComparisonRowProps = {
   returnFlightId?: string;
   supportEmail: string;
   disabled?: boolean;
+  adults?: number;
+  children?: number;
+  infants?: number;
   title?: string;
   subtitle?: string;
 };
@@ -28,6 +31,9 @@ export function FareComparisonRow({
   returnFlightId,
   supportEmail,
   disabled,
+  adults = 1,
+  children = 0,
+  infants = 0,
   title = "Choose your fare",
   subtitle = "Chartered flight fares for Perth ⇄ Paro — compare rules, then select.",
 }: FareComparisonRowProps) {
@@ -90,6 +96,9 @@ export function FareComparisonRow({
               product={product}
               flightId={flightId}
               returnFlightId={returnFlightId}
+              adults={adults}
+              children={children}
+              infants={infants}
               disabled={disabled || !product.available}
               onMoreDetails={() => setDetailsId(product.id)}
             />
@@ -130,12 +139,18 @@ function FareCard({
   product,
   flightId,
   returnFlightId,
+  adults,
+  children,
+  infants,
   disabled,
   onMoreDetails,
 }: {
   product: FareProduct;
   flightId: string;
   returnFlightId?: string;
+  adults: number;
+  children: number;
+  infants: number;
   disabled?: boolean;
   onMoreDetails: () => void;
 }) {
@@ -199,6 +214,9 @@ function FareCard({
             flightId={flightId}
             returnFlightId={returnFlightId}
             fareProductId={product.id}
+            adults={adults}
+            children={children}
+            infants={infants}
             label="Select Fares"
             buttonClassName={
               elevated

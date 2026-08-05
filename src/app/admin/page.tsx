@@ -433,6 +433,12 @@ export default async function AdminPage({
                 passportNumber: p.passportNumber,
                 nationality: p.nationality,
                 ticketNumber: p.ticketNumber,
+                passengerType: p.passengerType as
+                  | "adult"
+                  | "child"
+                  | "infant",
+                priceCents: p.priceCents,
+                allocatesSeat: p.allocatesSeat,
               })),
               flight: {
                 flightNumber: b.flight.flightNumber,
