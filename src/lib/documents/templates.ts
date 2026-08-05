@@ -1,6 +1,15 @@
 import { renderAirfareInvoiceHtml as renderAirfareInvoiceHtmlImpl } from "@/lib/documents/airfareInvoice";
 import { renderTravelDocumentHtml as renderTravelDocumentHtmlImpl } from "@/lib/documents/travelDocument";
 
+export type BookingDocumentPassenger = {
+  fullName: string;
+  email?: string | null;
+  phone?: string | null;
+  passportNumber?: string | null;
+  nationality?: string | null;
+  ticketNumber: string;
+};
+
 export type BookingDocumentData = {
   bookingRef: string;
   ticketNumber: string;
@@ -12,6 +21,8 @@ export type BookingDocumentData = {
   passengerPhone?: string | null;
   passportNumber?: string | null;
   nationality?: string | null;
+  /** All named travellers (primary first). Falls back to passengerName when empty. */
+  passengers: BookingDocumentPassenger[];
   seatsBooked: number;
   fareReleaseName: string;
   fareProductName?: string;

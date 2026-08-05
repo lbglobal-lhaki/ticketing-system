@@ -236,11 +236,30 @@ model Booking {
   holdExpiresAt       DateTime?
   createdAt           DateTime       @default(now())
   invoice             Invoice?
+  passengers          BookingPassenger[]
 
   @@index([flightId])
   @@index([email])
   @@index([status, holdExpiresAt])
   @@index([createdAt])
+}
+
+/// Named travellers on a booking (primary + extras). Online single-pax
+/// bookings may omit rows and fall back to Booking.passengerName fields.
+model BookingPassenger {
+  id             String   @id @default(cuid())
+  bookingId      String
+  booking        Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  sortOrder      Int      @default(0)
+  fullName       String
+  email          String   @default("")
+  phone          String   @default("")
+  passportNumber String   @default("")
+  nationality    String   @default("")
+  ticketNumber   String   @unique
+  createdAt      DateTime @default(now())
+
+  @@index([bookingId])
 }
 
 model Invoice {

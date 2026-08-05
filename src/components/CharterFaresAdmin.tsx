@@ -139,8 +139,16 @@ function FareForm({
   tripMode: "one_way" | "round_trip";
 }) {
   const isRoundTrip = tripMode === "round_trip";
-  const oneWayCents = fare.priceCents ?? 0;
-  const roundTripCents = fare.roundTripPriceCents ?? 0;
+  // Keep both prices in live state so switching One way / Round trip does
+  // not discard an unsaved edit (hidden field used to re-submit prop values).
+  const [oneWayAud, setOneWayAud] = useState(
+    ((fare.priceCents ?? 0) / 100).toFixed(2),
+  );
+  const [roundTripAud, setRoundTripAud] = useState(
+    ((fare.roundTripPriceCents ?? 0) / 100).toFixed(2),
+  );
+  const oneWayCents = Math.round(Number(oneWayAud || "0") * 100);
+  const roundTripCents = Math.round(Number(roundTripAud || "0") * 100);
   const activeCents = isRoundTrip ? roundTripCents : oneWayCents;
 
   return (
@@ -152,11 +160,7 @@ function FareForm({
       <input
         type="hidden"
         name={isRoundTrip ? "priceAud" : "roundTripPriceAud"}
-        value={
-          isRoundTrip
-            ? (oneWayCents / 100).toFixed(2)
-            : (roundTripCents / 100).toFixed(2)
-        }
+        value={isRoundTrip ? oneWayAud : roundTripAud}
       />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -164,8 +168,8 @@ function FareForm({
             {fare.name}
           </p>
           <p className="text-xs text-muted">
-            code: {fare.code} · one-way {formatAud(oneWayCents)} · RT{" "}
-            {formatAud(roundTripCents)}
+            code: {fare.code} · one-way {formatAud(Math.round(Number(oneWayAud || "0") * 100))} · RT{" "}
+            {formatAud(Math.round(Number(roundTripAud || "0") * 100))}
           </p>
         </div>
         <div className="flex flex-wrap gap-4 text-sm">
@@ -203,10 +207,15 @@ function FareForm({
             saved {formatAud(activeCents)}
           </span>
           <MoneyInput
-            key={`${fare.id}-${tripMode}-${activeCents}`}
+            key={`${fare.id}-${tripMode}`}
             name={isRoundTrip ? "roundTripPriceAud" : "priceAud"}
-            defaultValue={(activeCents / 100).toFixed(2)}
+            defaultValue={isRoundTrip ? roundTripAud : oneWayAud}
             required
+            onChange={(e) => {
+              const v = e.target.value;
+              if (isRoundTrip) setRoundTripAud(v);
+              else setOneWayAud(v);
+            }}
             className={fieldClass}
           />
         </label>

@@ -197,7 +197,6 @@ function boardingPass(
 export function renderTravelDocumentHtml(data: BookingDocumentData) {
   const brand = getBrand();
   const invoice = data.invoice;
-  const ticketCode = displayTicketCode(data.ticketNumber);
   const seat = invoice?.seatLabel?.trim() || "TBA";
   const nameRef = invoice?.nameRef?.trim() || data.bookingRef.slice(-7);
   const fareName = data.fareProductName || data.fareReleaseName || "";
@@ -667,14 +666,57 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
     }
   `;
 
-  const passOpts = {
-    passengerName: data.passengerName,
-    ticketCode,
-    issueDate: data.createdAt,
-    seat,
-    baggage: baggage.split("(")[0].trim() || "1 PIECE",
-    mapUri,
-  };
+  const travellers =
+    data.passengers?.length > 0
+      ? data.passengers
+      : [
+          {
+            fullName: data.passengerName,
+            ticketNumber: data.ticketNumber,
+            passportNumber: data.passportNumber,
+            nationality: data.nationality,
+            email: data.email,
+            phone: data.passengerPhone,
+          },
+        ];
+
+  const boardingPasses = unpaid
+    ? ""
+    : travellers
+        .flatMap((pax) => {
+          const opts = {
+            passengerName: pax.fullName,
+            ticketCode: displayTicketCode(pax.ticketNumber),
+            issueDate: data.createdAt,
+            seat,
+            baggage: baggage.split("(")[0].trim() || "1 PIECE",
+            mapUri,
+          };
+          const legs = [boardingPass(data.flight, opts)];
+          if (data.returnFlight) {
+            legs.push(boardingPass(data.returnFlight, opts));
+          }
+          return legs;
+        })
+        .join("\n");
+
+  const guestRows = travellers
+    .map(
+      (pax, i) => `
+          <div><b>${travellers.length > 1 ? `Passenger ${i + 1}:` : "Guest Name:"}</b> ${esc(pax.fullName)}</div>
+          <div><b>Ticket Number:</b> ${esc(displayTicketCode(pax.ticketNumber))}</div>
+          ${
+            pax.passportNumber
+              ? `<div><b>Passport:</b> ${esc(pax.passportNumber)}</div>`
+              : ""
+          }
+          ${
+            pax.nationality
+              ? `<div><b>Nationality:</b> ${esc(pax.nationality)}</div>`
+              : ""
+          }`,
+    )
+    .join("");
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -749,10 +791,10 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
       <div style="flex:1">
         <h2>Guest Information</h2>
         <div class="guest-box">
-          <div><b>Ticket Number:</b> ${esc(ticketCode)}</div>
-          <div><b>Guest Name:</b> ${esc(data.passengerName)}</div>
+          ${guestRows}
           <div><b>Name REF:</b> ${esc(nameRef)}</div>
           <div><b>Issue Date:</b> ${esc(ticketDate(data.createdAt))}</div>
+          <div><b>Travellers:</b> ${esc(String(travellers.length))}</div>
           <div><b>Issuing Airline:</b> ${esc(brand.issuingAirline)}</div>
           <div><b>Issuing Agent:</b> ${esc(brand.issuingAgent)}</div>
         </div>
@@ -779,8 +821,7 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
             <strong>Awaiting payment confirmation</strong>
             <p>Boarding passes are issued only after your bank transfer is verified. This page is a reservation summary, not a travel document.</p>
           </div>`
-        : `${boardingPass(data.flight, passOpts)}
-    ${data.returnFlight ? boardingPass(data.returnFlight, passOpts) : ""}`
+        : boardingPasses
     }
 
     <div class="mid-split">

@@ -250,6 +250,7 @@ export default async function AdminPage({
     "booking-paid":
       "Bank transfer marked paid. Confirmation email is sending in the background.",
     "booking-unpaid": "Booking marked unpaid — 48h hold restored.",
+    "booking-updated": "Booking saved.",
     "booking-deleted":
       "Booking (and its invoice, if any) deleted — logged in the Deleted tab.",
     "bookings-deleted":
@@ -410,6 +411,10 @@ export default async function AdminPage({
               tripType: b.tripType,
               passengerName: b.passengerName,
               email: b.email,
+              passengerPhone: b.passengerPhone,
+              passportNumber: b.passportNumber,
+              nationality: b.nationality,
+              seatsBooked: b.seatsBooked,
               amountPaidCents: b.amountPaidCents,
               fareReleaseName: b.fareReleaseName,
               extraBaggageKg: b.extraBaggageKg,

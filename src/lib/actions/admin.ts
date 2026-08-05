@@ -10,16 +10,14 @@ import {
   fareTemplateForCabin,
   totalSeatsFromReleases,
 } from "@/lib/fares/templates";
+import { restoreFareAndFlight } from "@/lib/booking/inventory";
+import { parseDateTimeLocal } from "@/lib/datetime";
 import { flightFormSchema, parseFareReleasesFromForm } from "@/lib/validation";
 import { z } from "zod";
 
-
-function parseDateTimeLocal(value: string): Date {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) {
-    throw new Error("Invalid date/time");
-  }
-  return d;
+function parseTzOffsetMinutes(formData: FormData): number {
+  const raw = Number(formData.get("tzOffsetMinutes"));
+  return Number.isFinite(raw) ? raw : 0;
 }
 
 function redirectFormError(message: string): never {
@@ -58,11 +56,12 @@ export async function createFlightAction(formData: FormData) {
     redirectFormError("From and To must be different");
   }
 
+  const tzOffsetMinutes = parseTzOffsetMinutes(formData);
   let departureAt: Date;
   let arrivalAt: Date;
   try {
-    departureAt = parseDateTimeLocal(data.departureAt);
-    arrivalAt = parseDateTimeLocal(data.arrivalAt);
+    departureAt = parseDateTimeLocal(data.departureAt, tzOffsetMinutes);
+    arrivalAt = parseDateTimeLocal(data.arrivalAt, tzOffsetMinutes);
   } catch {
     redirectFormError("Invalid departure or arrival time");
   }
@@ -139,13 +138,18 @@ export async function updateFlightAction(formData: FormData) {
   }
 
   const data = parsed.data;
+  const tzOffsetMinutes = parseTzOffsetMinutes(formData);
   let departureAt: Date;
   let arrivalAt: Date;
   try {
-    departureAt = parseDateTimeLocal(data.departureAt);
-    arrivalAt = parseDateTimeLocal(data.arrivalAt);
+    departureAt = parseDateTimeLocal(data.departureAt, tzOffsetMinutes);
+    arrivalAt = parseDateTimeLocal(data.arrivalAt, tzOffsetMinutes);
   } catch {
     redirectFormError("Invalid departure or arrival time");
+  }
+
+  if (arrivalAt <= departureAt) {
+    redirectFormError("Arrival must be after departure");
   }
 
   let releases;
@@ -408,6 +412,7 @@ export async function deleteFlightAction(formData: FormData) {
     redirect("/admin?tab=flights&error=Flight(s)+not+found");
   }
 
+  const idSet = new Set(ids);
   const bookings = await prisma.booking.findMany({
     where: { OR: [{ flightId: { in: ids } }, { returnFlightId: { in: ids } }] },
     include: {
@@ -419,6 +424,38 @@ export async function deleteFlightAction(formData: FormData) {
   await prisma.$transaction(
     async (tx) => {
       for (const booking of bookings) {
+        // If only one leg of a round-trip is being deleted, return seats on
+        // the surviving flight so inventory isn't stuck "sold".
+        if (
+          booking.status !== "hold_expired" &&
+          booking.seatsBooked > 0
+        ) {
+          const outboundGone = idSet.has(booking.flightId);
+          const returnGone = booking.returnFlightId
+            ? idSet.has(booking.returnFlightId)
+            : true;
+          if (!outboundGone && booking.fareReleaseId) {
+            await restoreFareAndFlight(
+              tx,
+              booking.flightId,
+              booking.fareReleaseId,
+              booking.seatsBooked,
+            );
+          }
+          if (
+            !returnGone &&
+            booking.returnFlightId &&
+            booking.returnFareReleaseId
+          ) {
+            await restoreFareAndFlight(
+              tx,
+              booking.returnFlightId,
+              booking.returnFareReleaseId,
+              booking.seatsBooked,
+            );
+          }
+        }
+
         if (booking.invoice) {
           await recordDeletion(
             {

@@ -22,6 +22,7 @@ import {
   markBookingPaidAction,
   markBookingUnpaidAction,
 } from "@/lib/actions/walkIn";
+import { BookingEditModal } from "@/components/BookingEditModal";
 import {
   DeletedRecordsPanel,
   type AdminDeletedRecordRow,
@@ -44,7 +45,7 @@ import {
   SelectAllCheckbox,
   useBulkSelection,
 } from "@/components/BulkSelectBar";
-import { toDateTimeLocalValue } from "@/lib/datetime";
+import { formatFlightDateTime, toDateTimeLocalValue } from "@/lib/datetime";
 import {
   BUSINESS_FARE_TEMPLATE,
   ECONOMY_FARE_TEMPLATE,
@@ -89,6 +90,10 @@ type BookingRow = {
   tripType: TripType;
   passengerName: string;
   email: string;
+  passengerPhone: string;
+  passportNumber: string;
+  nationality: string;
+  seatsBooked: number;
   amountPaidCents: number;
   fareReleaseName: string;
   extraBaggageKg: number;
@@ -305,7 +310,14 @@ export function AdminDashboard({
   const [walkInOutboundChoice, setWalkInOutboundChoice] = useState("");
   const [walkInReturnChoice, setWalkInReturnChoice] = useState("");
   const [walkInTripType, setWalkInTripType] = useState<TripType>("one_way");
+  const [extraPassengerCount, setExtraPassengerCount] = useState(0);
+  const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
   const [bulkPending, startBulkTransition] = useTransition();
+
+  const editingBooking = useMemo(
+    () => bookings.find((b) => b.id === editingBookingId) ?? null,
+    [bookings, editingBookingId],
+  );
 
   // Every save/delete/etc. here submits a form (or a bulk action) that
   // redirects back to /admin?tab=...&saved=... . Next keeps the *old*
@@ -350,6 +362,7 @@ export function AdminDashboard({
       setWalkInOutboundChoice("");
       setWalkInReturnChoice("");
       setWalkInTripType("one_way");
+      setExtraPassengerCount(0);
     }
     // After a successful flight add/edit, drop out of "edit" mode — otherwise
     // the redirect lands back on the Flights tab but the "Add / Edit" nav tab
@@ -475,6 +488,20 @@ export function AdminDashboard({
   }
 
   function openEdit(id: string) {
+    const flight = flights.find((f) => f.id === id);
+    if (flight) {
+      // Sync fare rows before the form mounts so uncontrolled MoneyInputs
+      // get the real saved prices (not stale zeros from the previous flight).
+      setCabinClass(flight.cabinClass);
+      setFareRows(
+        flight.fareReleases.length > 0
+          ? flight.fareReleases.map((r) => ({
+              ...r,
+              roundTripPriceCents: r.roundTripPriceCents ?? 0,
+            }))
+          : templateToRows(flight.cabinClass),
+      );
+    }
     setEditingId(id);
     selectTab("form");
   }
@@ -788,6 +815,12 @@ export function AdminDashboard({
                         {f.origin} → {f.destination}
                       </p>
                       <p className="text-sm text-muted">
+                        Departs {formatFlightDateTime(f.departureAt)}
+                      </p>
+                      <p className="text-sm text-muted">
+                        Arrives {formatFlightDateTime(f.arrivalAt)}
+                      </p>
+                      <p className="text-sm text-muted">
                         {f.remainingSeats}/{f.totalSeats} seats across fare
                         releases
                       </p>
@@ -926,6 +959,11 @@ export function AdminDashboard({
             className="mt-8 grid max-w-3xl gap-6 sm:grid-cols-2"
           >
             {editing && <input type="hidden" name="id" value={editing.id} />}
+            <input
+              type="hidden"
+              name="tzOffsetMinutes"
+              value={new Date().getTimezoneOffset()}
+            />
 
             <label className="space-y-1 text-sm">
               <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
@@ -1066,7 +1104,7 @@ export function AdminDashboard({
               </div>
               {fareRows.map((row, index) => (
                 <div
-                  key={`${row.id ?? "new"}-${index}`}
+                  key={`${row.id ?? "new"}-${index}-${row.priceCents}-${row.roundTripPriceCents}`}
                   className="grid gap-3 border-t border-line pt-4 sm:grid-cols-4"
                 >
                   <input type="hidden" name="fareSortOrder" value={row.sortOrder} />
@@ -1117,6 +1155,7 @@ export function AdminDashboard({
                       One-way price (AUD)
                     </span>
                     <MoneyInput
+                      key={`ow-${row.id ?? index}-${row.priceCents}`}
                       name="farePriceAud"
                       required
                       defaultValue={(row.priceCents / 100).toFixed(2)}
@@ -1128,6 +1167,7 @@ export function AdminDashboard({
                       Round-trip price (AUD) / leg
                     </span>
                     <MoneyInput
+                      key={`rt-${row.id ?? index}-${row.roundTripPriceCents}`}
                       name="fareRoundTripPriceAud"
                       required
                       defaultValue={(row.roundTripPriceCents / 100).toFixed(2)}
@@ -1395,55 +1435,171 @@ export function AdminDashboard({
                   booking (all seats/legs, before baggage).
                 </span>
               </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                  Passenger name
-                </span>
-                <input name="passengerName" required className={fieldClass} />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                  Email
-                </span>
-                <input
-                  name="email"
-                  type="email"
-                  required
-                  className={fieldClass}
-                />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                  Phone
-                </span>
-                <input name="passengerPhone" className={fieldClass} />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                  Passport
-                </span>
-                <input name="passportNumber" className={fieldClass} />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                  Nationality
-                </span>
-                <input name="nationality" className={fieldClass} />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                  Seats
-                </span>
-                <input
-                  name="seatsBooked"
-                  type="number"
-                  min={1}
-                  max={9}
-                  defaultValue={1}
-                  required
-                  className={fieldClass}
-                />
-              </label>
+              <input
+                type="hidden"
+                name="tzOffsetMinutes"
+                value={new Date().getTimezoneOffset()}
+              />
+              <div className="sm:col-span-2 space-y-3 border border-line bg-white/50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                  Primary passenger (contact)
+                </p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="space-y-1 text-sm">
+                    <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                      Passenger name
+                    </span>
+                    <input name="passengerName" required className={fieldClass} />
+                  </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                      Email
+                    </span>
+                    <input
+                      name="email"
+                      type="email"
+                      required
+                      className={fieldClass}
+                    />
+                  </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                      Phone
+                    </span>
+                    <input name="passengerPhone" className={fieldClass} />
+                  </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                      Passport
+                    </span>
+                    <input name="passportNumber" className={fieldClass} />
+                  </label>
+                  <label className="space-y-1 text-sm sm:col-span-2">
+                    <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                      Nationality
+                    </span>
+                    <input name="nationality" className={fieldClass} />
+                  </label>
+                </div>
+              </div>
+
+              <div className="sm:col-span-2 space-y-3 border border-line bg-white/50 p-4">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                      Extra passengers
+                    </p>
+                    <p className="mt-1 text-sm text-muted">
+                      Each gets their own ticket on the travel document and is
+                      listed on the invoice. Total seats = 1 + extras (max 9).
+                    </p>
+                  </div>
+                  <label className="space-y-1 text-sm">
+                    <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                      How many extras
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={8}
+                      value={extraPassengerCount}
+                      onChange={(e) => {
+                        const n = Math.min(
+                          8,
+                          Math.max(0, Number(e.target.value) || 0),
+                        );
+                        setExtraPassengerCount(n);
+                      }}
+                      className={fieldClass}
+                    />
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExtraPassengerCount((n) => Math.min(8, n + 1))
+                    }
+                    className="border border-line bg-white px-3 py-2 text-sm font-medium text-accent transition hover:border-accent"
+                  >
+                    Add extra passenger
+                  </button>
+                  {extraPassengerCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExtraPassengerCount((n) => Math.max(0, n - 1))
+                      }
+                      className="border border-line bg-white px-3 py-2 text-sm font-medium text-muted transition hover:text-red-700"
+                    >
+                      Remove last
+                    </button>
+                  )}
+                </div>
+                <p className="text-sm text-muted">
+                  Seats for this booking:{" "}
+                  <span className="font-medium text-foreground">
+                    {1 + extraPassengerCount}
+                  </span>
+                </p>
+                {Array.from({ length: extraPassengerCount }, (_, i) => (
+                  <div
+                    key={`extra-pax-${i}`}
+                    className="grid gap-4 border-t border-line pt-4 sm:grid-cols-2"
+                  >
+                    <p className="sm:col-span-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                      Extra passenger {i + 1}
+                    </p>
+                    <label className="space-y-1 text-sm">
+                      <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                        Full name
+                      </span>
+                      <input
+                        name="extraPassengerName"
+                        required
+                        className={fieldClass}
+                      />
+                    </label>
+                    <label className="space-y-1 text-sm">
+                      <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                        Email
+                      </span>
+                      <input
+                        name="extraPassengerEmail"
+                        type="email"
+                        className={fieldClass}
+                      />
+                    </label>
+                    <label className="space-y-1 text-sm">
+                      <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                        Phone
+                      </span>
+                      <input
+                        name="extraPassengerPhone"
+                        className={fieldClass}
+                      />
+                    </label>
+                    <label className="space-y-1 text-sm">
+                      <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                        Passport
+                      </span>
+                      <input
+                        name="extraPassengerPassport"
+                        className={fieldClass}
+                      />
+                    </label>
+                    <label className="space-y-1 text-sm sm:col-span-2">
+                      <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                        Nationality
+                      </span>
+                      <input
+                        name="extraPassengerNationality"
+                        className={fieldClass}
+                      />
+                    </label>
+                  </div>
+                ))}
+              </div>
               <label className="space-y-1 text-sm">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
                   Extra baggage (kg)
@@ -1594,6 +1750,11 @@ export function AdminDashboard({
                       <td className="px-4 py-4">
                         <p>{b.passengerName}</p>
                         <p className="text-xs text-muted">{b.email}</p>
+                        {b.seatsBooked > 1 ? (
+                          <p className="text-xs text-muted">
+                            {b.seatsBooked} passengers
+                          </p>
+                        ) : null}
                       </td>
                       <td className="px-4 py-4 text-muted">
                         {b.flight.flightNumber} {b.flight.origin}→
@@ -1611,6 +1772,15 @@ export function AdminDashboard({
                         {formatAud(b.amountPaidCents)}
                       </td>
                       <td className="px-4 py-4">
+                        {b.status !== "cancelled" ? (
+                          <button
+                            type="button"
+                            onClick={() => setEditingBookingId(b.id)}
+                            className="mb-1.5 block border border-line px-3 py-1.5 text-xs font-medium text-muted transition hover:border-accent hover:text-foreground"
+                          >
+                            Edit
+                          </button>
+                        ) : null}
                         {b.paymentMethod === "bank_transfer" &&
                         b.status === "pending_payment" ? (
                           <form action={markBookingPaidAction}>
@@ -1681,6 +1851,33 @@ export function AdminDashboard({
 
       {tab === "deleted" && (
         <DeletedRecordsPanel records={deletedRecords} />
+      )}
+
+      {editingBooking && (
+        <BookingEditModal
+          booking={{
+            id: editingBooking.id,
+            bookingRef: editingBooking.bookingRef,
+            ticketNumber: editingBooking.ticketNumber,
+            passengerName: editingBooking.passengerName,
+            email: editingBooking.email,
+            passengerPhone: editingBooking.passengerPhone,
+            passportNumber: editingBooking.passportNumber,
+            nationality: editingBooking.nationality,
+            seatsBooked: editingBooking.seatsBooked,
+            extraBaggageKg: editingBooking.extraBaggageKg,
+            fareReleaseName: editingBooking.fareReleaseName,
+            amountPaidCents: editingBooking.amountPaidCents,
+            status: editingBooking.status,
+            paymentMethod: editingBooking.paymentMethod,
+            flightLabel: `${editingBooking.flight.flightNumber} ${editingBooking.flight.origin}→${editingBooking.flight.destination}${
+              editingBooking.returnFlight
+                ? ` · ${editingBooking.returnFlight.flightNumber} ${editingBooking.returnFlight.origin}→${editingBooking.returnFlight.destination}`
+                : ""
+            }`,
+          }}
+          onClose={() => setEditingBookingId(null)}
+        />
       )}
     </div>
   );

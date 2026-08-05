@@ -21,6 +21,7 @@ import {
 } from "@/lib/email/bookingMail";
 import { invalidateInvoicePdfBlob } from "@/lib/documents/invoiceBlob";
 import { recordDeletion } from "@/lib/audit/deletionLog";
+import { parseDateTimeLocal } from "@/lib/datetime";
 import { z } from "zod";
 
 
@@ -257,10 +258,22 @@ async function persistInvoiceDocument(formData: FormData) {
     gstOverrideCents,
   });
 
+  // Empty dueAt clears; filled value uses admin browser TZ (same as flights).
   let dueAt: Date | null = existing.dueAt;
-  if (parsed.data.dueAt) {
-    const d = new Date(parsed.data.dueAt);
-    if (!Number.isNaN(d.getTime())) dueAt = d;
+  const dueRaw = formData.get("dueAt");
+  if (dueRaw !== null) {
+    const dueStr = String(dueRaw).trim();
+    if (!dueStr) {
+      dueAt = null;
+    } else {
+      const tzRaw = Number(formData.get("tzOffsetMinutes"));
+      const tzOffsetMinutes = Number.isFinite(tzRaw) ? tzRaw : 0;
+      try {
+        dueAt = parseDateTimeLocal(dueStr, tzOffsetMinutes);
+      } catch {
+        return { ok: false as const, error: "Invalid due date/time" };
+      }
+    }
   }
 
   await prisma.invoice.update({
@@ -307,6 +320,24 @@ async function persistInvoiceDocument(formData: FormData) {
       serviceFeeCents,
     },
   });
+
+  // Travel docs prefer BookingPassenger rows when present — keep primary in sync.
+  const primaryPax = await prisma.bookingPassenger.findFirst({
+    where: { bookingId: existing.bookingId },
+    orderBy: { sortOrder: "asc" },
+  });
+  if (primaryPax) {
+    await prisma.bookingPassenger.update({
+      where: { id: primaryPax.id },
+      data: {
+        fullName: parsed.data.customerName,
+        email: parsed.data.customerEmail,
+        phone: parsed.data.customerPhone || "",
+        passportNumber: parsed.data.passportNumber || "",
+        nationality: parsed.data.nationality || "",
+      },
+    });
+  }
 
   // Don't revalidatePath("/admin") here — the invoice modal updates local
   // state + preview iframe. Full admin revalidation was reloading the whole

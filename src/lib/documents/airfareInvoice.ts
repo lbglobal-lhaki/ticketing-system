@@ -390,6 +390,23 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
             <div class="row"><span>Passport No:</span><span>${esc(data.passportNumber || "—")}</span></div>
             <div class="row"><span>Email:</span><span>${esc(data.email)}</span></div>
             <div class="row"><span>Phone:</span><span>${esc(data.passengerPhone || invoice.customerPhone || "—")}</span></div>
+            ${
+              (data.passengers?.length ?? 0) > 1
+                ? `<div class="row"><span>Passengers:</span><span>${esc(
+                    data.passengers
+                      .map(
+                        (p) =>
+                          `${p.fullName}${
+                            p.passportNumber ? ` (${p.passportNumber})` : ""
+                          }`,
+                      )
+                      .join("; "),
+                  )}</span></div>
+                <div class="row"><span>Tickets:</span><span>${esc(
+                  data.passengers.map((p) => p.ticketNumber).join(", "),
+                )}</span></div>`
+                : ""
+            }
           </div>
         </div>
         <div class="meta">

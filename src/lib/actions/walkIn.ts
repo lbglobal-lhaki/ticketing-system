@@ -25,6 +25,11 @@ import {
 import {
   sendBookingConfirmationBundle,
 } from "@/lib/email/bookingMail";
+import {
+  decrementFareAndFlight,
+  restoreFareAndFlight,
+} from "@/lib/booking/inventory";
+import { parseDateTimeLocal } from "@/lib/datetime";
 import { getCurrentFareRelease } from "@/lib/fares/current";
 import {
   getBankTransferDetails,
@@ -34,6 +39,21 @@ import { calculateCardServiceFee } from "@/lib/payments/fees";
 import { priceFlight, splitRoundTripPackageCents } from "@/lib/pricing/service";
 import { z } from "zod";
 
+const passengerDetailSchema = z.object({
+  fullName: z.string().trim().min(2).max(120),
+  email: z
+    .string()
+    .trim()
+    .max(120)
+    .refine((v) => v === "" || z.string().email().safeParse(v).success, {
+      message: "Invalid email",
+    }),
+  phone: z.string().trim().max(40).optional().or(z.literal("")),
+  passportNumber: z.string().trim().max(40).optional().or(z.literal("")),
+  nationality: z.string().trim().max(60).optional().or(z.literal("")),
+});
+
+type PassengerDetail = z.infer<typeof passengerDetailSchema>;
 
 const walkInSchema = z.object({
   flightId: z.string().min(1),
@@ -44,7 +64,6 @@ const walkInSchema = z.object({
   passengerPhone: z.string().trim().max(40).optional().or(z.literal("")),
   passportNumber: z.string().trim().max(40).optional().or(z.literal("")),
   nationality: z.string().trim().max(60).optional().or(z.literal("")),
-  seatsBooked: z.coerce.number().int().min(1).max(9),
   paymentMethod: z.enum(["cash", "card", "bank_transfer"]),
   extraBaggageKg: z.coerce.number().int().min(0).max(500).default(0),
   extraBaggageAud: z.coerce.number().min(0).max(100000).default(0),
@@ -53,6 +72,35 @@ const walkInSchema = z.object({
   gstMode: z.enum(["none", "exclusive", "inclusive"]).default("none"),
   customGstAud: z.string().trim().optional().or(z.literal("")),
 });
+
+function parseExtraPassengers(formData: FormData): PassengerDetail[] {
+  const names = formData.getAll("extraPassengerName").map(String);
+  const emails = formData.getAll("extraPassengerEmail").map(String);
+  const phones = formData.getAll("extraPassengerPhone").map(String);
+  const passports = formData.getAll("extraPassengerPassport").map(String);
+  const nationalities = formData.getAll("extraPassengerNationality").map(String);
+
+  if (names.length === 0) return [];
+  if (names.length > 8) {
+    throw new Error("Maximum 8 extra passengers (9 travellers total)");
+  }
+
+  return names.map((fullName, i) => {
+    const parsed = passengerDetailSchema.safeParse({
+      fullName,
+      email: emails[i] ?? "",
+      phone: phones[i] ?? "",
+      passportNumber: passports[i] ?? "",
+      nationality: nationalities[i] ?? "",
+    });
+    if (!parsed.success) {
+      throw new Error(
+        `Extra passenger ${i + 1}: ${parsed.error.issues[0]?.message ?? "invalid details"}`,
+      );
+    }
+    return parsed.data;
+  });
+}
 
 const CUSTOM_FLIGHT_VALUE = "__custom__";
 
@@ -101,9 +149,14 @@ async function resolveLegFlightId(
   if (data.origin === data.destination) {
     throw new Error(`Custom ${prefix} flight: From and To must be different`);
   }
-  const departureAt = new Date(data.departureAt);
-  const arrivalAt = new Date(data.arrivalAt);
-  if (Number.isNaN(departureAt.getTime()) || Number.isNaN(arrivalAt.getTime())) {
+  const tzRaw = Number(formData.get("tzOffsetMinutes"));
+  const tzOffsetMinutes = Number.isFinite(tzRaw) ? tzRaw : 0;
+  let departureAt: Date;
+  let arrivalAt: Date;
+  try {
+    departureAt = parseDateTimeLocal(data.departureAt, tzOffsetMinutes);
+    arrivalAt = parseDateTimeLocal(data.arrivalAt, tzOffsetMinutes);
+  } catch {
     throw new Error(`Custom ${prefix} flight: invalid departure or arrival time`);
   }
   if (arrivalAt <= departureAt) {
@@ -179,7 +232,6 @@ export async function createWalkInBookingAction(formData: FormData) {
     passengerPhone: formData.get("passengerPhone") || "",
     passportNumber: formData.get("passportNumber") || "",
     nationality: formData.get("nationality") || "",
-    seatsBooked: formData.get("seatsBooked") || "1",
     paymentMethod: formData.get("paymentMethod"),
     extraBaggageKg: formData.get("extraBaggageKg") || "0",
     extraBaggageAud: formData.get("extraBaggageAud") || "0",
@@ -195,7 +247,21 @@ export async function createWalkInBookingAction(formData: FormData) {
     );
   }
 
-  const data = parsed.data;
+  let extraPassengers: PassengerDetail[] = [];
+  try {
+    extraPassengers = parseExtraPassengers(formData);
+  } catch (e) {
+    redirect(
+      `/admin?tab=bookings&error=${encodeURIComponent(
+        e instanceof Error ? e.message : "Invalid extra passenger details",
+      )}`,
+    );
+  }
+
+  const data = {
+    ...parsed.data,
+    seatsBooked: 1 + extraPassengers.length,
+  };
   if (data.paymentMethod === "bank_transfer" && !isBankTransferConfigured()) {
     redirect(
       "/admin?tab=bookings&error=Bank+details+not+configured+for+walk-in+bank+transfer",
@@ -444,6 +510,18 @@ export async function createWalkInBookingAction(formData: FormData) {
       }
 
       const bookingRef = makeBookingRef();
+      const allPassengers: PassengerDetail[] = [
+        {
+          fullName: data.passengerName,
+          email: data.email,
+          phone: data.passengerPhone || "",
+          passportNumber: data.passportNumber || "",
+          nationality: data.nationality || "",
+        },
+        ...extraPassengers,
+      ];
+      const passengerTickets = allPassengers.map(() => makeTicketNumber());
+
       const booking = await tx.booking.create({
         data: {
           quoteId: null,
@@ -468,9 +546,20 @@ export async function createWalkInBookingAction(formData: FormData) {
           source: data.bookingSource,
           status: paidUpfront ? "confirmed" : "pending_payment",
           bookingRef,
-          ticketNumber: makeTicketNumber(),
+          ticketNumber: passengerTickets[0]!,
           accessToken: makeAccessToken(),
           holdExpiresAt,
+          passengers: {
+            create: allPassengers.map((pax, index) => ({
+              sortOrder: index,
+              fullName: pax.fullName,
+              email: pax.email || "",
+              phone: pax.phone || "",
+              passportNumber: pax.passportNumber || "",
+              nationality: pax.nationality || "",
+              ticketNumber: passengerTickets[index]!,
+            })),
+          },
         },
       });
 
@@ -651,8 +740,9 @@ export async function markBookingUnpaidAction(formData: FormData) {
 
 /**
  * Permanently deletes a booking (and its invoice, via DB cascade) — both
- * are recorded on the admin Deleted tab first. Does not restore seat
- * inventory; that stays a separate, explicit decision for ops.
+ * are recorded on the admin Deleted tab first. Seat inventory is restored
+ * for bookings that still hold seats (not hold_expired — those already
+ * returned seats when the hold lapsed).
  */
 /** Accepts one or many `id` fields — powers both the row Delete button and bulk-select delete. */
 export async function deleteBookingAction(formData: FormData) {
@@ -689,6 +779,28 @@ export async function deleteBookingAction(formData: FormData) {
   await prisma.$transaction(
     async (tx) => {
       for (const booking of bookings) {
+        // Return seats before deleting — skip expired holds (already restored).
+        if (
+          booking.status !== "hold_expired" &&
+          booking.seatsBooked > 0 &&
+          booking.fareReleaseId
+        ) {
+          await restoreFareAndFlight(
+            tx,
+            booking.flightId,
+            booking.fareReleaseId,
+            booking.seatsBooked,
+          );
+          if (booking.returnFlightId && booking.returnFareReleaseId) {
+            await restoreFareAndFlight(
+              tx,
+              booking.returnFlightId,
+              booking.returnFareReleaseId,
+              booking.seatsBooked,
+            );
+          }
+        }
+
         if (booking.invoice) {
           await recordDeletion(
             {
@@ -729,4 +841,273 @@ export async function deleteBookingAction(formData: FormData) {
   redirect(
     `/admin?tab=bookings&saved=${bookings.length > 1 ? "bookings-deleted" : "booking-deleted"}`,
   );
+}
+
+const updateBookingSchema = z.object({
+  id: z.string().min(1),
+  passengerName: z.string().trim().min(2).max(120),
+  email: z.string().trim().email(),
+  passengerPhone: z.string().trim().max(40).optional().or(z.literal("")),
+  passportNumber: z.string().trim().max(40).optional().or(z.literal("")),
+  nationality: z.string().trim().max(60).optional().or(z.literal("")),
+  seatsBooked: z.coerce.number().int().min(1).max(9),
+  extraBaggageKg: z.coerce.number().int().min(0).max(500).default(0),
+  fareReleaseName: z.string().trim().max(120).optional().or(z.literal("")),
+  amountAud: z.coerce.number().min(0).max(100000),
+});
+
+/**
+ * Back-solve airfare so invoice PDF totals (recomputed from line items)
+ * match the admin-entered booking amount.
+ */
+function airfareCentsForTargetAmount(
+  targetAmountCents: number,
+  inv: {
+    airportTaxesCents: number;
+    extraBaggageCents: number;
+    travelInsuranceCents: number;
+    otherChargesCents: number;
+    serviceFeeCents: number;
+    gstRateBps: number;
+    gstIncluded: boolean;
+    gstOverrideCents: number;
+  },
+): number {
+  const fixed =
+    inv.airportTaxesCents +
+    inv.extraBaggageCents +
+    inv.travelInsuranceCents +
+    inv.otherChargesCents +
+    inv.serviceFeeCents;
+  const override = Math.max(0, inv.gstOverrideCents ?? 0);
+  if (override > 0) {
+    return Math.max(0, targetAmountCents - fixed - override);
+  }
+  if (inv.gstIncluded || (inv.gstRateBps ?? 0) <= 0) {
+    return Math.max(0, targetAmountCents - fixed);
+  }
+  // exclusive: amount = (airfare + fixed) * (1 + rate/10000)
+  const taxable = Math.round(
+    (targetAmountCents * 10_000) / (10_000 + inv.gstRateBps),
+  );
+  return Math.max(0, taxable - fixed);
+}
+
+/** Keep BookingPassenger rows in sync with primary fields + seat count. */
+async function syncBookingPassengers(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  bookingId: string,
+  primary: {
+    fullName: string;
+    email: string;
+    phone: string;
+    passportNumber: string;
+    nationality: string;
+  },
+  seatsBooked: number,
+  primaryTicketNumber: string,
+) {
+  const existing = await tx.bookingPassenger.findMany({
+    where: { bookingId },
+    orderBy: { sortOrder: "asc" },
+  });
+
+  if (existing.length === 0) {
+    // Seed rows so travel docs stay consistent after admin edits.
+    for (let i = 0; i < seatsBooked; i++) {
+      await tx.bookingPassenger.create({
+        data: {
+          bookingId,
+          sortOrder: i,
+          fullName: i === 0 ? primary.fullName : `Passenger ${i + 1}`,
+          email: i === 0 ? primary.email : "",
+          phone: i === 0 ? primary.phone : "",
+          passportNumber: i === 0 ? primary.passportNumber : "",
+          nationality: i === 0 ? primary.nationality : "",
+          ticketNumber: i === 0 ? primaryTicketNumber : makeTicketNumber(),
+        },
+      });
+    }
+    return;
+  }
+
+  const primaryRow = existing[0]!;
+  await tx.bookingPassenger.update({
+    where: { id: primaryRow.id },
+    data: {
+      fullName: primary.fullName,
+      email: primary.email,
+      phone: primary.phone,
+      passportNumber: primary.passportNumber,
+      nationality: primary.nationality,
+    },
+  });
+
+  if (existing.length < seatsBooked) {
+    for (let i = existing.length; i < seatsBooked; i++) {
+      await tx.bookingPassenger.create({
+        data: {
+          bookingId,
+          sortOrder: i,
+          fullName: `Passenger ${i + 1}`,
+          email: "",
+          phone: "",
+          passportNumber: "",
+          nationality: "",
+          ticketNumber: makeTicketNumber(),
+        },
+      });
+    }
+  } else if (existing.length > seatsBooked) {
+    const toRemove = existing.slice(seatsBooked);
+    await tx.bookingPassenger.deleteMany({
+      where: { id: { in: toRemove.map((p) => p.id) } },
+    });
+  }
+}
+
+/** Admin edit of an existing booking — passenger details, seats, baggage, amount. */
+export async function updateBookingAction(formData: FormData) {
+  await requireAdmin();
+
+  const parsed = updateBookingSchema.safeParse({
+    id: formData.get("id"),
+    passengerName: formData.get("passengerName"),
+    email: formData.get("email"),
+    passengerPhone: formData.get("passengerPhone") || "",
+    passportNumber: formData.get("passportNumber") || "",
+    nationality: formData.get("nationality") || "",
+    seatsBooked: formData.get("seatsBooked") || "1",
+    extraBaggageKg: formData.get("extraBaggageKg") || "0",
+    fareReleaseName: formData.get("fareReleaseName") || "",
+    amountAud: formData.get("amountAud") || "0",
+  });
+
+  if (!parsed.success) {
+    redirect(
+      `/admin?tab=bookings&error=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid booking")}`,
+    );
+  }
+
+  const data = parsed.data;
+  const amountPaidCents = Math.round(data.amountAud * 100);
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const booking = await tx.booking.findUnique({
+        where: { id: data.id },
+        include: { invoice: true },
+      });
+      if (!booking) throw new Error("Booking not found");
+      if (booking.status === "cancelled") {
+        throw new Error("Cancelled bookings cannot be edited");
+      }
+
+      const seatDelta = data.seatsBooked - booking.seatsBooked;
+      if (seatDelta !== 0) {
+        if (booking.status === "hold_expired") {
+          throw new Error(
+            "Cannot change seats on an expired hold — create a new booking",
+          );
+        }
+        if (!booking.fareReleaseId) {
+          throw new Error(
+            "Cannot adjust seats — this booking has no fare release to update inventory against",
+          );
+        }
+        if (seatDelta > 0) {
+          await decrementFareAndFlight(
+            tx,
+            booking.flightId,
+            booking.fareReleaseId,
+            seatDelta,
+          );
+          if (booking.returnFlightId && booking.returnFareReleaseId) {
+            await decrementFareAndFlight(
+              tx,
+              booking.returnFlightId,
+              booking.returnFareReleaseId,
+              seatDelta,
+            );
+          }
+        } else {
+          await restoreFareAndFlight(
+            tx,
+            booking.flightId,
+            booking.fareReleaseId,
+            -seatDelta,
+          );
+          if (booking.returnFlightId && booking.returnFareReleaseId) {
+            await restoreFareAndFlight(
+              tx,
+              booking.returnFlightId,
+              booking.returnFareReleaseId,
+              -seatDelta,
+            );
+          }
+        }
+      }
+
+      await tx.booking.update({
+        where: { id: booking.id },
+        data: {
+          passengerName: data.passengerName,
+          email: data.email,
+          passengerPhone: data.passengerPhone || "",
+          passportNumber: data.passportNumber || "",
+          nationality: data.nationality || "",
+          seatsBooked: data.seatsBooked,
+          extraBaggageKg: data.extraBaggageKg,
+          fareReleaseName: data.fareReleaseName || booking.fareReleaseName,
+          amountPaidCents,
+        },
+      });
+
+      await syncBookingPassengers(
+        tx,
+        booking.id,
+        {
+          fullName: data.passengerName,
+          email: data.email,
+          phone: data.passengerPhone || "",
+          passportNumber: data.passportNumber || "",
+          nationality: data.nationality || "",
+        },
+        data.seatsBooked,
+        booking.ticketNumber,
+      );
+
+      if (booking.invoice) {
+        // Sync customer + airfare so PDF totals (from line items) match.
+        const airfareCents = airfareCentsForTargetAmount(
+          amountPaidCents,
+          booking.invoice,
+        );
+        await tx.invoice.update({
+          where: { id: booking.invoice.id },
+          data: {
+            customerName: data.passengerName,
+            customerEmail: data.email,
+            customerPhone: data.passengerPhone || "",
+            airfareCents,
+            fareCents: airfareCents,
+            amountCents: amountPaidCents,
+            pdfBlobUrl: null,
+            pdfBlobPathname: null,
+          },
+        });
+      }
+    });
+  } catch (error) {
+    if (isRedirectError(error)) throw error;
+    redirect(
+      `/admin?tab=bookings&error=${encodeURIComponent(
+        error instanceof Error ? error.message : "Failed to update booking",
+      )}`,
+    );
+  }
+
+  revalidatePath("/admin");
+  revalidatePath(`/confirmation/${data.id}`);
+  redirect("/admin?tab=bookings&saved=booking-updated");
 }

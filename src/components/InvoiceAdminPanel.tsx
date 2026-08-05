@@ -124,6 +124,9 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
   const [pendingAction, setPendingAction] = useState<
     "save" | "generate" | "send" | "delete" | null
   >(null);
+  // Remount uncontrolled fields after Generate/Save so DOM values match DB
+  // (otherwise Save after Generate silently writes pre-Generate values).
+  const [formRevision, setFormRevision] = useState(0);
 
   const invoiceIds = useMemo(() => rows.map((i) => i.id), [rows]);
   const bulk = useBulkSelection(invoiceIds);
@@ -151,6 +154,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
     setActiveId(invoiceId);
     setDocTab(tab);
     setPreviewBust(Date.now());
+    setFormRevision(0);
     setStatusMsg(null);
     setErrorMsg(null);
   }
@@ -186,6 +190,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
         return;
       }
       if (result.invoice) mergeInvoicePatch(result.invoice);
+      setFormRevision((n) => n + 1);
       setStatusMsg("Saved — preview updated.");
       refreshPreviewOnly();
     });
@@ -207,6 +212,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
         return;
       }
       if (result.invoice) mergeInvoicePatch(result.invoice);
+      setFormRevision((n) => n + 1);
       setStatusMsg(
         isTravel
           ? "Travel document generated / refreshed."
@@ -220,7 +226,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
     if (!active) return;
     if (
       !confirm(
-        `Delete invoice ${active.invoiceNumber} permanently? It will be recorded in the Deleted tab.`,
+        `Delete invoice ${active.invoiceNumber} permanently? The booking stays; only this invoice is removed. It will be recorded in the Deleted tab.`,
       )
     ) {
       return;
@@ -544,12 +550,17 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
 
             <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-2 lg:overflow-hidden">
               <form
-                key={`${active.id}-form`}
+                key={`${active.id}-form-${formRevision}`}
                 action={onSave}
                 data-skip-busy
                 className="space-y-4 border-b border-line px-4 py-4 sm:px-6 lg:min-h-0 lg:overflow-y-auto lg:border-b-0 lg:border-r"
               >
                 <input type="hidden" name="id" value={active.id} />
+                <input
+                  type="hidden"
+                  name="tzOffsetMinutes"
+                  value={new Date().getTimezoneOffset()}
+                />
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">
                   {docTab === "travel"
                     ? "Edit travel document fields"

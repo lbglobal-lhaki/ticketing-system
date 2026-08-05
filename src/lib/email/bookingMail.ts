@@ -62,9 +62,31 @@ export async function loadBookingDocumentData(
       flight: true,
       returnFlight: true,
       invoice: true,
+      passengers: { orderBy: { sortOrder: "asc" } },
     },
   });
   if (!booking) return null;
+
+  const passengers =
+    booking.passengers.length > 0
+      ? booking.passengers.map((p) => ({
+          fullName: p.fullName,
+          email: p.email,
+          phone: p.phone,
+          passportNumber: p.passportNumber,
+          nationality: p.nationality,
+          ticketNumber: p.ticketNumber,
+        }))
+      : [
+          {
+            fullName: booking.passengerName,
+            email: booking.email,
+            phone: booking.passengerPhone,
+            passportNumber: booking.passportNumber,
+            nationality: booking.nationality,
+            ticketNumber: booking.ticketNumber,
+          },
+        ];
 
   return {
     bookingRef: booking.bookingRef,
@@ -77,6 +99,7 @@ export async function loadBookingDocumentData(
     passengerPhone: booking.passengerPhone,
     passportNumber: booking.passportNumber,
     nationality: booking.nationality,
+    passengers,
     seatsBooked: booking.seatsBooked,
     fareReleaseName: booking.fareReleaseName,
     fareProductName: booking.fareProductName,
