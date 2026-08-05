@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { resolveDocumentPassengers } from "@/lib/documents/resolvePassengers";
 import type { BookingDocumentData } from "@/lib/documents/templates";
 import {
   renderAirfareInvoiceHtml,
@@ -62,37 +63,44 @@ export async function loadBookingDocumentData(
       flight: true,
       returnFlight: true,
       invoice: true,
+      quote: true,
       passengers: { orderBy: { sortOrder: "asc" } },
     },
   });
   if (!booking) return null;
 
-  const passengers =
-    booking.passengers.length > 0
-      ? booking.passengers.map((p) => ({
-          fullName: p.fullName,
-          email: p.email,
-          phone: p.phone,
-          passportNumber: p.passportNumber,
-          nationality: p.nationality,
-          ticketNumber: p.ticketNumber,
-          passengerType: p.passengerType,
-          priceCents: p.priceCents,
-          allocatesSeat: p.allocatesSeat,
-        }))
-      : [
-          {
-            fullName: booking.passengerName,
-            email: booking.email,
-            phone: booking.passengerPhone,
-            passportNumber: booking.passportNumber,
-            nationality: booking.nationality,
-            ticketNumber: booking.ticketNumber,
-            passengerType: "adult" as const,
-            priceCents: 0,
-            allocatesSeat: true,
-          },
-        ];
+  const quote = booking.quote;
+  const passengers = resolveDocumentPassengers({
+    booking: {
+      passengerName: booking.passengerName,
+      email: booking.email,
+      passengerPhone: booking.passengerPhone,
+      passportNumber: booking.passportNumber,
+      nationality: booking.nationality,
+      ticketNumber: booking.ticketNumber,
+      seatsBooked: booking.seatsBooked,
+    },
+    stored: booking.passengers.map((p) => ({
+      fullName: p.fullName,
+      email: p.email,
+      phone: p.phone,
+      passportNumber: p.passportNumber,
+      nationality: p.nationality,
+      ticketNumber: p.ticketNumber,
+      passengerType: p.passengerType,
+      priceCents: p.priceCents,
+      allocatesSeat: p.allocatesSeat,
+    })),
+    quote: quote
+      ? {
+          unitAdultFareCents: quote.unitAdultFareCents,
+          adultCount: quote.adultCount,
+          childCount: quote.childCount,
+          infantCount: quote.infantCount,
+          travellersDraft: quote.travellersDraft,
+        }
+      : null,
+  });
 
   return {
     bookingRef: booking.bookingRef,

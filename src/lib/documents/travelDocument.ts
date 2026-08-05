@@ -25,19 +25,19 @@ function esc(value: string | number | null | undefined) {
 }
 
 function assetDataUri(filename: string) {
-  try {
-    const filePath = path.join(
-      process.cwd(),
-      "public",
-      "documents",
-      "eticket-assets",
-      filename,
-    );
-    const buf = readFileSync(filePath);
-    return `data:image/png;base64,${buf.toString("base64")}`;
-  } catch {
-    return "";
+  const candidates = [
+    path.join(process.cwd(), "public", "documents", "eticket-assets", filename),
+    path.join(process.cwd(), "public", "documents", "invoice-assets", filename),
+  ];
+  for (const filePath of candidates) {
+    try {
+      const buf = readFileSync(filePath);
+      return `data:image/png;base64,${buf.toString("base64")}`;
+    } catch {
+      /* try next */
+    }
   }
+  return "";
 }
 
 function paymentMethodLabel(method: string | null) {
@@ -228,8 +228,11 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
     invoice?.fareCalculationLine?.trim() ||
     `${data.flight.origin}${data.flight.destination} ${(totals.linesCents / 100).toFixed(2)}AUD END`;
 
-  const headerUri = assetDataUri("header-page1.png");
-  const bannerUri = assetDataUri("charter-banner.png");
+  // Prefer the full-width header (same as invoice) so the brand bar is not cropped.
+  const headerUri =
+    assetDataUri("header-wide.png") || assetDataUri("header-page1.png");
+  const bannerUri =
+    assetDataUri("p2-banner.png") || assetDataUri("charter-banner.png");
   const mapUri = assetDataUri("world-map.png");
   const meatUri = assetDataUri("icon-meat.png");
   const produceUri = assetDataUri("icon-produce.png");
@@ -240,102 +243,133 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
     ${pdfFontFaceCss()}
     @page { size: A4; margin: 0; }
     * { box-sizing: border-box; }
-    body {
+    html, body {
       margin: 0;
-      background: #d7dde5;
+      background: #fff;
       color: #111;
       font-family: ${PDF_FONT_FAMILY};
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
+    /* Exact A4 sheet — same shell as the invoice */
     .page {
       width: 210mm;
       min-height: 297mm;
-      margin: 0 auto 16px;
+      height: 297mm;
+      margin: 0 auto 12px;
       background: #fff;
-      position: relative;
+      display: flex;
+      flex-direction: column;
       overflow: hidden;
-      box-shadow: 0 4px 24px rgba(0,0,0,.12);
+      box-shadow: 0 4px 24px rgba(0,0,0,.08);
     }
-    .p1-top {
-      height: 14px;
-      background: #0b2c5a;
-    }
-    .p1-header {
+    .header-img {
       display: block;
       width: 100%;
+      max-width: 100%;
       height: auto;
-      border-bottom: 0;
+      flex-shrink: 0;
+      object-fit: cover;
+      object-position: center top;
     }
-    .page1 { padding-bottom: 72px; }
-    .p1-body {
-      padding: 28px 48px 24px;
-      font-size: 13.5px;
-      line-height: 1.55;
+    .topbar-fallback { height: 12px; background: #0b2c5a; flex-shrink: 0; }
+    .page-body {
+      flex: 1 1 auto;
+      padding: 14px 22px 8px;
+      overflow: hidden;
+    }
+    .page-body.letter {
+      padding: 24px 40px 12px;
+      font-size: 13px;
+      line-height: 1.5;
       color: #1a1a1a;
     }
-    .p1-body .to-line { margin: 0 0 18px; }
-    .p1-body .to-line strong { display: inline; }
-    .p1-body h3 {
+    .page-body.letter .to-line { margin: 0 0 14px; }
+    .page-body.letter h3 {
       font-size: 14px;
-      margin: 22px 0 8px;
+      margin: 16px 0 6px;
       color: #111;
     }
-    .p1-body ul { margin: 0 0 14px; padding-left: 20px; }
-    .p1-body li { margin: 4px 0; }
-    .p1-sign { margin-top: 28px; }
-    .p1-footer {
-      position: absolute;
-      left: 0; right: 0; bottom: 0;
+    .page-body.letter ul { margin: 0 0 12px; padding-left: 20px; }
+    .page-body.letter li { margin: 3px 0; }
+    .page-body.letter .p1-sign { margin-top: 20px; }
+    .page-body.pass-page {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      justify-content: flex-start;
+    }
+    .pass-page-title {
+      text-align: center;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #0b2c5a;
+      margin: 0;
+      flex-shrink: 0;
+    }
+    .footer {
+      margin-top: auto;
       border-top: 2px solid #f5c518;
-      padding: 14px 28px 18px;
+      padding: 10px 22px 12px;
+      flex-shrink: 0;
+    }
+    .footer-row {
       display: grid;
       grid-template-columns: 1.2fr 1fr 1.1fr;
-      gap: 10px;
-      font-size: 12px;
+      gap: 8px;
+      font-size: 11px;
       color: #333;
       font-weight: 500;
     }
-    .p1-footer .item { display: flex; align-items: center; gap: 8px; }
-    .p1-footer .dot {
-      width: 22px; height: 22px; border-radius: 50%;
+    .footer .item { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .footer .dot {
+      width: 20px; height: 20px; border-radius: 50%;
       background: #f5c518; color: #fff;
       display: inline-flex; align-items: center; justify-content: center;
       flex-shrink: 0;
     }
-    .p1-footer .dot svg { display: block; }
-    .p2 { padding: 18px 18px 16px; }
+    .footer .dot svg { display: block; width: 12px; height: 12px; }
     .p2-title {
       text-align: center;
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 800;
       letter-spacing: 0.04em;
-      margin: 2px 0 14px;
+      margin: 0 0 10px;
       text-transform: uppercase;
     }
-    .guest-wrap { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+    .guest-wrap {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: start;
+      margin-bottom: 10px;
+    }
     .guest-wrap h2 {
-      margin: 0 0 8px;
-      font-size: 15px;
+      margin: 0 0 6px;
+      font-size: 14px;
       color: #0b2c5a;
     }
     .guest-box {
       border: 1.5px solid #9aa6b5;
       border-radius: 10px;
-      padding: 10px 14px;
-      width: 58%;
-      font-size: 12px;
-      line-height: 1.7;
+      padding: 8px 12px;
+      width: 100%;
+      font-size: 11px;
+      line-height: 1.55;
     }
-    .guest-box b { display: inline-block; min-width: 118px; }
-    .res-no { font-size: 12px; padding-top: 4px; white-space: nowrap; }
-    .res-no strong { font-size: 14px; }
+    .guest-box b { display: inline-block; min-width: 110px; }
+    .res-no { font-size: 11px; padding-top: 2px; white-space: nowrap; }
+    .res-no strong { font-size: 13px; }
     .banner {
       width: 100%;
+      max-width: 100%;
       height: auto;
       display: block;
-      margin: 8px 0 12px;
+      margin: 6px 0 10px;
       border-radius: 2px;
+      object-fit: contain;
     }
     .banner-fallback {
       display: flex;
@@ -364,15 +398,15 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
       width: fit-content;
     }
     .awaiting-pay {
-      margin: 16px 48px 8px;
-      padding: 16px 18px;
+      margin: 6px 0;
+      padding: 10px 12px;
       border: 2px solid #b45309;
       background: #fffbeb;
       border-radius: 8px;
       color: #78350f;
     }
-    .awaiting-pay strong { display: block; font-size: 14px; margin-bottom: 6px; }
-    .awaiting-pay p { margin: 0; font-size: 12.5px; line-height: 1.45; }
+    .awaiting-pay strong { display: block; font-size: 12px; margin-bottom: 4px; }
+    .awaiting-pay p { margin: 0; font-size: 11px; line-height: 1.4; }
     .banner-fallback .end {
       width: 54px;
       background: #071c3a;
@@ -391,8 +425,9 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
       border: 1.5px solid #0b2c5a;
       border-radius: 4px;
       overflow: hidden;
-      margin-bottom: 14px;
-      min-height: 210px;
+      margin: 0;
+      flex: 0 0 auto;
+      height: 195px;
     }
     .pass-main, .pass-stub {
       background-color: #f3f7fb;
@@ -432,46 +467,46 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
       font-weight: 700;
       text-align: center;
     }
-    .pass-body { padding: 10px 12px 0; }
+    .pass-body { padding: 8px 10px 0; }
     .pass-meta {
       display: grid;
       grid-template-columns: 1.3fr 1fr 1fr;
-      gap: 8px;
+      gap: 6px;
       background: #d9eaf7;
-      padding: 6px 8px;
+      padding: 5px 7px;
       border-radius: 3px;
-      font-size: 10px;
+      font-size: 9px;
     }
     .pass-meta span { display: block; color: #333; }
-    .pass-meta strong { color: #0b2c5a; font-size: 12px; }
+    .pass-meta strong { color: #0b2c5a; font-size: 11px; }
     .pass-route {
       display: flex;
       align-items: center;
-      gap: 14px;
-      margin: 12px 0 10px;
+      gap: 10px;
+      margin: 8px 0 6px;
     }
-    .pass-route .code { font-size: 18px; font-weight: 700; }
-    .pass-route .place { font-size: 11px; color: #333; line-height: 1.25; margin-top: 2px; }
-    .pass-route .route-arrow { font-size: 28px; color: #0b2c5a; font-weight: 800; }
+    .pass-route .code { font-size: 15px; font-weight: 700; }
+    .pass-route .place { font-size: 10px; color: #333; line-height: 1.2; margin-top: 1px; }
+    .pass-route .route-arrow { font-size: 22px; color: #0b2c5a; font-weight: 800; }
     .pass-route .to { text-align: right; margin-left: auto; }
     .pass-grid {
       display: grid;
       grid-template-columns: repeat(7, 1fr);
-      gap: 4px;
-      font-size: 9px;
-      margin-bottom: 8px;
+      gap: 3px;
+      font-size: 8px;
+      margin-bottom: 4px;
     }
     .pass-grid span { display: block; color: #445; }
-    .pass-grid strong { display: block; color: #0b2c5a; font-size: 11px; line-height: 1.2; }
-    .pass-grid small { display: block; font-size: 8px; font-weight: 600; color: #445; }
+    .pass-grid strong { display: block; color: #0b2c5a; font-size: 10px; line-height: 1.15; }
+    .pass-grid small { display: block; font-size: 7px; font-weight: 600; color: #445; }
     .pass-perks {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 6px;
+      gap: 4px;
       background: #d7e4f0;
-      margin: 0 -12px 0;
-      padding: 8px 10px;
-      font-size: 9px;
+      margin: 0 -10px 0;
+      padding: 6px 8px;
+      font-size: 8px;
     }
     .pass-perks strong { display: block; font-size: 10px; color: #0b2c5a; }
     .pass-perks span { color: #333; }
@@ -489,38 +524,38 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
     .mid-split {
       display: grid;
       grid-template-columns: 1.15fr 1fr;
-      gap: 16px;
-      margin: 8px 0 12px;
-      padding-top: 10px;
+      gap: 12px;
+      margin: 4px 0 8px;
+      padding-top: 8px;
       border-top: 1px solid #c5ced8;
     }
     .mid-split h3 {
-      margin: 0 0 8px;
+      margin: 0 0 6px;
       color: #0b2c5a;
-      font-size: 13px;
+      font-size: 12px;
       letter-spacing: .04em;
     }
-    .terms { margin: 0; padding-left: 16px; font-size: 11px; line-height: 1.45; color: #222; }
+    .terms { margin: 0; padding-left: 16px; font-size: 10px; line-height: 1.4; color: #222; }
     .bag-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .bag-card {
       border: 1.5px solid #0b2c5a;
       border-radius: 10px;
-      padding: 10px 8px;
+      padding: 8px 6px;
       text-align: center;
     }
-    .bag-card .cls { font-size: 11px; font-weight: 800; color: #0b2c5a; }
-    .bag-card .kg { font-size: 28px; font-weight: 800; color: #0b2c5a; line-height: 1.1; margin: 4px 0; }
-    .bag-card .sub { font-size: 10px; color: #333; }
+    .bag-card .cls { font-size: 10px; font-weight: 800; color: #0b2c5a; }
+    .bag-card .kg { font-size: 22px; font-weight: 800; color: #0b2c5a; line-height: 1.1; margin: 2px 0; }
+    .bag-card .sub { font-size: 9px; color: #333; }
     .money-split {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 18px;
+      gap: 12px;
       border-top: 1px solid #c5ced8;
-      padding-top: 10px;
+      padding-top: 8px;
     }
     .money-split h3 {
-      margin: 0 0 8px;
-      font-size: 12px;
+      margin: 0 0 6px;
+      font-size: 11px;
       letter-spacing: .03em;
       text-transform: uppercase;
     }
@@ -528,51 +563,50 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
       display: flex;
       justify-content: space-between;
       gap: 10px;
-      font-size: 11px;
-      margin: 5px 0;
+      font-size: 10px;
+      margin: 3px 0;
       border-bottom: 1px dotted #d5dbe3;
-      padding-bottom: 4px;
+      padding-bottom: 3px;
     }
     .money-row span:last-child { font-weight: 700; }
-    .p3 { padding: 16px 14px 14px; }
     .p3-title {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       justify-content: center;
-      margin: 0 0 12px;
+      margin: 0 0 8px;
     }
     .p3-title h1 {
       margin: 0;
-      font-size: 22px;
+      font-size: 18px;
       letter-spacing: .04em;
       white-space: nowrap;
     }
-    .p3-title .bar { flex: 1; height: 10px; background: #0b2c5a; }
+    .p3-title .bar { flex: 1; height: 8px; background: #0b2c5a; }
     .grid-top {
       display: grid;
       grid-template-columns: 1.15fr .9fr 1fr;
-      gap: 8px;
-      margin-bottom: 8px;
+      gap: 6px;
+      margin-bottom: 6px;
     }
     .panel {
       border: 1.5px solid #0b2c5a;
       border-radius: 4px;
       overflow: hidden;
-      min-height: 100%;
+      min-height: 0;
     }
     .panel h3 {
       margin: 0;
       background: #0b2c5a;
       color: #fff;
-      font-size: 11px;
+      font-size: 10px;
       letter-spacing: .04em;
-      padding: 7px 8px;
+      padding: 5px 6px;
     }
-    .panel h3 small { display: block; font-weight: 500; font-size: 8px; opacity: .9; margin-top: 2px; }
-    .panel .content { padding: 8px 8px 10px; font-size: 10.5px; }
+    .panel h3 small { display: block; font-weight: 500; font-size: 7px; opacity: .9; margin-top: 1px; }
+    .panel .content { padding: 5px 6px 6px; font-size: 9px; }
     .panel ul { list-style: none; margin: 0; padding: 0; }
-    .panel li { display: flex; gap: 6px; align-items: flex-start; margin: 3px 0; line-height: 1.25; }
+    .panel li { display: flex; gap: 5px; align-items: flex-start; margin: 1px 0; line-height: 1.2; }
     .cb {
       width: 10px; height: 10px; border: 1px solid #7a8694; border-radius: 1px;
       margin-top: 1px; flex-shrink: 0; display: inline-block;
@@ -580,8 +614,8 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
     .grid-mid {
       display: grid;
       grid-template-columns: 0.95fr 1.35fr;
-      gap: 8px;
-      margin-bottom: 8px;
+      gap: 6px;
+      margin-bottom: 6px;
     }
     .danger .content { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .danger .col h4 { margin: 0 0 6px; color: #c41212; font-size: 10px; }
@@ -631,7 +665,7 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
     .grid-bot {
       display: grid;
       grid-template-columns: 0.7fr 1.6fr;
-      gap: 8px;
+      gap: 6px;
     }
     .money-box {
       display: flex;
@@ -639,9 +673,9 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
       align-items: center;
       justify-content: center;
       text-align: center;
-      gap: 8px;
-      padding: 16px 10px;
-      min-height: 110px;
+      gap: 6px;
+      padding: 10px 8px;
+      min-height: 72px;
     }
     .money-ico {
       width: 48px; height: 32px; border-radius: 4px; background: #1a7a3c; color: #fff;
@@ -661,9 +695,23 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
       font-size: 16px; background: #f3f7fb;
     }
     @media print {
-      body { background: #fff; }
-      .page { box-shadow: none; margin: 0; page-break-after: always; }
-      .page:last-child { page-break-after: auto; }
+      html, body { background: #fff; }
+      .page {
+        box-shadow: none;
+        margin: 0;
+        width: 210mm;
+        height: 297mm;
+        min-height: 297mm;
+        max-height: 297mm;
+        page-break-after: always;
+        break-after: page;
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      .page:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
     }
   `;
 
@@ -692,36 +740,62 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
     (pax) => pax.allocatesSeat === false || pax.passengerType === "infant",
   );
 
-  const boardingPasses = unpaid
-    ? ""
-    : boardedTravellers
-        .flatMap((pax) => {
-          const typeLabel = passengerTypeLabel(pax.passengerType || "adult");
-          const opts = {
-            passengerName:
-              pax.passengerType && pax.passengerType !== "adult"
-                ? `${pax.fullName} (${typeLabel})`
-                : pax.fullName,
-            ticketCode: displayTicketCode(pax.ticketNumber),
-            issueDate: data.createdAt,
-            seat,
-            baggage: baggage.split("(")[0].trim() || "1 PIECE",
-            mapUri,
-          };
-          const legs = [boardingPass(data.flight, opts)];
-          if (data.returnFlight) {
-            legs.push(boardingPass(data.returnFlight, opts));
-          }
-          return legs;
-        })
-        .join("\n");
+  const footerHtml = `
+    <div class="footer">
+      <div class="footer-row">
+        <div class="item"><span class="dot">${ICON_PHONE}</span>${esc(brand.agentPhonePrimary)} | ${esc(brand.agentPhoneSecondary)}</div>
+        <div class="item"><span class="dot">${ICON_GLOBE}</span>${esc(brand.agentWebsite)}</div>
+        <div class="item"><span class="dot">${ICON_MAIL}</span>${esc(brand.agentEmail)}</div>
+      </div>
+    </div>`;
+
+  const headerHtml = headerUri
+    ? `<img class="header-img" src="${headerUri}" alt="L&B Global · Drukair" />`
+    : `<div class="topbar-fallback"></div>`;
+
+  // Collect all boarding-pass cards, then pack 2 per A4 page (no empty sheets).
+  const passCards: string[] = unpaid
+    ? []
+    : boardedTravellers.flatMap((pax) => {
+        const typeLabel = passengerTypeLabel(pax.passengerType || "adult");
+        const opts = {
+          passengerName:
+            pax.passengerType && pax.passengerType !== "adult"
+              ? `${pax.fullName} (${typeLabel})`
+              : pax.fullName,
+          ticketCode: displayTicketCode(pax.ticketNumber),
+          issueDate: data.createdAt,
+          seat,
+          baggage: baggage.split("(")[0].trim() || "1 PIECE",
+          mapUri,
+        };
+        const cards = [boardingPass(data.flight, opts)];
+        if (data.returnFlight) {
+          cards.push(boardingPass(data.returnFlight, opts));
+        }
+        return cards;
+      });
+
+  const boardingPassPages: string[] = [];
+  for (let i = 0; i < passCards.length; i += 2) {
+    const chunk = passCards.slice(i, i + 2);
+    boardingPassPages.push(`
+  <section class="page">
+    ${headerHtml}
+    <div class="page-body pass-page">
+      <p class="pass-page-title">Boarding passes</p>
+      ${chunk.join("\n")}
+    </div>
+    ${footerHtml}
+  </section>`);
+  }
 
   const infantNotices =
     !unpaid && infantTravellers.length > 0
       ? infantTravellers
           .map(
             (pax) => `
-    <div class="awaiting-pay" style="margin-top:12px">
+    <div class="awaiting-pay" style="margin:8px 0">
       <strong>Infant (no seat) — ${esc(pax.fullName)}</strong>
       <p>Ticket ${esc(displayTicketCode(pax.ticketNumber))}. Travels with accompanying adult; no seat allocated.${
         (pax.priceCents ?? 0) > 0
@@ -771,14 +845,9 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
 </head>
 <body>
   <!-- PAGE 1: Confirmation letter -->
-  <section class="page page1">
-    <div class="p1-top"></div>
-    ${
-      headerUri
-        ? `<img class="p1-header" src="${headerUri}" alt="L&B Global · Drukair" />`
-        : ""
-    }
-    <div class="p1-body">
+  <section class="page">
+    ${headerHtml}
+    <div class="page-body letter">
       <p class="to-line">To: <strong>${esc(data.passengerName)}</strong><br />Date: <strong>${esc(longDate(data.createdAt))}</strong></p>
       <p>Dear Valued Customer,</p>
       <p>
@@ -820,15 +889,13 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
         ${esc(brand.reservationsTeam)}
       </div>
     </div>
-    <div class="p1-footer">
-      <div class="item"><span class="dot">${ICON_PHONE}</span>${esc(brand.agentPhonePrimary)} | ${esc(brand.agentPhoneSecondary)}</div>
-      <div class="item"><span class="dot">${ICON_GLOBE}</span>${esc(brand.agentWebsite)}</div>
-      <div class="item"><span class="dot">${ICON_MAIL}</span>${esc(brand.agentEmail)}</div>
-    </div>
+    ${footerHtml}
   </section>
 
-  <!-- PAGE 2: E-ticket / itinerary / receipt -->
-  <section class="page p2">
+  <!-- PAGE 2: Itinerary / guest summary (no boarding passes — those get their own pages) -->
+  <section class="page">
+    ${headerHtml}
+    <div class="page-body">
     <div class="p2-title">E-Ticket, Itinerary, Receipts and Tax Invoice</div>
 
     <div class="guest-wrap">
@@ -865,7 +932,7 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
             <strong>Awaiting payment confirmation</strong>
             <p>Boarding passes are issued only after your bank transfer is verified. This page is a reservation summary, not a travel document.</p>
           </div>`
-        : `${boardingPasses}${infantNotices}`
+        : infantNotices
     }
 
     <div class="mid-split">
@@ -921,10 +988,16 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
         }</span></div>
       </div>
     </div>
+    </div>
+    ${footerHtml}
   </section>
 
-  <!-- PAGE 3: Travel checklist -->
-  <section class="page p3">
+  ${boardingPassPages.join("\n")}
+
+  <!-- Travel checklist -->
+  <section class="page">
+    ${headerHtml}
+    <div class="page-body">
     <div class="p3-title"><div class="bar"></div><h1>TRAVEL CHECKLIST</h1><div class="bar"></div></div>
 
     <div class="grid-top">
@@ -1070,6 +1143,8 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
         </div>
       </div>
     </div>
+    </div>
+    ${footerHtml}
   </section>
 </body>
 </html>`;

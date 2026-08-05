@@ -68,8 +68,10 @@ export async function GET(
     }
 
     try {
+      // Always regenerate from the live template so existing bookings pick up
+      // party-mix / layout updates (cached Blob PDFs are overwritten).
       const pdf = await getOrCreateInvoicePdf(data, {
-        forceRefresh: false,
+        forceRefresh: true,
       });
       return new NextResponse(new Uint8Array(pdf), {
         headers: {

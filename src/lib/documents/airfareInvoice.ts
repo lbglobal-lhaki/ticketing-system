@@ -110,16 +110,130 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
   ];
   const activeRoute = normalizeRoute(routeLabel);
 
-  const lineRows: Array<[string, number]> = [
-    ["Airfare", lines.airfareCents],
+  const travellers =
+    data.passengers?.length > 0
+      ? data.passengers
+      : [
+          {
+            fullName: data.passengerName,
+            ticketNumber: data.ticketNumber,
+            passengerType: "adult" as const,
+            priceCents: 0,
+            allocatesSeat: true,
+          },
+        ];
+  const adults = travellers.filter(
+    (p) => (p.passengerType || "adult") === "adult",
+  );
+  const children = travellers.filter((p) => p.passengerType === "child");
+  const infants = travellers.filter((p) => p.passengerType === "infant");
+  const hasPartyMix =
+    children.length > 0 || infants.length > 0 || travellers.length > 1;
+
+  /** Qty / unit / total for each invoice line. */
+  type ItemRow = {
+    name: string;
+    qty: number;
+    unitCents: number;
+    totalCents: number;
+  };
+  const itemRows: ItemRow[] = [];
+
+  if (hasPartyMix && lines.airfareCents > 0) {
+    const childTotal = children.reduce((s, p) => s + (p.priceCents || 0), 0);
+    const infantTotal = infants.reduce((s, p) => s + (p.priceCents || 0), 0);
+    let adultTotal = Math.max(0, lines.airfareCents - childTotal - infantTotal);
+    const adultUnit =
+      adults.length > 0 ? Math.round(adultTotal / adults.length) : 0;
+    // Absorb rounding drift on the last adult line.
+    let adultAssigned = 0;
+    adults.forEach((p, i) => {
+      const isLast = i === adults.length - 1;
+      const total = isLast
+        ? Math.max(0, adultTotal - adultAssigned)
+        : adultUnit;
+      adultAssigned += total;
+      itemRows.push({
+        name: `Airfare — Adult — ${p.fullName}`,
+        qty: 1,
+        unitCents: total,
+        totalCents: total,
+      });
+    });
+    for (const p of children) {
+      const total = Math.max(0, p.priceCents || 0);
+      itemRows.push({
+        name: `Airfare — Child (75%) — ${p.fullName}`,
+        qty: 1,
+        unitCents: total,
+        totalCents: total,
+      });
+    }
+    for (const p of infants) {
+      const total = Math.max(0, p.priceCents || 0);
+      itemRows.push({
+        name: `Airfare — Infant (10%, no seat) — ${p.fullName}`,
+        qty: 1,
+        unitCents: total,
+        totalCents: total,
+      });
+    }
+  } else {
+    itemRows.push({
+      name: "Airfare",
+      qty: lines.airfareCents > 0 ? Math.max(1, data.seatsBooked) : 0,
+      unitCents:
+        lines.airfareCents > 0 && data.seatsBooked > 0
+          ? Math.round(lines.airfareCents / data.seatsBooked)
+          : 0,
+      totalCents: lines.airfareCents,
+    });
+  }
+
+  for (const [name, cents] of [
     ["Airport Taxes", lines.airportTaxesCents],
     ["Extra Baggage", lines.extraBaggageCents],
     ["Travel Insurance", lines.travelInsuranceCents],
     ["Other Charges", lines.otherChargesCents],
-  ];
-  if ((invoice.serviceFeeCents || 0) > 0) {
-    lineRows.push(["Payment surcharge", invoice.serviceFeeCents || 0]);
+  ] as const) {
+    if (cents > 0) {
+      itemRows.push({ name, qty: 1, unitCents: cents, totalCents: cents });
+    } else {
+      itemRows.push({ name, qty: 0, unitCents: 0, totalCents: 0 });
+    }
   }
+  if ((invoice.serviceFeeCents || 0) > 0) {
+    itemRows.push({
+      name: "Payment surcharge",
+      qty: 1,
+      unitCents: invoice.serviceFeeCents || 0,
+      totalCents: invoice.serviceFeeCents || 0,
+    });
+  }
+
+  const passengerListHtml = travellers
+    .map((p, i) => {
+      const type = passengerTypeLabel(p.passengerType || "adult");
+      const seat =
+        p.passengerType === "infant" || p.allocatesSeat === false
+          ? " · no seat"
+          : "";
+      const price =
+        (p.priceCents ?? 0) > 0 &&
+        (p.passengerType === "child" || p.passengerType === "infant")
+          ? ` · ${money(p.priceCents ?? 0)}`
+          : "";
+      return `<div class="pax-line"><span class="pax-n">${i + 1}.</span> <strong>${esc(p.fullName)}</strong> <span class="pax-meta">(${esc(type)}${esc(seat)}${esc(price)})</span>${
+        p.ticketNumber
+          ? `<span class="pax-ticket"> · Ticket ${esc(p.ticketNumber)}</span>`
+          : ""
+      }${
+        p.passportNumber
+          ? `<span class="pax-pass"> · Passport ${esc(p.passportNumber)}</span>`
+          : ""
+      }</div>`;
+    })
+    .join("");
 
   // header.png's canvas is 30px too short and crops the "GLOBAL" pill under
   // the L&B logo — header-wide.png is the same artwork, uncropped.
@@ -202,6 +316,25 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       gap: 8px;
     }
     .invoice-to .row span:first-child { font-weight: 700; }
+    .pax-block {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px dashed #c5ced8;
+    }
+    .pax-block .pax-heading {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .pax-line {
+      font-size: 12.5px;
+      line-height: 1.45;
+      margin: 3px 0;
+    }
+    .pax-n { font-weight: 700; color: #0b2c5a; }
+    .pax-meta, .pax-ticket, .pax-pass { color: #444; font-weight: 500; }
     .flight {
       margin: 4px 0 14px;
       font-size: 13px;
@@ -391,36 +524,10 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
             <div class="row"><span>Passport No:</span><span>${esc(data.passportNumber || "—")}</span></div>
             <div class="row"><span>Email:</span><span>${esc(data.email)}</span></div>
             <div class="row"><span>Phone:</span><span>${esc(data.passengerPhone || invoice.customerPhone || "—")}</span></div>
-            ${
-              (data.passengers?.length ?? 0) > 1
-                ? `<div class="row"><span>Passengers:</span><span>${esc(
-                    data.passengers
-                      .map((p) => {
-                        const type = passengerTypeLabel(
-                          p.passengerType || "adult",
-                        );
-                        const seat =
-                          p.passengerType === "infant" ||
-                          p.allocatesSeat === false
-                            ? ", no seat"
-                            : "";
-                        const price =
-                          (p.priceCents ?? 0) > 0 &&
-                          (p.passengerType === "child" ||
-                            p.passengerType === "infant")
-                            ? ` · ${money(p.priceCents ?? 0)}`
-                            : "";
-                        return `${p.fullName} (${type}${seat}${price})${
-                          p.passportNumber ? ` ${p.passportNumber}` : ""
-                        }`;
-                      })
-                      .join("; "),
-                  )}</span></div>
-                <div class="row"><span>Tickets:</span><span>${esc(
-                  data.passengers.map((p) => p.ticketNumber).join(", "),
-                )}</span></div>`
-                : ""
-            }
+            <div class="pax-block">
+              <div class="pax-heading">Passengers (${travellers.length})</div>
+              ${passengerListHtml}
+            </div>
           </div>
         </div>
         <div class="meta">
@@ -480,20 +587,15 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
           </tr>
         </thead>
         <tbody>
-          ${lineRows
-            .map(([name, cents]) => {
-              const qty = cents > 0 ? data.seatsBooked : 0;
-              const unit =
-                cents > 0 && data.seatsBooked > 0
-                  ? Math.round(cents / data.seatsBooked)
-                  : 0;
-              return `<tr>
-                <td>${esc(name)}</td>
-                <td class="num">${qty}</td>
-                <td class="num">${esc(money(unit).replace("$", ""))}</td>
-                <td class="num">${esc(money(cents))}</td>
-              </tr>`;
-            })
+          ${itemRows
+            .map(
+              (row) => `<tr>
+                <td>${esc(row.name)}</td>
+                <td class="num">${row.qty}</td>
+                <td class="num">${esc(money(row.unitCents).replace("$", ""))}</td>
+                <td class="num">${esc(money(row.totalCents))}</td>
+              </tr>`,
+            )
             .join("")}
         </tbody>
       </table>

@@ -1,11 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { redirect } from "next/navigation";
-import { syncQuoteSeatHold } from "@/lib/booking/inventory";
 import { Prisma } from "@/generated/prisma/client";
+import { syncQuoteSeatHold } from "@/lib/booking/inventory";
 import {
   parseOnlineTravellersDraft,
+  partyFareCents,
   seatedCountFromMix,
 } from "@/lib/booking/passengers";
 import { prisma } from "@/lib/db";
@@ -15,6 +17,12 @@ function fail(quoteId: string, message: string): never {
   redirect(
     `/checkout/${quoteId}/passengers?error=${encodeURIComponent(message)}`,
   );
+}
+
+function parseCount(raw: FormDataEntryValue | null, fallback: number, max: number) {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(0, Math.floor(n)));
 }
 
 export async function savePassengerDetailsAction(formData: FormData) {
@@ -37,77 +45,69 @@ export async function savePassengerDetailsAction(formData: FormData) {
     fail(quoteId, "This fare lock has expired — please select fares again");
   }
 
-  const isPartyQuote = quote.unitAdultFareCents > 0;
-
   try {
-    if (isPartyQuote) {
-      const adults = Math.max(1, quote.adultCount || 1);
-      const children = Math.max(0, quote.childCount || 0);
-      const infants = Math.max(0, quote.infantCount || 0);
-      const seatsBooked = seatedCountFromMix(adults, children);
-
-      const travellers = parseOnlineTravellersDraft(formData, {
-        adults,
-        children,
-        infants,
-      });
-      const primary = travellers[0]!;
-
-      const hold = await syncQuoteSeatHold(quoteId, sessionId, seatsBooked);
-      if (!hold.ok) fail(quoteId, hold.error);
-
-      await prisma.priceQuote.update({
-        where: { id: quoteId },
-        data: {
-          passengerTitle: primary.title,
-          passengerFirstName: primary.firstName,
-          passengerLastName: primary.lastName,
-          passengerEmail: primary.email || "",
-          passengerPhone: primary.phone || "",
-          passportNumber: primary.passportNumber || "",
-          nationality: primary.nationality || "",
-          seatsBooked,
-          adultCount: adults,
-          childCount: children,
-          infantCount: infants,
-          travellersDraft: travellers as unknown as Prisma.InputJsonValue,
-          privacyAccepted: true,
-        },
-      });
-    } else {
-      // Legacy quotes: one named adult + optional seat multiplier.
-      const seatsRaw = Number(formData.get("seatsBooked") || "1");
-      const seatsBooked = Math.min(
-        9,
-        Math.max(1, Number.isFinite(seatsRaw) ? Math.floor(seatsRaw) : 1),
-      );
-      const travellers = parseOnlineTravellersDraft(formData, {
-        adults: 1,
-        children: 0,
-        infants: 0,
-      });
-      const primary = travellers[0]!;
-
-      const hold = await syncQuoteSeatHold(quoteId, sessionId, seatsBooked);
-      if (!hold.ok) fail(quoteId, hold.error);
-
-      await prisma.priceQuote.update({
-        where: { id: quoteId },
-        data: {
-          passengerTitle: primary.title,
-          passengerFirstName: primary.firstName,
-          passengerLastName: primary.lastName,
-          passengerEmail: primary.email || "",
-          passengerPhone: primary.phone || "",
-          passportNumber: primary.passportNumber || "",
-          nationality: primary.nationality || "",
-          seatsBooked,
-          travellersDraft: travellers as unknown as Prisma.InputJsonValue,
-          privacyAccepted: true,
-        },
-      });
+    const adults = Math.max(1, parseCount(formData.get("adults"), 1, 9));
+    let children = parseCount(formData.get("children"), 0, 8);
+    const infants = parseCount(formData.get("infants"), 0, 9);
+    if (adults + children > 9) {
+      children = Math.max(0, 9 - adults);
     }
+
+    const seatsBooked = seatedCountFromMix(adults, children);
+    if (seatsBooked < 1 || seatsBooked > 9) {
+      fail(quoteId, "Seated travellers (adults + children) must be between 1 and 9");
+    }
+
+    // Adult package unit: prefer stored unit; legacy quotes used per-seat quotedPrice.
+    const unitAdultFareCents =
+      quote.unitAdultFareCents > 0
+        ? quote.unitAdultFareCents
+        : quote.quotedPriceCents;
+
+    if (unitAdultFareCents <= 0) {
+      fail(quoteId, "This fare is not priced yet — please select fares again");
+    }
+
+    const travellers = parseOnlineTravellersDraft(formData, {
+      adults,
+      children,
+      infants,
+    });
+    const primary = travellers[0]!;
+
+    const quotedPriceCents = partyFareCents({
+      adultUnitFareCents: unitAdultFareCents,
+      adults,
+      children,
+      infants,
+    });
+
+    const hold = await syncQuoteSeatHold(quoteId, sessionId, seatsBooked);
+    if (!hold.ok) fail(quoteId, hold.error);
+
+    await prisma.priceQuote.update({
+      where: { id: quoteId },
+      data: {
+        passengerTitle: primary.title,
+        passengerFirstName: primary.firstName,
+        passengerLastName: primary.lastName,
+        passengerEmail: primary.email || "",
+        passengerPhone: primary.phone || "",
+        passportNumber: primary.passportNumber || "",
+        nationality: primary.nationality || "",
+        seatsBooked,
+        adultCount: adults,
+        childCount: children,
+        infantCount: infants,
+        unitAdultFareCents,
+        quotedPriceCents,
+        travellersDraft: travellers as unknown as Prisma.InputJsonValue,
+        privacyAccepted: true,
+      },
+    });
   } catch (error) {
+    // redirect() throws a special error — must not be swallowed as a form error.
+    if (isRedirectError(error)) throw error;
     fail(
       quoteId,
       error instanceof Error ? error.message : "Invalid passenger details",
@@ -115,5 +115,8 @@ export async function savePassengerDetailsAction(formData: FormData) {
   }
 
   revalidatePath(`/checkout/${quoteId}`);
+  revalidatePath(`/checkout/${quoteId}/passengers`);
+  revalidatePath(`/checkout/${quoteId}/card`);
+  revalidatePath(`/checkout/${quoteId}/bank`);
   redirect(`/checkout/${quoteId}`);
 }

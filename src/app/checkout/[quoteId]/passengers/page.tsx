@@ -23,13 +23,14 @@ export default async function PassengerDetailsPage({
     ? `/flights/trip?outboundId=${q.flightId}&returnId=${q.returnFlightId}&adults=${q.adultCount}&children=${q.childCount}&infants=${q.infantCount}`
     : `/flights/${q.flightId}?adults=${q.adultCount}&children=${q.childCount}&infants=${q.infantCount}`;
 
-  const isPartyQuote = q.unitAdultFareCents > 0;
-  const adults = isPartyQuote ? Math.max(1, q.adultCount || 1) : 1;
-  const children = isPartyQuote ? Math.max(0, q.childCount || 0) : 0;
-  const infants = isPartyQuote ? Math.max(0, q.infantCount || 0) : 0;
+  const adults = Math.max(1, q.adultCount || 1);
+  const children = Math.max(0, q.childCount || 0);
+  const infants = Math.max(0, q.infantCount || 0);
   const draftList = Array.isArray(q.travellersDraft)
     ? (q.travellersDraft as TravellerDraft[])
     : [];
+  const unitAdult =
+    q.unitAdultFareCents > 0 ? q.unitAdultFareCents : q.quotedPriceCents;
 
   return (
     <main className="page-shell bg-background pb-safe">
@@ -54,12 +55,11 @@ export default async function PassengerDetailsPage({
             <div className="order-2 lg:order-1">
               <PassengerDetailsForm
                 quoteId={quoteId}
-                maxSeats={state.maxSeats}
+                maxSeats={Math.max(state.maxSeats, q.seatsBooked || 1)}
                 adults={adults}
                 children={children}
                 infants={infants}
-                unitAdultFareCents={q.unitAdultFareCents || q.quotedPriceCents}
-                legacySeatPicker={!isPartyQuote}
+                unitAdultFareCents={unitAdult}
                 error={error ? decodeURIComponent(error) : null}
                 initialTravellers={draftList}
                 initial={{

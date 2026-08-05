@@ -137,6 +137,19 @@ async function main() {
     assert(draft[1]?.passengerType === "child", "child slot");
     assert(draft[2]?.passengerType === "infant", "infant slot");
 
+    // Same path as passenger-details "add travellers" save:
+    // counts can grow after the initial search quote.
+    const grownTotal = partyFareCents({
+      adultUnitFareCents: adultRt,
+      adults: 2,
+      children: 1,
+      infants: 1,
+    });
+    assert(
+      grownTotal === 199_900 * 2 + 149_925 + 19_990,
+      "adding adult on passengers step recalculates party total",
+    );
+
     console.log("2) Create inventory + party quote");
     const dep = new Date(Date.now() + 40 * 24 * 60 * 60 * 1000);
     const ret = new Date(Date.now() + 47 * 24 * 60 * 60 * 1000);
