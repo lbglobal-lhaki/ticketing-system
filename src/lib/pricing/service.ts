@@ -29,7 +29,9 @@ type FareReleasePriceFields = {
 /**
  * Fixed admin price for the current fare release (no demand/scarcity uplift).
  * Online checkout with a charter product still overrides to catalogue price.
- * Pass tripType "round_trip" to use roundTripPriceCents (per leg).
+ * Pass tripType "round_trip" to use roundTripPriceCents — the full adult
+ * package total for the itinerary (same semantics as charter catalogue RT).
+ * Callers must not sum outbound + return roundTripPriceCents.
  */
 export async function priceFlight(
   flight: {
@@ -78,4 +80,48 @@ export function splitRoundTripPackageCents(totalCents: number): {
 } {
   const outboundCents = Math.floor(totalCents / 2);
   return { outboundCents, returnCents: totalCents - outboundCents };
+}
+
+/**
+ * Resolve outbound/return leg cents for an adult seat.
+ *
+ * System / paired fare releases store roundTripPriceCents as the **full RT
+ * package** (same as online search + charter). Custom walk-in legs are priced
+ * per direction and must be summed via one-way amounts.
+ */
+export function resolveAdultLegFares(input: {
+  isRoundTrip: boolean;
+  outboundOneWayCents: number;
+  outboundRoundTripCents: number;
+  returnOneWayCents?: number;
+  returnRoundTripCents?: number;
+  /** True when either leg was created as an ad-hoc walk-in custom flight. */
+  customPerLeg?: boolean;
+}): { outboundLegCents: number; returnLegCents: number; unitAdultCents: number } {
+  if (!input.isRoundTrip) {
+    const outboundLegCents = Math.max(0, input.outboundOneWayCents);
+    return {
+      outboundLegCents,
+      returnLegCents: 0,
+      unitAdultCents: outboundLegCents,
+    };
+  }
+
+  if (input.customPerLeg) {
+    const outboundLegCents = Math.max(0, input.outboundOneWayCents);
+    const returnLegCents = Math.max(0, input.returnOneWayCents ?? 0);
+    return {
+      outboundLegCents,
+      returnLegCents,
+      unitAdultCents: outboundLegCents + returnLegCents,
+    };
+  }
+
+  const packageCents = Math.max(0, input.outboundRoundTripCents);
+  const split = splitRoundTripPackageCents(packageCents);
+  return {
+    outboundLegCents: split.outboundCents,
+    returnLegCents: split.returnCents,
+    unitAdultCents: packageCents,
+  };
 }

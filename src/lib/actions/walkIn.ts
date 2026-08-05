@@ -41,7 +41,9 @@ import {
   isBankTransferConfigured,
 } from "@/lib/payments/bank";
 import { calculateCardServiceFee } from "@/lib/payments/fees";
-import { priceFlight, splitRoundTripPackageCents } from "@/lib/pricing/service";
+import {
+  resolveAdultLegFares,
+} from "@/lib/pricing/service";
 import { z } from "zod";
 
 const walkInSchema = z.object({
@@ -146,8 +148,8 @@ async function resolveLegFlightId(
           sortOrder: 1,
           totalSeats: seats,
           remainingSeats: seats,
-          // Same amount for both trip types — custom legs are priced per seat
-          // for that leg; RT walk-ins sum the two legs' release prices.
+          // Custom legs are priced per direction (one-way field). RT walk-ins
+          // sum both legs' one-way amounts via resolveAdultLegFares(customPerLeg).
           priceCents: Math.round(data.priceAud * 100),
           roundTripPriceCents: Math.round(data.priceAud * 100),
           active: true,
@@ -335,22 +337,27 @@ export async function createWalkInBookingAction(formData: FormData) {
       }
     }
 
-    let outboundLegCents = 0;
-    let returnLegCents = 0;
+    let unitAdultFareCents = 0;
     if (!skipsSystemFarePricing) {
-      const tripType = isRoundTrip ? "round_trip" : "one_way";
-      const outboundPrice = await priceFlight(flight, { tripType });
-      const returnPrice = returnFlight
-        ? await priceFlight(returnFlight, { tripType })
-        : null;
-      if (!outboundPrice.farePriced) {
-        throw new Error("Outbound fare unavailable");
+      const customPerLeg =
+        outboundCurrent.name === "Walk-in fare" ||
+        returnCurrent?.name === "Walk-in fare";
+      const legs = resolveAdultLegFares({
+        isRoundTrip,
+        outboundOneWayCents: outboundCurrent.priceCents,
+        outboundRoundTripCents: outboundCurrent.roundTripPriceCents,
+        returnOneWayCents: returnCurrent?.priceCents ?? 0,
+        returnRoundTripCents: returnCurrent?.roundTripPriceCents ?? 0,
+        customPerLeg,
+      });
+      if (legs.unitAdultCents <= 0) {
+        throw new Error(
+          isRoundTrip
+            ? "Round-trip fare is not priced — set a round-trip package price in Flights"
+            : "Outbound fare is not priced",
+        );
       }
-      if (returnFlight && returnPrice && !returnPrice.farePriced) {
-        throw new Error("Return fare unavailable");
-      }
-      outboundLegCents = outboundPrice.displayPriceCents;
-      returnLegCents = returnPrice?.displayPriceCents ?? 0;
+      unitAdultFareCents = legs.unitAdultCents;
     }
 
     // Optional fare-tier override — admin can charge a specific charter
@@ -379,16 +386,14 @@ export async function createWalkInBookingAction(formData: FormData) {
             "Selected round-trip fare is not priced — set a charter round-trip price first",
           );
         }
-        const split = splitRoundTripPackageCents(product.roundTripPriceCents);
-        outboundLegCents = split.outboundCents;
-        returnLegCents = split.returnCents;
+        unitAdultFareCents = product.roundTripPriceCents;
       } else {
         if (product.priceCents <= 0) {
           throw new Error(
             "Selected one-way fare is not priced — set a charter one-way price first",
           );
         }
-        outboundLegCents = product.priceCents;
+        unitAdultFareCents = product.priceCents;
       }
     }
 
@@ -398,12 +403,12 @@ export async function createWalkInBookingAction(formData: FormData) {
       outboundReleaseName = "Custom price (admin-set)";
     }
 
-    // Adults (primary + extras) use system/override fare per seat.
+    // Adults (primary + extras) use one adult package each (OW or full RT).
     // Children and infants use their admin-entered prices (infants = no seat).
     const adultSeatCount = 1 + companions.adults.length;
     const flightFareCents = usingCustomPrice
       ? (customTotalCents as number)
-      : (outboundLegCents + returnLegCents) * adultSeatCount +
+      : unitAdultFareCents * adultSeatCount +
         companions.childFareCents +
         companions.infantFareCents;
     const baggageCents = Math.round(data.extraBaggageAud * 100);
@@ -485,6 +490,9 @@ export async function createWalkInBookingAction(formData: FormData) {
       }
 
       const bookingRef = makeBookingRef();
+      const adultUnitForPassengers = usingCustomPrice
+        ? 0
+        : unitAdultFareCents;
       const allPassengers: TravellerDetail[] = [
         {
           fullName: data.passengerName,
@@ -493,9 +501,13 @@ export async function createWalkInBookingAction(formData: FormData) {
           passportNumber: data.passportNumber || "",
           nationality: data.nationality || "",
           passengerType: "adult",
-          priceCents: 0,
+          priceCents: adultUnitForPassengers,
         },
-        ...companions.all,
+        ...companions.all.map((pax) =>
+          pax.passengerType === "adult" && adultUnitForPassengers > 0
+            ? { ...pax, priceCents: adultUnitForPassengers }
+            : pax,
+        ),
       ];
       const passengerTickets = allPassengers.map(() => makeTicketNumber());
 

@@ -64,6 +64,7 @@ export type AdminInvoiceRow = {
   createdAt: string;
   bookingRef: string;
   bookingId: string;
+  cabinClass: "economy" | "business";
 };
 
 type DocTab = "travel" | "airfare";
@@ -366,6 +367,10 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                   </p>
                   <p className="text-sm text-muted">
                     Booking {invoice.bookingRef} ·{" "}
+                    {invoice.cabinClass === "business"
+                      ? "Business"
+                      : "Economy"}{" "}
+                    ·{" "}
                     {invoice.paymentMethod === "card"
                       ? "Credit card"
                       : invoice.paymentMethod === "cash"
@@ -491,7 +496,8 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                   {active.invoiceNumber}
                 </p>
                 <p className="mt-1 text-sm text-muted">
-                  {active.customerName} · Booking {active.bookingRef}
+                  {active.customerName} · Booking {active.bookingRef} ·{" "}
+                  {active.cabinClass === "business" ? "Business" : "Economy"}
                 </p>
               </div>
               <button

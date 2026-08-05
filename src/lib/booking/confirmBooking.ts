@@ -15,7 +15,7 @@ import {
 import { getCurrentFareRelease } from "@/lib/fares/current";
 import {
   getQuoteTtlMinutes,
-  priceFlight,
+  resolveAdultLegFares,
   splitRoundTripPackageCents,
 } from "@/lib/pricing/service";
 import {
@@ -117,19 +117,8 @@ export async function createPriceQuote(input: {
     }
   }
 
-  const outboundPrice = await priceFlight(flight, { tripType });
-  const returnPrice = returnFlight
-    ? await priceFlight(returnFlight, { tripType })
-    : null;
-  if (!outboundPrice.farePriced) {
-    return { ok: false as const, error: "Outbound fare is not available" };
-  }
-  if (returnFlight && returnPrice && !returnPrice.farePriced) {
-    return { ok: false as const, error: "Return fare is not available" };
-  }
-
-  let outboundCents = outboundPrice.displayPriceCents;
-  let returnCents = returnPrice?.displayPriceCents ?? 0;
+  let outboundCents = 0;
+  let returnCents = 0;
   let fareProductCode = "";
   let fareProductName = "";
   let fareReleaseName = outboundCurrent.name;
@@ -173,6 +162,21 @@ export async function createPriceQuote(input: {
       outboundCents = product.priceCents;
       returnCents = 0;
     }
+  } else {
+    // Fare-release path: RT amount is a full adult package on the outbound
+    // release — never sum outbound + return roundTripPriceCents.
+    const legs = resolveAdultLegFares({
+      isRoundTrip: Boolean(returnFlight),
+      outboundOneWayCents: outboundCurrent.priceCents,
+      outboundRoundTripCents: outboundCurrent.roundTripPriceCents,
+      returnOneWayCents: returnCurrent?.priceCents ?? 0,
+      returnRoundTripCents: returnCurrent?.roundTripPriceCents ?? 0,
+    });
+    if (legs.unitAdultCents <= 0) {
+      return { ok: false as const, error: "Outbound fare is not available" };
+    }
+    outboundCents = legs.outboundLegCents;
+    returnCents = legs.returnLegCents;
   }
 
   const unitAdultFareCents = outboundCents + returnCents;

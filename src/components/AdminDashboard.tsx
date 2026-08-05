@@ -125,6 +125,7 @@ type BookingRow = {
     flightNumber: string;
     origin: string;
     destination: string;
+    cabinClass: "economy" | "business";
   };
   returnFlight: {
     flightNumber: string;
@@ -741,7 +742,7 @@ export function AdminDashboard({
               <label className="space-y-1 text-sm">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
                   {fareTripMode === "round_trip"
-                    ? "Round-trip price (AUD) / leg"
+                    ? "Round-trip package (AUD)"
                     : "One-way price (AUD)"}
                 </span>
                 <MoneyInput
@@ -901,7 +902,7 @@ export function AdminDashboard({
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
                       Fare releases ·{" "}
                       {fareTripMode === "round_trip"
-                        ? "Round-trip price / leg"
+                        ? "Round-trip package"
                         : "One-way price"}
                     </p>
                     {f.fareReleases.map((release) => {
@@ -1185,7 +1186,7 @@ export function AdminDashboard({
                   </label>
                   <label className="space-y-1 text-sm">
                     <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                      Round-trip price (AUD) / leg
+                      Round-trip package (AUD)
                     </span>
                     <MoneyInput
                       key={`rt-${row.id ?? index}-${row.roundTripPriceCents}`}
@@ -1635,7 +1636,7 @@ export function AdminDashboard({
             </div>
           ) : (
             <div className="overflow-x-auto border-y border-line bg-surface/60">
-              <table className="w-full min-w-[980px] text-left text-sm">
+              <table className="w-full min-w-[1040px] text-left text-sm">
                 <thead>
                   <tr className="border-b border-line text-xs uppercase tracking-[0.12em] text-muted">
                     <th className="px-4 py-3 font-medium">
@@ -1650,6 +1651,7 @@ export function AdminDashboard({
                     <th className="px-4 py-3 font-medium">Payment</th>
                     <th className="px-4 py-3 font-medium">Source</th>
                     <th className="px-4 py-3 font-medium">Customer</th>
+                    <th className="px-4 py-3 font-medium">Cabin</th>
                     <th className="px-4 py-3 font-medium">Flights</th>
                     <th className="px-4 py-3 font-medium">Amount</th>
                     <th className="px-4 py-3 font-medium">Actions</th>
@@ -1717,6 +1719,11 @@ export function AdminDashboard({
                             </p>
                           ) : null;
                         })()}
+                      </td>
+                      <td className="px-4 py-4 text-muted">
+                        {b.flight.cabinClass === "business"
+                          ? "Business"
+                          : "Economy"}
                       </td>
                       <td className="px-4 py-4 text-muted">
                         {b.flight.flightNumber} {b.flight.origin}→

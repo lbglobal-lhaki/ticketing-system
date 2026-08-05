@@ -205,6 +205,7 @@ export default async function AdminPage({
               bookingRef: true,
               passportNumber: true,
               nationality: true,
+              flight: { select: { cabinClass: true } },
             },
           },
         },
@@ -444,6 +445,7 @@ export default async function AdminPage({
                 flightNumber: b.flight.flightNumber,
                 origin: b.flight.origin,
                 destination: b.flight.destination,
+                cabinClass: b.flight.cabinClass as "economy" | "business",
               },
               returnFlight: b.returnFlight
                 ? {
@@ -491,6 +493,9 @@ export default async function AdminPage({
               createdAt: invoice.createdAt.toISOString(),
               bookingRef: invoice.booking.bookingRef,
               bookingId: invoice.bookingId,
+              cabinClass: invoice.booking.flight.cabinClass as
+                | "economy"
+                | "business",
             }))}
             deletedRecords={deletedRecords.map((row) => ({
               id: row.id,
