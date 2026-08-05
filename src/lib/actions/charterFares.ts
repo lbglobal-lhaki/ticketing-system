@@ -12,6 +12,7 @@ import { z } from "zod";
 const updateSchema = z.object({
   id: z.string().min(1),
   priceAud: z.coerce.number().min(0).max(100000),
+  roundTripPriceAud: z.coerce.number().min(0).max(100000),
   tagline: z.string().trim().max(80),
   recommended: z.enum(["true", "false"]).optional(),
   mostPopular: z.enum(["true", "false"]).optional(),
@@ -49,6 +50,7 @@ export async function updateCharterFareAction(formData: FormData) {
   const parsed = updateSchema.safeParse({
     id: formData.get("id"),
     priceAud: formData.get("priceAud"),
+    roundTripPriceAud: formData.get("roundTripPriceAud") || "0",
     tagline: formData.get("tagline") || "",
     recommended: formData.get("recommended") ? "true" : "false",
     mostPopular: formData.get("mostPopular") ? "true" : "false",
@@ -84,6 +86,7 @@ export async function updateCharterFareAction(formData: FormData) {
     where: { id: data.id },
     data: {
       priceCents: Math.round(data.priceAud * 100),
+      roundTripPriceCents: Math.round(data.roundTripPriceAud * 100),
       tagline: data.tagline,
       recommended: data.recommended === "true",
       mostPopular: data.mostPopular === "true",

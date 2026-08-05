@@ -22,7 +22,7 @@ type Leg = {
  * This charter route sells one fixed round-trip pair per month — customers
  * don't search for a return flight separately. If this flight has a
  * designated `pairedReturn` leg, picking "Round trip" here auto-attaches it
- * and doubles the fare; no second search step required.
+ * and uses the stored round-trip catalogue total; no second search step required.
  */
 export function TripTypeFareSection({
   outbound,
@@ -45,13 +45,16 @@ export function TripTypeFareSection({
   const isRoundTrip = tripType === "round_trip" && canRoundTrip;
 
   const displayedProducts = isRoundTrip
-    ? products.map((p) => ({
-        ...p,
-        priceCents: p.priceCents * 2,
-        notes: p.notes
-          ? `${p.notes} · round-trip total (both legs)`
-          : "Round-trip total (both legs)",
-      }))
+    ? products
+        .filter((p) => p.roundTripPriceCents > 0)
+        .map((p) => ({
+          ...p,
+          priceCents: p.roundTripPriceCents,
+          available: p.available && p.roundTripPriceCents > 0,
+          notes: p.notes
+            ? `${p.notes} · round-trip total (both legs)`
+            : "Round-trip total (both legs)",
+        }))
     : products;
 
   return (

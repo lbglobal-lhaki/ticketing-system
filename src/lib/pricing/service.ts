@@ -15,24 +15,31 @@ export type FlightPriceResult = PriceBreakdown & {
   farePriced: boolean;
 };
 
+type FareReleasePriceFields = {
+  id: string;
+  name: string;
+  sortOrder: number;
+  totalSeats: number;
+  remainingSeats: number;
+  priceCents: number;
+  roundTripPriceCents: number;
+  active: boolean;
+};
+
 /**
  * Fixed admin price for the current fare release (no demand/scarcity uplift).
  * Online checkout with a charter product still overrides to catalogue price.
+ * Pass tripType "round_trip" to use roundTripPriceCents (per leg).
  */
-export async function priceFlight(flight: {
-  id: string;
-  remainingSeats: number;
-  totalSeats: number;
-  fareReleases?: {
+export async function priceFlight(
+  flight: {
     id: string;
-    name: string;
-    sortOrder: number;
-    totalSeats: number;
     remainingSeats: number;
-    priceCents: number;
-    active: boolean;
-  }[];
-}): Promise<FlightPriceResult> {
+    totalSeats: number;
+    fareReleases?: FareReleasePriceFields[];
+  },
+  options?: { tripType?: "one_way" | "round_trip" },
+): Promise<FlightPriceResult> {
   const releases =
     flight.fareReleases ??
     (await prisma.fareRelease.findMany({
@@ -41,7 +48,12 @@ export async function priceFlight(flight: {
     }));
 
   const current = getCurrentFareRelease(releases);
-  const basePriceCents = current?.priceCents ?? 0;
+  const isRoundTrip = options?.tripType === "round_trip";
+  const basePriceCents = current
+    ? isRoundTrip
+      ? current.roundTripPriceCents
+      : current.priceCents
+    : 0;
   const farePriced = Boolean(current && basePriceCents > 0);
 
   return {
@@ -57,4 +69,13 @@ export async function priceFlight(flight: {
     fareReleaseName: current?.name ?? null,
     farePriced,
   };
+}
+
+/** Split a round-trip package total across outbound / return for invoices. */
+export function splitRoundTripPackageCents(totalCents: number): {
+  outboundCents: number;
+  returnCents: number;
+} {
+  const outboundCents = Math.floor(totalCents / 2);
+  return { outboundCents, returnCents: totalCents - outboundCents };
 }

@@ -109,16 +109,19 @@ export async function getCharterFareByCode(code: string) {
 
 export async function getCharterCabinFromPrices() {
   const rows = await listCharterFareProducts();
-  const minFor = (cabin: "economy" | "business") => {
-    const priced = rows.filter(
-      (p) => p.cabinClass === cabin && p.priceCents > 0,
-    );
+  const minFor = (
+    cabin: "economy" | "business",
+    field: "priceCents" | "roundTripPriceCents",
+  ) => {
+    const priced = rows.filter((p) => p.cabinClass === cabin && p[field] > 0);
     if (priced.length === 0) return null;
-    return Math.min(...priced.map((p) => p.priceCents));
+    return Math.min(...priced.map((p) => p[field]));
   };
   return {
-    economy: minFor("economy"),
-    business: minFor("business"),
+    economy: minFor("economy", "priceCents"),
+    business: minFor("business", "priceCents"),
+    economyRoundTrip: minFor("economy", "roundTripPriceCents"),
+    businessRoundTrip: minFor("business", "roundTripPriceCents"),
   };
 }
 
@@ -140,6 +143,7 @@ export function toUiFareProduct(
     name: row.name,
     cabinLabel,
     priceCents: row.priceCents,
+    roundTripPriceCents: row.roundTripPriceCents,
     tagline: row.tagline,
     recommended: row.recommended,
     mostPopular: row.mostPopular,

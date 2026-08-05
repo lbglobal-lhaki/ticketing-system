@@ -138,8 +138,12 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
   const passengers = parsePassengers(raw.passengers);
   const cabinClass = parseCabinClass(raw.cabinClass);
   const allTickets = raw.allTickets === "1" || raw.allTickets === "true";
-  const { economy: economyFromCents, business: businessFromCents } =
-    await getCharterCabinFromPrices();
+  const {
+    economy: economyFromCents,
+    business: businessFromCents,
+    economyRoundTrip: economyRtFromCents,
+    businessRoundTrip: businessRtFromCents,
+  } = await getCharterCabinFromPrices();
 
   function catalogPrice(flight: {
     cabinClass: string;
@@ -148,8 +152,12 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
   }) {
     const catalog =
       flight.cabinClass === "business"
-        ? businessFromCents
-        : economyFromCents;
+        ? isRoundTrip
+          ? businessRtFromCents
+          : businessFromCents
+        : isRoundTrip
+          ? economyRtFromCents
+          : economyFromCents;
     const cents = catalog ?? 0;
     return {
       basePriceCents: cents,
@@ -344,13 +352,13 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
       ...row,
       roleLabel: "return" as const,
       roundTripAvailable: true,
+      // Catalogue RT price is already a full package total — don't add
+      // outbound + return one-way-style amounts.
       economy: row.economy
         ? {
             ...row.economy,
-            displayPriceCents:
-              outboundPrice.displayPriceCents + row.economy.displayPriceCents,
-            basePriceCents:
-              outboundPrice.basePriceCents + row.economy.basePriceCents,
+            displayPriceCents: row.economy.displayPriceCents,
+            basePriceCents: row.economy.basePriceCents,
             farePriced: outboundPrice.farePriced && row.economy.farePriced,
             fareReleaseName:
               [outboundPrice.fareReleaseName, row.economy.fareReleaseName]
@@ -361,10 +369,8 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
       business: row.business
         ? {
             ...row.business,
-            displayPriceCents:
-              outboundPrice.displayPriceCents + row.business.displayPriceCents,
-            basePriceCents:
-              outboundPrice.basePriceCents + row.business.basePriceCents,
+            displayPriceCents: row.business.displayPriceCents,
+            basePriceCents: row.business.basePriceCents,
             farePriced: outboundPrice.farePriced && row.business.farePriced,
             fareReleaseName:
               [outboundPrice.fareReleaseName, row.business.fareReleaseName]

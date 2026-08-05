@@ -31,7 +31,7 @@ import {
   isBankTransferConfigured,
 } from "@/lib/payments/bank";
 import { calculateCardServiceFee } from "@/lib/payments/fees";
-import { priceFlight } from "@/lib/pricing/service";
+import { priceFlight, splitRoundTripPackageCents } from "@/lib/pricing/service";
 import { z } from "zod";
 
 
@@ -245,15 +245,23 @@ export async function createWalkInBookingAction(formData: FormData) {
     const usingFareOverride = Boolean(data.fareProductId);
     const usingCustomPrice = customTotalCents !== null;
     const skipsSystemFarePricing = usingFareOverride || usingCustomPrice;
+    const isRoundTrip = Boolean(returnFlightId);
 
     const outboundCurrent = getCurrentFareRelease(flight.fareReleases);
     if (!outboundCurrent) {
       throw new Error("Outbound flight has no active fare release");
     }
-    if (!skipsSystemFarePricing && outboundCurrent.priceCents <= 0) {
-      throw new Error(
-        "Current fare release is not priced — set a price in Flights, pick a fare tier override, or enter a custom price below",
-      );
+    if (!skipsSystemFarePricing) {
+      const outboundNeeded = isRoundTrip
+        ? outboundCurrent.roundTripPriceCents
+        : outboundCurrent.priceCents;
+      if (outboundNeeded <= 0) {
+        throw new Error(
+          isRoundTrip
+            ? "Current round-trip fare release is not priced — set a round-trip price in Flights, pick a fare tier override, or enter a custom price below"
+            : "Current fare release is not priced — set a price in Flights, pick a fare tier override, or enter a custom price below",
+        );
+      }
     }
 
     let returnFlight = null;
@@ -268,9 +276,9 @@ export async function createWalkInBookingAction(formData: FormData) {
       if (!returnCurrent) {
         throw new Error("Return flight has no active fare release");
       }
-      if (!skipsSystemFarePricing && returnCurrent.priceCents <= 0) {
+      if (!skipsSystemFarePricing && returnCurrent.roundTripPriceCents <= 0) {
         throw new Error(
-          "Return fare is not priced — set a price in Flights, pick a fare tier override, or enter a custom price below",
+          "Return round-trip fare is not priced — set a round-trip price in Flights, pick a fare tier override, or enter a custom price below",
         );
       }
     }
@@ -278,8 +286,11 @@ export async function createWalkInBookingAction(formData: FormData) {
     let outboundLegCents = 0;
     let returnLegCents = 0;
     if (!skipsSystemFarePricing) {
-      const outboundPrice = await priceFlight(flight);
-      const returnPrice = returnFlight ? await priceFlight(returnFlight) : null;
+      const tripType = isRoundTrip ? "round_trip" : "one_way";
+      const outboundPrice = await priceFlight(flight, { tripType });
+      const returnPrice = returnFlight
+        ? await priceFlight(returnFlight, { tripType })
+        : null;
       if (!outboundPrice.farePriced) {
         throw new Error("Outbound fare unavailable");
       }
@@ -310,9 +321,17 @@ export async function createWalkInBookingAction(formData: FormData) {
       fareProductCode = product.code;
       fareProductName = product.name;
       outboundReleaseName = product.name;
-      outboundLegCents = product.priceCents;
       if (returnFlight) {
-        returnLegCents = product.priceCents;
+        if (product.roundTripPriceCents <= 0) {
+          throw new Error(
+            "Selected round-trip fare is not priced — set a charter round-trip price first",
+          );
+        }
+        const split = splitRoundTripPackageCents(product.roundTripPriceCents);
+        outboundLegCents = split.outboundCents;
+        returnLegCents = split.returnCents;
+      } else {
+        outboundLegCents = product.priceCents;
       }
     }
 

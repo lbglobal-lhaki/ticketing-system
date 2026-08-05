@@ -13,7 +13,11 @@ import {
   defaultInvoiceIdentity,
 } from "@/lib/documents/invoiceFields";
 import { getCurrentFareRelease } from "@/lib/fares/current";
-import { getQuoteTtlMinutes, priceFlight } from "@/lib/pricing/service";
+import {
+  getQuoteTtlMinutes,
+  priceFlight,
+  splitRoundTripPackageCents,
+} from "@/lib/pricing/service";
 import {
   decrementFareAndFlight,
   releaseQuoteHold,
@@ -32,6 +36,7 @@ export async function createPriceQuote(input: {
   }
 
   const tripType = input.returnFlightId ? "round_trip" : "one_way";
+  const isRoundTrip = tripType === "round_trip";
 
   const flight = await prisma.flight.findFirst({
     where: { id: input.flightId, active: true },
@@ -43,10 +48,21 @@ export async function createPriceQuote(input: {
   }
 
   const outboundCurrent = getCurrentFareRelease(flight.fareReleases);
-  if (!outboundCurrent || outboundCurrent.priceCents <= 0) {
+  if (!outboundCurrent) {
     return {
       ok: false as const,
       error: "Outbound fare is not priced yet — ask admin to set release prices",
+    };
+  }
+  const outboundReleasePrice = isRoundTrip
+    ? outboundCurrent.roundTripPriceCents
+    : outboundCurrent.priceCents;
+  if (outboundReleasePrice <= 0) {
+    return {
+      ok: false as const,
+      error: isRoundTrip
+        ? "Outbound round-trip fare is not priced yet — ask admin to set round-trip release prices"
+        : "Outbound fare is not priced yet — ask admin to set release prices",
     };
   }
 
@@ -79,16 +95,19 @@ export async function createPriceQuote(input: {
       };
     }
     returnCurrent = getCurrentFareRelease(returnFlight.fareReleases);
-    if (!returnCurrent || returnCurrent.priceCents <= 0) {
+    if (!returnCurrent || returnCurrent.roundTripPriceCents <= 0) {
       return {
         ok: false as const,
-        error: "Return fare is not priced yet — ask admin to set release prices",
+        error:
+          "Return round-trip fare is not priced yet — ask admin to set round-trip release prices",
       };
     }
   }
 
-  const outboundPrice = await priceFlight(flight);
-  const returnPrice = returnFlight ? await priceFlight(returnFlight) : null;
+  const outboundPrice = await priceFlight(flight, { tripType });
+  const returnPrice = returnFlight
+    ? await priceFlight(returnFlight, { tripType })
+    : null;
   if (!outboundPrice.farePriced) {
     return { ok: false as const, error: "Outbound fare is not available" };
   }
@@ -119,11 +138,26 @@ export async function createPriceQuote(input: {
     fareProductCode = product.code;
     fareProductName = product.name;
     fareReleaseName = product.name;
-    outboundCents = product.priceCents;
     if (returnFlight) {
-      returnCents = product.priceCents;
+      if (product.roundTripPriceCents <= 0) {
+        return {
+          ok: false as const,
+          error:
+            "Selected round-trip fare is not priced yet — ask admin to set charter round-trip prices",
+        };
+      }
+      const split = splitRoundTripPackageCents(product.roundTripPriceCents);
+      outboundCents = split.outboundCents;
+      returnCents = split.returnCents;
       returnFareReleaseName = product.name;
     } else {
+      if (product.priceCents <= 0) {
+        return {
+          ok: false as const,
+          error: "Selected fare product is not priced yet",
+        };
+      }
+      outboundCents = product.priceCents;
       returnCents = 0;
     }
   }

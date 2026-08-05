@@ -347,6 +347,7 @@ export default async function AdminPage({
               cabinClass: f.cabinClass as "economy" | "business",
               sortOrder: f.sortOrder,
               priceCents: f.priceCents,
+              roundTripPriceCents: f.roundTripPriceCents,
               tagline: f.tagline,
               recommended: f.recommended,
               mostPopular: f.mostPopular,
@@ -398,6 +399,7 @@ export default async function AdminPage({
                 totalSeats: r.totalSeats,
                 remainingSeats: r.remainingSeats,
                 priceCents: r.priceCents,
+                roundTripPriceCents: r.roundTripPriceCents,
               })),
             }))}
             bookings={bookings.map((b) => ({

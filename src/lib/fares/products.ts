@@ -17,6 +17,8 @@ export type FareProduct = {
   name: string;
   cabinLabel: string;
   priceCents: number;
+  /** Full round-trip package total (both legs). 0 = not priced. */
+  roundTripPriceCents: number;
   tagline: string;
   recommended: boolean;
   mostPopular: boolean;

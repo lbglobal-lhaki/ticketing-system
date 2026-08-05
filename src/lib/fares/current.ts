@@ -7,6 +7,7 @@ export type FareReleaseRow = {
   totalSeats: number;
   remainingSeats: number;
   priceCents: number;
+  roundTripPriceCents: number;
   active: boolean;
 };
 

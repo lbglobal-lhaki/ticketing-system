@@ -35,14 +35,17 @@ export default async function TripReviewPage({
     available: !soldOut,
   });
 
-  // Round-trip display: show catalogue × 2 for the pair.
-  const roundTripProducts = products.map((p) => ({
-    ...p,
-    priceCents: p.priceCents * 2,
-    notes: p.notes
-      ? `${p.notes} · round-trip total`
-      : "Round-trip total (both legs)",
-  }));
+  // Round-trip display: use stored package total (not ×2 one-way).
+  const roundTripProducts = products
+    .filter((p) => p.roundTripPriceCents > 0)
+    .map((p) => ({
+      ...p,
+      priceCents: p.roundTripPriceCents,
+      available: p.available && p.roundTripPriceCents > 0,
+      notes: p.notes
+        ? `${p.notes} · round-trip total`
+        : "Round-trip total (both legs)",
+    }));
 
   return (
     <main className="page-shell bg-background pb-safe">

@@ -124,8 +124,11 @@ model FareRelease {
   sortOrder      Int
   totalSeats     Int
   remainingSeats Int
-  /// Admin-controlled ticket price for this release (cents). 0 = not priced yet.
+  /// Admin-controlled one-way ticket price for this release (cents). 0 = not priced yet.
   priceCents     Int    @default(0)
+  /// Admin-controlled round-trip leg price for this release (cents). 0 = not priced yet.
+  /// Used when the booking is round-trip; independent of priceCents (not 2×).
+  roundTripPriceCents Int @default(0)
   active         Boolean @default(true)
 
   quotes         PriceQuote[] @relation("OutboundFare")
@@ -313,7 +316,10 @@ model CharterFareProduct {
   name               String
   cabinClass         CabinClass
   sortOrder          Int
+  /// One-way catalogue price (cents).
   priceCents         Int
+  /// Full round-trip package total for both legs (cents). 0 = not priced yet.
+  roundTripPriceCents Int       @default(0)
   currency           String     @default("AUD")
   tagline            String     @default("")
   recommended        Boolean    @default(false)

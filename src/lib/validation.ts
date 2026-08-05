@@ -59,6 +59,7 @@ export const fareReleaseInputSchema = z.object({
   totalSeats: z.coerce.number().int().min(0).max(800),
   remainingSeats: z.coerce.number().int().min(0).max(800).optional(),
   priceAud: z.coerce.number().min(0).max(100000),
+  roundTripPriceAud: z.coerce.number().min(0).max(100000).default(0),
   sortOrder: z.coerce.number().int().min(1).max(20),
 });
 
@@ -85,6 +86,7 @@ export function parseFareReleasesFromForm(formData: FormData) {
   const totals = formData.getAll("fareTotalSeats").map(String);
   const remainings = formData.getAll("fareRemainingSeats").map(String);
   const prices = formData.getAll("farePriceAud").map(String);
+  const roundTripPrices = formData.getAll("fareRoundTripPriceAud").map(String);
   const orders = formData.getAll("fareSortOrder").map(String);
 
   const releases = names.map((name, i) =>
@@ -93,6 +95,7 @@ export function parseFareReleasesFromForm(formData: FormData) {
       totalSeats: totals[i] ?? "0",
       remainingSeats: remainings[i] || totals[i] || "0",
       priceAud: prices[i] || "0",
+      roundTripPriceAud: roundTripPrices[i] || "0",
       sortOrder: orders[i] || String(i + 1),
     }),
   );
@@ -112,5 +115,6 @@ export function parseFareReleasesFromForm(formData: FormData) {
     totalSeats: r.totalSeats,
     remainingSeats: Math.min(r.remainingSeats ?? r.totalSeats, r.totalSeats),
     priceCents: Math.round(r.priceAud * 100),
+    roundTripPriceCents: Math.round(r.roundTripPriceAud * 100),
   }));
 }

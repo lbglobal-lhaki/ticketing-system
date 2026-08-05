@@ -106,6 +106,7 @@ export async function createFlightAction(formData: FormData) {
           totalSeats: r.totalSeats,
           remainingSeats: r.remainingSeats,
           priceCents: r.priceCents,
+          roundTripPriceCents: r.roundTripPriceCents,
           active: true,
         })),
       },
@@ -184,6 +185,7 @@ export async function updateFlightAction(formData: FormData) {
             totalSeats: r.totalSeats,
             remainingSeats: r.remainingSeats,
             priceCents: r.priceCents,
+            roundTripPriceCents: r.roundTripPriceCents,
             active: true,
           })),
         },
@@ -196,7 +198,7 @@ export async function updateFlightAction(formData: FormData) {
   redirect("/admin?tab=flights&saved=updated");
 }
 
-/** Quick price update for one fare release. */
+/** Quick price update for one fare release (one-way or round-trip). */
 export async function updateFarePriceAction(formData: FormData) {
   await requireAdmin();
 
@@ -204,10 +206,12 @@ export async function updateFarePriceAction(formData: FormData) {
     .object({
       id: z.string().min(1),
       priceAud: z.coerce.number().min(0),
+      priceKind: z.enum(["one_way", "round_trip"]).default("one_way"),
     })
     .safeParse({
       id: formData.get("id"),
       priceAud: formData.get("priceAud"),
+      priceKind: formData.get("priceKind") || "one_way",
     });
 
   if (!parsed.success) {
@@ -216,9 +220,13 @@ export async function updateFarePriceAction(formData: FormData) {
     );
   }
 
+  const priceCents = Math.round(parsed.data.priceAud * 100);
   await prisma.fareRelease.update({
     where: { id: parsed.data.id },
-    data: { priceCents: Math.round(parsed.data.priceAud * 100) },
+    data:
+      parsed.data.priceKind === "round_trip"
+        ? { roundTripPriceCents: priceCents }
+        : { priceCents },
   });
 
   revalidatePath("/admin");
@@ -242,12 +250,14 @@ export async function bulkUpdateFareTierPriceAction(formData: FormData) {
       tierName: z.string().min(1),
       priceAud: z.coerce.number().min(0),
       onlyUnpriced: z.coerce.boolean().default(false),
+      priceKind: z.enum(["one_way", "round_trip"]).default("one_way"),
     })
     .safeParse({
       cabinClass: formData.get("cabinClass"),
       tierName: formData.get("tierName"),
       priceAud: formData.get("priceAud"),
       onlyUnpriced: formData.get("onlyUnpriced") === "true",
+      priceKind: formData.get("priceKind") || "one_way",
     });
 
   if (!parsed.success) {
@@ -256,16 +266,24 @@ export async function bulkUpdateFareTierPriceAction(formData: FormData) {
     );
   }
 
-  const { cabinClass, tierName, priceAud, onlyUnpriced } = parsed.data;
+  const { cabinClass, tierName, priceAud, onlyUnpriced, priceKind } =
+    parsed.data;
   const priceCents = Math.round(priceAud * 100);
+  const isRoundTrip = priceKind === "round_trip";
 
   const result = await prisma.fareRelease.updateMany({
     where: {
       name: tierName,
       flight: { cabinClass },
-      ...(onlyUnpriced ? { priceCents: 0 } : {}),
+      ...(onlyUnpriced
+        ? isRoundTrip
+          ? { roundTripPriceCents: 0 }
+          : { priceCents: 0 }
+        : {}),
     },
-    data: { priceCents },
+    data: isRoundTrip
+      ? { roundTripPriceCents: priceCents }
+      : { priceCents },
   });
 
   revalidatePath("/admin");

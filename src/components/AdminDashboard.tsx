@@ -63,6 +63,7 @@ type FareRow = {
   totalSeats: number;
   remainingSeats: number;
   priceCents: number;
+  roundTripPriceCents: number;
 };
 
 type FlightRow = {
@@ -152,6 +153,7 @@ function templateToRows(cabin: CabinClass): FareRow[] {
     totalSeats: t.totalSeats,
     remainingSeats: t.totalSeats,
     priceCents: 0,
+    roundTripPriceCents: 0,
   }));
 }
 
@@ -293,6 +295,7 @@ export function AdminDashboard({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [cabinClass, setCabinClass] = useState<CabinClass>("business");
   const [bulkPriceCabin, setBulkPriceCabin] = useState<CabinClass>("business");
+  const [fareTripMode, setFareTripMode] = useState<TripType>("one_way");
   const [fareRows, setFareRows] = useState<FareRow[]>(() =>
     templateToRows("business"),
   );
@@ -432,7 +435,10 @@ export function AdminDashboard({
       setCabinClass(editing.cabinClass);
       setFareRows(
         editing.fareReleases.length > 0
-          ? editing.fareReleases.map((r) => ({ ...r }))
+          ? editing.fareReleases.map((r) => ({
+              ...r,
+              roundTripPriceCents: r.roundTripPriceCents ?? 0,
+            }))
           : templateToRows(editing.cabinClass),
       );
     }
@@ -555,8 +561,8 @@ export function AdminDashboard({
               </h2>
               <p className="mt-1 max-w-xl text-sm text-muted">
                 Each flight sells in order: Early Bird → Standard → Final
-                Release. Prices are fixed as you set them — no automatic
-                increases.
+                Release. One-way and round-trip prices are set separately —
+                round trip is not double one-way.
               </p>
             </div>
             <button
@@ -568,12 +574,45 @@ export function AdminDashboard({
             </button>
           </div>
 
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+              Price type
+            </p>
+            <div className="inline-flex rounded-full border border-line bg-white p-1 text-sm font-medium">
+              <button
+                type="button"
+                onClick={() => setFareTripMode("one_way")}
+                className={`rounded-full px-4 py-2 transition ${
+                  fareTripMode === "one_way"
+                    ? "bg-accent-deep text-white"
+                    : "text-muted hover:text-foreground"
+                }`}
+              >
+                One way
+              </button>
+              <button
+                type="button"
+                onClick={() => setFareTripMode("round_trip")}
+                className={`rounded-full px-4 py-2 transition ${
+                  fareTripMode === "round_trip"
+                    ? "bg-accent-deep text-white"
+                    : "text-muted hover:text-foreground"
+                }`}
+              >
+                Round trip
+              </button>
+            </div>
+          </div>
+
           <div className="border border-line bg-surface/80 p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">
-              Bulk pricing
+              Bulk pricing ·{" "}
+              {fareTripMode === "round_trip" ? "Round trip" : "One way"}
             </p>
             <h3 className="mt-2 font-[family-name:var(--font-syne)] text-xl font-semibold">
-              Apply a price to a fare tier across all flights
+              Apply a{" "}
+              {fareTripMode === "round_trip" ? "round-trip" : "one-way"} price
+              to a fare tier across all flights
             </h3>
             <p className="mt-1 max-w-2xl text-sm text-muted">
               Set &quot;Early Bird&quot; business once and it updates every
@@ -584,6 +623,7 @@ export function AdminDashboard({
               action={bulkUpdateFareTierPriceAction}
               className="mt-4 grid gap-4 sm:grid-cols-4"
             >
+              <input type="hidden" name="priceKind" value={fareTripMode} />
               <label className="space-y-1 text-sm">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
                   Cabin
@@ -617,7 +657,9 @@ export function AdminDashboard({
               </label>
               <label className="space-y-1 text-sm">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                  Price (AUD)
+                  {fareTripMode === "round_trip"
+                    ? "Round-trip price (AUD) / leg"
+                    : "One-way price (AUD)"}
                 </span>
                 <MoneyInput
                   name="priceAud"
@@ -764,15 +806,28 @@ export function AdminDashboard({
 
                   <div className="mt-4 space-y-3 border-t border-line/70 pt-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                      Fare releases
+                      Fare releases ·{" "}
+                      {fareTripMode === "round_trip"
+                        ? "Round-trip price / leg"
+                        : "One-way price"}
                     </p>
-                    {f.fareReleases.map((release) => (
+                    {f.fareReleases.map((release) => {
+                      const activeCents =
+                        fareTripMode === "round_trip"
+                          ? release.roundTripPriceCents
+                          : release.priceCents;
+                      return (
                       <form
-                        key={release.id}
+                        key={`${release.id}-${fareTripMode}`}
                         action={updateFarePriceAction}
                         className="flex flex-wrap items-end gap-3"
                       >
                         <input type="hidden" name="id" value={release.id} />
+                        <input
+                          type="hidden"
+                          name="priceKind"
+                          value={fareTripMode}
+                        />
                         <div className="min-w-[10rem] flex-1">
                           <p className="text-sm font-medium">{release.name}</p>
                           <p className="text-xs text-muted">
@@ -781,12 +836,14 @@ export function AdminDashboard({
                         </div>
                         <label className="space-y-1 text-sm">
                           <span className="text-xs uppercase tracking-[0.14em] text-muted">
-                            Price (AUD)
+                            {fareTripMode === "round_trip"
+                              ? "RT price (AUD)"
+                              : "Price (AUD)"}
                           </span>
                           <MoneyInput
                             name="priceAud"
                             required
-                            defaultValue={(release.priceCents / 100).toFixed(2)}
+                            defaultValue={(activeCents / 100).toFixed(2)}
                             className="w-44 border border-line bg-white py-2 pr-3 outline-none focus:border-accent"
                           />
                         </label>
@@ -797,7 +854,8 @@ export function AdminDashboard({
                           Update price
                         </SubmitButton>
                       </form>
-                    ))}
+                      );
+                    })}
                   </div>
                 </li>
               ))}
@@ -1015,7 +1073,7 @@ export function AdminDashboard({
                   </label>
                   <label className="space-y-1 text-sm">
                     <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                      Price (AUD)
+                      One-way price (AUD)
                     </span>
                     <MoneyInput
                       name="farePriceAud"
@@ -1026,6 +1084,27 @@ export function AdminDashboard({
                         next[index] = {
                           ...row,
                           priceCents: Math.round(
+                            (Number(e.target.value) || 0) * 100,
+                          ),
+                        };
+                        setFareRows(next);
+                      }}
+                      className={fieldClass}
+                    />
+                  </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                      Round-trip price (AUD) / leg
+                    </span>
+                    <MoneyInput
+                      name="fareRoundTripPriceAud"
+                      required
+                      value={(row.roundTripPriceCents / 100).toFixed(2)}
+                      onChange={(e) => {
+                        const next = [...fareRows];
+                        next[index] = {
+                          ...row,
+                          roundTripPriceCents: Math.round(
                             (Number(e.target.value) || 0) * 100,
                           ),
                         };
@@ -1258,17 +1337,25 @@ export function AdminDashboard({
                   </option>
                   {charterFares
                     .filter((f) => f.active)
-                    .map((f) => (
+                    .map((f) => {
+                      const showRt =
+                        walkInTripType === "round_trip" &&
+                        f.roundTripPriceCents > 0;
+                      return (
                       <option key={f.id} value={f.id}>
                         {f.cabinClass === "business" ? "Business" : "Economy"} ·{" "}
-                        {f.name} — {formatAud(f.priceCents)} / leg
+                        {f.name} —{" "}
+                        {showRt
+                          ? `${formatAud(f.roundTripPriceCents)} RT total`
+                          : `${formatAud(f.priceCents)} one-way`}
                       </option>
-                    ))}
+                      );
+                    })}
                 </select>
                 <span className="block text-xs text-muted">
-                  Charges this catalogue price per leg instead of the fare
-                  release price. Must match the cabin of the flight(s) chosen
-                  above.
+                  Charges this catalogue price instead of the fare-release
+                  price. Round-trip uses the stored RT package total. Must match
+                  the cabin of the flight(s) chosen above.
                 </span>
               </label>
               <label className="space-y-1 text-sm sm:col-span-2">

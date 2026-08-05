@@ -1,5 +1,6 @@
-"use client";
+﻿"use client";
 
+import { useState } from "react";
 import { MoneyInput } from "@/components/MoneyInput";
 import { SubmitButton } from "@/components/SubmitButton";
 import { updateCharterFareAction } from "@/lib/actions/charterFares";
@@ -12,6 +13,7 @@ export type AdminCharterFare = {
   cabinClass: "economy" | "business";
   sortOrder: number;
   priceCents: number;
+  roundTripPriceCents: number;
   tagline: string;
   recommended: boolean;
   mostPopular: boolean;
@@ -44,6 +46,7 @@ function lines(value: string[]) {
 }
 
 export function CharterFaresAdmin({ fares }: { fares: AdminCharterFare[] }) {
+  const [tripMode, setTripMode] = useState<"one_way" | "round_trip">("one_way");
   const economy = fares.filter((f) => f.cabinClass === "economy");
   const business = fares.filter((f) => f.cabinClass === "business");
 
@@ -54,13 +57,44 @@ export function CharterFaresAdmin({ fares }: { fares: AdminCharterFare[] }) {
           Charter fare products
         </h2>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Perth ⇄ Paro rules shown to customers. Edit prices, tags, and policy
-          labels — these drive the fare selection cards and checkout totals.
+          Perth ⇄ Paro rules shown to customers. One-way and round-trip prices
+          are set separately — round trip is a full package total, not double
+          one-way.
         </p>
       </div>
 
-      <FareGroup title="Economy" fares={economy} />
-      <FareGroup title="Business" fares={business} />
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+          Price type
+        </p>
+        <div className="inline-flex rounded-full border border-line bg-white p-1 text-sm font-medium">
+          <button
+            type="button"
+            onClick={() => setTripMode("one_way")}
+            className={`rounded-full px-4 py-2 transition ${
+              tripMode === "one_way"
+                ? "bg-accent-deep text-white"
+                : "text-muted hover:text-foreground"
+            }`}
+          >
+            One way
+          </button>
+          <button
+            type="button"
+            onClick={() => setTripMode("round_trip")}
+            className={`rounded-full px-4 py-2 transition ${
+              tripMode === "round_trip"
+                ? "bg-accent-deep text-white"
+                : "text-muted hover:text-foreground"
+            }`}
+          >
+            Round trip
+          </button>
+        </div>
+      </div>
+
+      <FareGroup title="Economy" fares={economy} tripMode={tripMode} />
+      <FareGroup title="Business" fares={business} tripMode={tripMode} />
     </section>
   );
 }
@@ -68,9 +102,11 @@ export function CharterFaresAdmin({ fares }: { fares: AdminCharterFare[] }) {
 function FareGroup({
   title,
   fares,
+  tripMode,
 }: {
   title: string;
   fares: AdminCharterFare[];
+  tripMode: "one_way" | "round_trip";
 }) {
   return (
     <div className="space-y-4">
@@ -78,271 +114,296 @@ function FareGroup({
         {title}
       </h3>
       {fares.map((fare) => (
-        <form
-          key={fare.id}
-          action={updateCharterFareAction}
-          className="space-y-4 rounded-2xl border border-line bg-white/80 p-4 sm:p-5"
-        >
-          <input type="hidden" name="id" value={fare.id} />
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="font-[family-name:var(--font-syne)] text-xl font-semibold">
-                {fare.name}
-              </p>
-              <p className="text-xs text-muted">
-                code: {fare.code} · currently {formatAud(fare.priceCents)}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-4 text-sm">
-              <label className="inline-flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  name="active"
-                  defaultChecked={fare.active}
-                />
-                Active
-              </label>
-              <label className="inline-flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  name="mostPopular"
-                  defaultChecked={fare.mostPopular}
-                />
-                Most popular
-              </label>
-              <label className="inline-flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  name="recommended"
-                  defaultChecked={fare.recommended}
-                />
-                Recommended
-              </label>
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Price (AUD)
-              </span>
-              <MoneyInput
-                name="priceAud"
-                defaultValue={Math.round(fare.priceCents / 100)}
-                required
-                className={fieldClass}
-              />
-            </label>
-            <label className="space-y-1 text-sm sm:col-span-2">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Tagline
-              </span>
-              <input
-                name="tagline"
-                defaultValue={fare.tagline}
-                className={fieldClass}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Flight/date change
-              </span>
-              <input
-                name="flightChangeLabel"
-                defaultValue={fare.flightChangeLabel}
-                required
-                className={fieldClass}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Refund
-              </span>
-              <input
-                name="refundLabel"
-                defaultValue={fare.refundLabel}
-                required
-                className={fieldClass}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Checked baggage
-              </span>
-              <input
-                name="checkedBaggage"
-                defaultValue={fare.checkedBaggage}
-                required
-                className={fieldClass}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Cabin baggage
-              </span>
-              <input
-                name="cabinBaggage"
-                defaultValue={fare.cabinBaggage}
-                required
-                className={fieldClass}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Seat selection
-              </span>
-              <input
-                name="seatSelection"
-                defaultValue={fare.seatSelection}
-                required
-                className={fieldClass}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Meal
-              </span>
-              <input
-                name="mealLabel"
-                defaultValue={fare.mealLabel}
-                required
-                className={fieldClass}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Frequent flyer
-              </span>
-              <input
-                name="frequentFlyerLabel"
-                defaultValue={fare.frequentFlyerLabel}
-                className={fieldClass}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Priority check-in
-              </span>
-              <input
-                name="priorityCheckIn"
-                defaultValue={fare.priorityCheckIn}
-                className={fieldClass}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Priority boarding
-              </span>
-              <input
-                name="priorityBoarding"
-                defaultValue={fare.priorityBoarding}
-                className={fieldClass}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Change fee (details)
-              </span>
-              <input
-                name="changeFeeLabel"
-                defaultValue={fare.changeFeeLabel}
-                className={fieldClass}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Refund fee (details)
-              </span>
-              <input
-                name="refundFeeLabel"
-                defaultValue={fare.refundFeeLabel}
-                className={fieldClass}
-              />
-            </label>
-            <label className="inline-flex items-center gap-2 text-sm sm:col-span-1">
-              <input
-                type="checkbox"
-                name="changePermitted"
-                defaultChecked={fare.changePermitted}
-              />
-              Change permitted
-            </label>
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                name="refundPermitted"
-                defaultChecked={fare.refundPermitted}
-              />
-              Refund permitted
-            </label>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Perk lines (one per line)
-              </span>
-              <textarea
-                name="perkLines"
-                rows={4}
-                defaultValue={lines(fare.perkLines)}
-                className="w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Notes
-              </span>
-              <textarea
-                name="notes"
-                rows={4}
-                defaultValue={fare.notes}
-                className="w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Change policy bullets
-              </span>
-              <textarea
-                name="changeBullets"
-                rows={4}
-                defaultValue={lines(fare.changeBullets)}
-                className="w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Refund policy bullets
-              </span>
-              <textarea
-                name="refundBullets"
-                rows={4}
-                defaultValue={lines(fare.refundBullets)}
-                className="w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
-              />
-            </label>
-            <label className="space-y-1 text-sm lg:col-span-2">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Baggage bullets
-              </span>
-              <textarea
-                name="baggageBullets"
-                rows={3}
-                defaultValue={lines(fare.baggageBullets)}
-                className="w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
-              />
-            </label>
-          </div>
-
-          <SubmitButton
-            pendingLabel="Saving…"
-            className="rounded-full bg-accent-deep px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Save {fare.name}
-          </SubmitButton>
-        </form>
+        <FareForm key={fare.id} fare={fare} tripMode={tripMode} />
       ))}
     </div>
+  );
+}
+
+function FareForm({
+  fare,
+  tripMode,
+}: {
+  fare: AdminCharterFare;
+  tripMode: "one_way" | "round_trip";
+}) {
+  const isRoundTrip = tripMode === "round_trip";
+  const activeCents = isRoundTrip ? fare.roundTripPriceCents : fare.priceCents;
+
+  return (
+    <form
+      action={updateCharterFareAction}
+      className="space-y-4 rounded-2xl border border-line bg-white/80 p-4 sm:p-5"
+    >
+      <input type="hidden" name="id" value={fare.id} />
+      <input
+        type="hidden"
+        name={isRoundTrip ? "priceAud" : "roundTripPriceAud"}
+        value={
+          isRoundTrip
+            ? (fare.priceCents / 100).toFixed(2)
+            : (fare.roundTripPriceCents / 100).toFixed(2)
+        }
+      />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-[family-name:var(--font-syne)] text-xl font-semibold">
+            {fare.name}
+          </p>
+          <p className="text-xs text-muted">
+            code: {fare.code} · one-way {formatAud(fare.priceCents)} · RT{" "}
+            {formatAud(fare.roundTripPriceCents)}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              name="active"
+              defaultChecked={fare.active}
+            />
+            Active
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              name="mostPopular"
+              defaultChecked={fare.mostPopular}
+            />
+            Most popular
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              name="recommended"
+              defaultChecked={fare.recommended}
+            />
+            Recommended
+          </label>
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            {isRoundTrip ? "Round-trip total (AUD)" : "One-way price (AUD)"}
+          </span>
+          <MoneyInput
+            key={`${fare.id}-${tripMode}`}
+            name={isRoundTrip ? "roundTripPriceAud" : "priceAud"}
+            defaultValue={Math.round(activeCents / 100)}
+            required
+            className={fieldClass}
+          />
+        </label>
+        <label className="space-y-1 text-sm sm:col-span-2">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Tagline
+          </span>
+          <input
+            name="tagline"
+            defaultValue={fare.tagline}
+            className={fieldClass}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Flight/date change
+          </span>
+          <input
+            name="flightChangeLabel"
+            defaultValue={fare.flightChangeLabel}
+            required
+            className={fieldClass}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Refund
+          </span>
+          <input
+            name="refundLabel"
+            defaultValue={fare.refundLabel}
+            required
+            className={fieldClass}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Checked baggage
+          </span>
+          <input
+            name="checkedBaggage"
+            defaultValue={fare.checkedBaggage}
+            required
+            className={fieldClass}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Cabin baggage
+          </span>
+          <input
+            name="cabinBaggage"
+            defaultValue={fare.cabinBaggage}
+            required
+            className={fieldClass}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Seat selection
+          </span>
+          <input
+            name="seatSelection"
+            defaultValue={fare.seatSelection}
+            required
+            className={fieldClass}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Meal
+          </span>
+          <input
+            name="mealLabel"
+            defaultValue={fare.mealLabel}
+            required
+            className={fieldClass}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Frequent flyer
+          </span>
+          <input
+            name="frequentFlyerLabel"
+            defaultValue={fare.frequentFlyerLabel}
+            className={fieldClass}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Priority check-in
+          </span>
+          <input
+            name="priorityCheckIn"
+            defaultValue={fare.priorityCheckIn}
+            className={fieldClass}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Priority boarding
+          </span>
+          <input
+            name="priorityBoarding"
+            defaultValue={fare.priorityBoarding}
+            className={fieldClass}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Change fee (details)
+          </span>
+          <input
+            name="changeFeeLabel"
+            defaultValue={fare.changeFeeLabel}
+            className={fieldClass}
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Refund fee (details)
+          </span>
+          <input
+            name="refundFeeLabel"
+            defaultValue={fare.refundFeeLabel}
+            className={fieldClass}
+          />
+        </label>
+        <label className="inline-flex items-center gap-2 text-sm sm:col-span-1">
+          <input
+            type="checkbox"
+            name="changePermitted"
+            defaultChecked={fare.changePermitted}
+          />
+          Change permitted
+        </label>
+        <label className="inline-flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="refundPermitted"
+            defaultChecked={fare.refundPermitted}
+          />
+          Refund permitted
+        </label>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Perk lines (one per line)
+          </span>
+          <textarea
+            name="perkLines"
+            rows={4}
+            defaultValue={lines(fare.perkLines)}
+            className="w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Notes
+          </span>
+          <textarea
+            name="notes"
+            rows={4}
+            defaultValue={fare.notes}
+            className="w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Change policy bullets
+          </span>
+          <textarea
+            name="changeBullets"
+            rows={4}
+            defaultValue={lines(fare.changeBullets)}
+            className="w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Refund policy bullets
+          </span>
+          <textarea
+            name="refundBullets"
+            rows={4}
+            defaultValue={lines(fare.refundBullets)}
+            className="w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
+          />
+        </label>
+        <label className="space-y-1 text-sm lg:col-span-2">
+          <span className="text-xs uppercase tracking-[0.12em] text-muted">
+            Baggage bullets
+          </span>
+          <textarea
+            name="baggageBullets"
+            rows={3}
+            defaultValue={lines(fare.baggageBullets)}
+            className="w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
+          />
+        </label>
+      </div>
+
+      <SubmitButton
+        pendingLabel="Saving…"
+        className="rounded-full bg-accent-deep px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        Save {fare.name}
+      </SubmitButton>
+    </form>
   );
 }
