@@ -83,6 +83,15 @@ type FlightRow = {
   fareReleases: FareRow[];
 };
 
+type BookingPassengerRow = {
+  fullName: string;
+  email: string;
+  phone: string;
+  passportNumber: string;
+  nationality: string;
+  ticketNumber: string;
+};
+
 type BookingRow = {
   id: string;
   bookingRef: string;
@@ -104,6 +113,7 @@ type BookingRow = {
   createdAt: string;
   invoiceId: string | null;
   invoiceStatus: "unpaid" | "paid" | "cancelled" | "failed" | null;
+  passengers: BookingPassengerRow[];
   flight: {
     flightNumber: string;
     origin: string;
@@ -1870,6 +1880,7 @@ export function AdminDashboard({
             amountPaidCents: editingBooking.amountPaidCents,
             status: editingBooking.status,
             paymentMethod: editingBooking.paymentMethod,
+            passengers: editingBooking.passengers ?? [],
             flightLabel: `${editingBooking.flight.flightNumber} ${editingBooking.flight.origin}→${editingBooking.flight.destination}${
               editingBooking.returnFlight
                 ? ` · ${editingBooking.returnFlight.flightNumber} ${editingBooking.returnFlight.origin}→${editingBooking.returnFlight.destination}`

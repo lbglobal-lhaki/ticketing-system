@@ -850,7 +850,6 @@ const updateBookingSchema = z.object({
   passengerPhone: z.string().trim().max(40).optional().or(z.literal("")),
   passportNumber: z.string().trim().max(40).optional().or(z.literal("")),
   nationality: z.string().trim().max(60).optional().or(z.literal("")),
-  seatsBooked: z.coerce.number().int().min(1).max(9),
   extraBaggageKg: z.coerce.number().int().min(0).max(500).default(0),
   fareReleaseName: z.string().trim().max(120).optional().or(z.literal("")),
   amountAud: z.coerce.number().min(0).max(100000),
@@ -893,18 +892,14 @@ function airfareCentsForTargetAmount(
   return Math.max(0, taxable - fixed);
 }
 
-/** Keep BookingPassenger rows in sync with primary fields + seat count. */
-async function syncBookingPassengers(
+/**
+ * Replace BookingPassenger rows with the full named traveller list
+ * (primary first). Preserves existing ticket numbers where possible.
+ */
+async function syncAllBookingPassengers(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
   bookingId: string,
-  primary: {
-    fullName: string;
-    email: string;
-    phone: string;
-    passportNumber: string;
-    nationality: string;
-  },
-  seatsBooked: number,
+  allPassengers: PassengerDetail[],
   primaryTicketNumber: string,
 ) {
   const existing = await tx.bookingPassenger.findMany({
@@ -912,61 +907,47 @@ async function syncBookingPassengers(
     orderBy: { sortOrder: "asc" },
   });
 
-  if (existing.length === 0) {
-    // Seed rows so travel docs stay consistent after admin edits.
-    for (let i = 0; i < seatsBooked; i++) {
+  for (let i = 0; i < allPassengers.length; i++) {
+    const pax = allPassengers[i]!;
+    const row = existing[i];
+    if (row) {
+      await tx.bookingPassenger.update({
+        where: { id: row.id },
+        data: {
+          sortOrder: i,
+          fullName: pax.fullName,
+          email: pax.email || "",
+          phone: pax.phone || "",
+          passportNumber: pax.passportNumber || "",
+          nationality: pax.nationality || "",
+        },
+      });
+    } else {
       await tx.bookingPassenger.create({
         data: {
           bookingId,
           sortOrder: i,
-          fullName: i === 0 ? primary.fullName : `Passenger ${i + 1}`,
-          email: i === 0 ? primary.email : "",
-          phone: i === 0 ? primary.phone : "",
-          passportNumber: i === 0 ? primary.passportNumber : "",
-          nationality: i === 0 ? primary.nationality : "",
+          fullName: pax.fullName,
+          email: pax.email || "",
+          phone: pax.phone || "",
+          passportNumber: pax.passportNumber || "",
+          nationality: pax.nationality || "",
           ticketNumber: i === 0 ? primaryTicketNumber : makeTicketNumber(),
         },
       });
     }
-    return;
   }
 
-  const primaryRow = existing[0]!;
-  await tx.bookingPassenger.update({
-    where: { id: primaryRow.id },
-    data: {
-      fullName: primary.fullName,
-      email: primary.email,
-      phone: primary.phone,
-      passportNumber: primary.passportNumber,
-      nationality: primary.nationality,
-    },
-  });
-
-  if (existing.length < seatsBooked) {
-    for (let i = existing.length; i < seatsBooked; i++) {
-      await tx.bookingPassenger.create({
-        data: {
-          bookingId,
-          sortOrder: i,
-          fullName: `Passenger ${i + 1}`,
-          email: "",
-          phone: "",
-          passportNumber: "",
-          nationality: "",
-          ticketNumber: makeTicketNumber(),
-        },
-      });
-    }
-  } else if (existing.length > seatsBooked) {
-    const toRemove = existing.slice(seatsBooked);
+  if (existing.length > allPassengers.length) {
     await tx.bookingPassenger.deleteMany({
-      where: { id: { in: toRemove.map((p) => p.id) } },
+      where: {
+        id: { in: existing.slice(allPassengers.length).map((p) => p.id) },
+      },
     });
   }
 }
 
-/** Admin edit of an existing booking — passenger details, seats, baggage, amount. */
+/** Admin edit of an existing booking — passengers, baggage, amount. */
 export async function updateBookingAction(formData: FormData) {
   await requireAdmin();
 
@@ -977,7 +958,6 @@ export async function updateBookingAction(formData: FormData) {
     passengerPhone: formData.get("passengerPhone") || "",
     passportNumber: formData.get("passportNumber") || "",
     nationality: formData.get("nationality") || "",
-    seatsBooked: formData.get("seatsBooked") || "1",
     extraBaggageKg: formData.get("extraBaggageKg") || "0",
     fareReleaseName: formData.get("fareReleaseName") || "",
     amountAud: formData.get("amountAud") || "0",
@@ -989,8 +969,30 @@ export async function updateBookingAction(formData: FormData) {
     );
   }
 
+  let extraPassengers: PassengerDetail[] = [];
+  try {
+    extraPassengers = parseExtraPassengers(formData);
+  } catch (e) {
+    redirect(
+      `/admin?tab=bookings&error=${encodeURIComponent(
+        e instanceof Error ? e.message : "Invalid extra passenger details",
+      )}`,
+    );
+  }
+
   const data = parsed.data;
+  const seatsBooked = 1 + extraPassengers.length;
   const amountPaidCents = Math.round(data.amountAud * 100);
+  const allPassengers: PassengerDetail[] = [
+    {
+      fullName: data.passengerName,
+      email: data.email,
+      phone: data.passengerPhone || "",
+      passportNumber: data.passportNumber || "",
+      nationality: data.nationality || "",
+    },
+    ...extraPassengers,
+  ];
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -1003,11 +1005,11 @@ export async function updateBookingAction(formData: FormData) {
         throw new Error("Cancelled bookings cannot be edited");
       }
 
-      const seatDelta = data.seatsBooked - booking.seatsBooked;
+      const seatDelta = seatsBooked - booking.seatsBooked;
       if (seatDelta !== 0) {
         if (booking.status === "hold_expired") {
           throw new Error(
-            "Cannot change seats on an expired hold — create a new booking",
+            "Cannot change passengers on an expired hold — create a new booking",
           );
         }
         if (!booking.fareReleaseId) {
@@ -1056,24 +1058,17 @@ export async function updateBookingAction(formData: FormData) {
           passengerPhone: data.passengerPhone || "",
           passportNumber: data.passportNumber || "",
           nationality: data.nationality || "",
-          seatsBooked: data.seatsBooked,
+          seatsBooked,
           extraBaggageKg: data.extraBaggageKg,
           fareReleaseName: data.fareReleaseName || booking.fareReleaseName,
           amountPaidCents,
         },
       });
 
-      await syncBookingPassengers(
+      await syncAllBookingPassengers(
         tx,
         booking.id,
-        {
-          fullName: data.passengerName,
-          email: data.email,
-          phone: data.passengerPhone || "",
-          passportNumber: data.passportNumber || "",
-          nationality: data.nationality || "",
-        },
-        data.seatsBooked,
+        allPassengers,
         booking.ticketNumber,
       );
 
@@ -1107,7 +1102,20 @@ export async function updateBookingAction(formData: FormData) {
     );
   }
 
+  const refreshed = await prisma.booking.findUnique({
+    where: { id: data.id },
+    select: {
+      bookingRef: true,
+      invoice: { select: { invoiceNumber: true } },
+    },
+  });
   revalidatePath("/admin");
   revalidatePath(`/confirmation/${data.id}`);
+  if (refreshed?.bookingRef) {
+    revalidatePath(`/documents/eticket/${refreshed.bookingRef}`);
+  }
+  if (refreshed?.invoice?.invoiceNumber) {
+    revalidatePath(`/documents/invoice/${refreshed.invoice.invoiceNumber}`);
+  }
   redirect("/admin?tab=bookings&saved=booking-updated");
 }

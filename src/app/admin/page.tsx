@@ -193,6 +193,7 @@ export default async function AdminPage({
           flight: true,
           returnFlight: true,
           invoice: { select: { id: true, status: true } },
+          passengers: { orderBy: { sortOrder: "asc" } },
         },
       }),
       prisma.invoice.findMany({
@@ -425,6 +426,14 @@ export default async function AdminPage({
               createdAt: b.createdAt.toISOString(),
               invoiceId: b.invoice?.id ?? null,
               invoiceStatus: b.invoice?.status ?? null,
+              passengers: b.passengers.map((p) => ({
+                fullName: p.fullName,
+                email: p.email,
+                phone: p.phone,
+                passportNumber: p.passportNumber,
+                nationality: p.nationality,
+                ticketNumber: p.ticketNumber,
+              })),
               flight: {
                 flightNumber: b.flight.flightNumber,
                 origin: b.flight.origin,
