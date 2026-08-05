@@ -164,7 +164,6 @@ async function main() {
         cabinClass: "economy",
         totalSeats: 20,
         remainingSeats: 20,
-        active: true,
         active: false,
         fareReleases: {
           create: {

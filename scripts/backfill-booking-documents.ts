@@ -81,18 +81,24 @@ async function main() {
       const draft = booking.quote.travellersDraft as TravellerDraft[];
       const unit = booking.quote.unitAdultFareCents;
       for (let i = 0; i < resolved.length; i++) {
+        const p = resolved[i];
         const d = draft[i];
-        if (!d) continue;
-        if (!resolved[i]!.fullName || resolved[i]!.fullName.startsWith("Passenger") || resolved[i]!.fullName.startsWith("Child") || resolved[i]!.fullName.startsWith("Infant")) {
+        if (!p || !d) continue;
+        if (
+          !p.fullName ||
+          p.fullName.startsWith("Passenger") ||
+          p.fullName.startsWith("Child") ||
+          p.fullName.startsWith("Infant")
+        ) {
           const name = travellerDisplayName(d);
-          if (name) resolved[i]!.fullName = name;
+          if (name) p.fullName = name;
         }
-        if (resolved[i]!.passengerType === "child" && !(resolved[i]!.priceCents > 0)) {
-          resolved[i]!.priceCents = childFareCents(unit);
+        if (p.passengerType === "child" && !((p.priceCents ?? 0) > 0)) {
+          p.priceCents = childFareCents(unit);
         }
-        if (resolved[i]!.passengerType === "infant" && !(resolved[i]!.priceCents > 0)) {
-          resolved[i]!.priceCents = infantFareCents(unit);
-          resolved[i]!.allocatesSeat = false;
+        if (p.passengerType === "infant" && !((p.priceCents ?? 0) > 0)) {
+          p.priceCents = infantFareCents(unit);
+          p.allocatesSeat = false;
         }
       }
     }
@@ -120,7 +126,8 @@ async function main() {
       });
 
       for (let i = 0; i < resolved.length; i++) {
-        const p = resolved[i]!;
+        const p = resolved[i];
+        if (!p) continue;
         let ticket = booking.passengers[i]?.ticketNumber || "";
         if (!ticket || (i > 0 && ticket === booking.ticketNumber && resolved.length > 1)) {
           // Primary keeps booking ticket; companions need unique tickets.
