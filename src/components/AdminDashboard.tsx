@@ -49,6 +49,9 @@ import {
   SelectAllCheckbox,
   useBulkSelection,
 } from "@/components/BulkSelectBar";
+import { Combobox, type ComboboxOption } from "@/components/admin/Combobox";
+import { SegmentedField } from "@/components/admin/SegmentedField";
+import { ListFilterBar, NoMatches } from "@/components/admin/ListFilterBar";
 import { formatFlightDateTime, toDateTimeLocalValue } from "@/lib/datetime";
 import {
   BUSINESS_FARE_TEMPLATE,
@@ -167,6 +170,39 @@ function parseClientTab(value: string | null | undefined): Tab | undefined {
 const fieldClass =
   "w-full border-0 border-b border-line bg-transparent py-3 text-sm text-foreground outline-none transition focus:border-accent";
 
+const CABIN_SEGMENTS = [
+  { value: "business", label: "Business" },
+  { value: "economy", label: "Economy" },
+];
+
+function cabinLabel(cabin: CabinClass) {
+  return cabin === "business" ? "Business" : "Economy";
+}
+
+/** Every free-text search on this page: all terms must appear somewhere. */
+function matchesQuery(query: string, ...fields: (string | number | null | undefined)[]) {
+  const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return true;
+  const hay = fields.filter((f) => f != null).join(" ").toLowerCase();
+  return tokens.every((t) => hay.includes(t));
+}
+
+/** Two-line picker row for a flight — the same shape everywhere it's chosen. */
+function flightOption(
+  flight: FlightRow,
+  options?: { showSeats?: boolean },
+): ComboboxOption {
+  return {
+    value: flight.id,
+    label: `${flight.airline} ${flight.flightNumber} · ${flight.origin} → ${flight.destination}`,
+    description: `${formatFlightDateTime(flight.departureAt)} · ${cabinLabel(flight.cabinClass)}`,
+    meta: options?.showSeats
+      ? `${flight.remainingSeats} seat${flight.remainingSeats === 1 ? "" : "s"}`
+      : undefined,
+    keywords: `${flight.origin}${flight.destination} ${flight.cabinClass}`,
+  };
+}
+
 function templateToRows(cabin: CabinClass): FareRow[] {
   const template =
     cabin === "economy" ? ECONOMY_FARE_TEMPLATE : BUSINESS_FARE_TEMPLATE;
@@ -256,19 +292,12 @@ function CustomFlightFields({ prefix }: { prefix: "outbound" | "return" }) {
             className={fieldClass}
           />
         </label>
-        <label className="space-y-1 text-sm">
-          <span className="text-xs uppercase tracking-[0.12em] text-muted">
-            Cabin
-          </span>
-          <select
-            name={`${prefix}CustomCabinClass`}
-            defaultValue="business"
-            className={fieldClass}
-          >
-            <option value="business">Business</option>
-            <option value="economy">Economy</option>
-          </select>
-        </label>
+        <SegmentedField
+          name={`${prefix}CustomCabinClass`}
+          label="Cabin"
+          defaultValue="business"
+          options={CABIN_SEGMENTS}
+        />
         <label className="space-y-1 text-sm">
           <span className="text-xs uppercase tracking-[0.12em] text-muted">
             Price per seat (AUD)
@@ -317,6 +346,7 @@ export function AdminDashboard({
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [cabinClass, setCabinClass] = useState<CabinClass>("business");
+  const [partnerFlightId, setPartnerFlightId] = useState("");
   const [bulkPriceCabin, setBulkPriceCabin] = useState<CabinClass>("business");
   const [bulkTierName, setBulkTierName] = useState(
     () => BUSINESS_FARE_TEMPLATE[0]!.name,
@@ -325,8 +355,13 @@ export function AdminDashboard({
   const [fareRows, setFareRows] = useState<FareRow[]>(() =>
     templateToRows("business"),
   );
+  const [flightQuery, setFlightQuery] = useState("");
+  const [flightFilter, setFlightFilter] = useState("all");
+  const [bookingQuery, setBookingQuery] = useState("");
+  const [bookingFilter, setBookingFilter] = useState("all");
   const [walkInOutboundChoice, setWalkInOutboundChoice] = useState("");
   const [walkInReturnChoice, setWalkInReturnChoice] = useState("");
+  const [walkInFareProductId, setWalkInFareProductId] = useState("");
   const [walkInTripType, setWalkInTripType] = useState<TripType>("one_way");
   const [walkInAdults, setWalkInAdults] = useState<CompanionDraft[]>([]);
   const [walkInChildren, setWalkInChildren] = useState<CompanionDraft[]>([]);
@@ -381,6 +416,7 @@ export function AdminDashboard({
       setWalkInFormKey((k) => k + 1);
       setWalkInOutboundChoice("");
       setWalkInReturnChoice("");
+      setWalkInFareProductId("");
       setWalkInTripType("one_way");
       setWalkInAdults([]);
       setWalkInChildren([]);
@@ -427,10 +463,115 @@ export function AdminDashboard({
 
   const activeCount = flights.filter((f) => f.active).length;
 
-  const flightIds = useMemo(() => flights.map((f) => f.id), [flights]);
+  const visibleFlights = useMemo(
+    () =>
+      flights.filter((f) => {
+        if (flightFilter === "live" && !f.active) return false;
+        if (flightFilter === "hidden" && f.active) return false;
+        return matchesQuery(
+          flightQuery,
+          f.airline,
+          f.flightNumber,
+          f.origin,
+          f.destination,
+          `${f.origin}${f.destination}`,
+          f.cabinClass,
+          formatFlightDateTime(f.departureAt),
+        );
+      }),
+    [flights, flightFilter, flightQuery],
+  );
+
+  const visibleBookings = useMemo(
+    () =>
+      bookings.filter((b) => {
+        if (bookingFilter === "unpaid_bank") {
+          if (b.paymentMethod !== "bank_transfer") return false;
+          if (b.status !== "pending_payment") return false;
+        } else if (bookingFilter !== "all" && b.status !== bookingFilter) {
+          return false;
+        }
+        return matchesQuery(
+          bookingQuery,
+          b.bookingRef,
+          b.ticketNumber,
+          b.passengerName,
+          b.email,
+          b.passengerPhone,
+          b.passportNumber,
+          b.flight.flightNumber,
+          `${b.flight.origin}${b.flight.destination}`,
+          b.returnFlight?.flightNumber,
+          b.passengers?.map((p) => p.fullName).join(" "),
+        );
+      }),
+    [bookings, bookingFilter, bookingQuery],
+  );
+
+  // Selection follows what's on screen — "select all" after a search must
+  // never sweep in rows the admin can't currently see.
+  const flightIds = useMemo(
+    () => visibleFlights.map((f) => f.id),
+    [visibleFlights],
+  );
   const flightBulk = useBulkSelection(flightIds);
-  const bookingIds = useMemo(() => bookings.map((b) => b.id), [bookings]);
+  const bookingIds = useMemo(
+    () => visibleBookings.map((b) => b.id),
+    [visibleBookings],
+  );
   const bookingBulk = useBulkSelection(bookingIds);
+
+  const bookableFlightOptions = useMemo<ComboboxOption[]>(
+    () => [
+      {
+        value: CUSTOM_FLIGHT_VALUE,
+        label: "+ Custom flight (not in system)",
+        description: "Type the airline, route and times by hand",
+        keywords: "custom manual new other adhoc",
+      },
+      ...flights
+        .filter((f) => f.active && f.remainingSeats > 0)
+        .map((f) => flightOption(f, { showSeats: true })),
+    ],
+    [flights],
+  );
+
+  const partnerFlightOptions = useMemo<ComboboxOption[]>(
+    () => [
+      {
+        value: "",
+        label: "No pairing — sells as one-way only",
+        keywords: "none no pairing one way",
+      },
+      ...flights.filter((f) => f.id !== editingId).map((f) => flightOption(f)),
+    ],
+    [flights, editingId],
+  );
+
+  const fareProductOptions = useMemo<ComboboxOption[]>(
+    () => [
+      {
+        value: "",
+        label: "Auto — use each flight's current fare-release price",
+        keywords: "auto default none",
+      },
+      ...charterFares
+        .filter((f) => f.active)
+        .map((f) => {
+          const showRt =
+            walkInTripType === "round_trip" && f.roundTripPriceCents > 0;
+          return {
+            value: f.id,
+            label: `${cabinLabel(f.cabinClass)} · ${f.name}`,
+            description: showRt
+              ? `${formatAud(f.roundTripPriceCents)} round-trip total`
+              : `${formatAud(f.priceCents)} one-way`,
+            keywords: f.cabinClass,
+          };
+        }),
+    ],
+    [charterFares, walkInTripType],
+  );
 
   function bulkDeleteFlights() {
     const ids = [...flightBulk.selected];
@@ -491,6 +632,7 @@ export function AdminDashboard({
   useEffect(() => {
     if (editing) {
       setCabinClass(editing.cabinClass);
+      setPartnerFlightId(editing.returnLegFlightId ?? "");
       setFareRows(
         editing.fareReleases.length > 0
           ? editing.fareReleases.map((r) => ({
@@ -505,6 +647,7 @@ export function AdminDashboard({
   function openAdd() {
     setEditingId(null);
     setCabinClass("business");
+    setPartnerFlightId("");
     setFareRows(templateToRows("business"));
     selectTab("form");
   }
@@ -515,6 +658,7 @@ export function AdminDashboard({
       // Sync fare rows before the form mounts so uncontrolled MoneyInputs
       // get the real saved prices (not stale zeros from the previous flight).
       setCabinClass(flight.cabinClass);
+      setPartnerFlightId(flight.returnLegFlightId ?? "");
       setFareRows(
         flight.fareReleases.length > 0
           ? flight.fareReleases.map((r) => ({
@@ -694,51 +838,33 @@ export function AdminDashboard({
             <form
               key={`bulk-${fareTripMode}-${searchParams.get("saved")}-${searchParams.get("count")}`}
               action={bulkUpdateFareTierPriceAction}
-              className="mt-4 grid gap-4 sm:grid-cols-4"
+              className="mt-4 grid gap-4 sm:grid-cols-2"
             >
               <input type="hidden" name="priceKind" value={fareTripMode} />
-              <label className="space-y-1 text-sm">
-                <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                  Cabin
-                </span>
-                <select
-                  name="cabinClass"
-                  value={bulkPriceCabin}
-                  onChange={(e) => {
-                    const next = e.target.value as CabinClass;
-                    setBulkPriceCabin(next);
-                    const template =
-                      next === "economy"
-                        ? ECONOMY_FARE_TEMPLATE
-                        : BUSINESS_FARE_TEMPLATE;
-                    setBulkTierName(template[0]!.name);
-                  }}
-                  className={fieldClass}
-                >
-                  <option value="business">Business</option>
-                  <option value="economy">Economy</option>
-                </select>
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                  Fare tier
-                </span>
-                <select
-                  name="tierName"
-                  value={bulkTierName}
-                  onChange={(e) => setBulkTierName(e.target.value)}
-                  className={fieldClass}
-                >
-                  {(bulkPriceCabin === "economy"
-                    ? ECONOMY_FARE_TEMPLATE
-                    : BUSINESS_FARE_TEMPLATE
-                  ).map((t) => (
-                    <option key={t.name} value={t.name}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <SegmentedField
+                name="cabinClass"
+                label="Cabin"
+                value={bulkPriceCabin}
+                options={CABIN_SEGMENTS}
+                onChange={(next) => {
+                  setBulkPriceCabin(next as CabinClass);
+                  const template =
+                    next === "economy"
+                      ? ECONOMY_FARE_TEMPLATE
+                      : BUSINESS_FARE_TEMPLATE;
+                  setBulkTierName(template[0]!.name);
+                }}
+              />
+              <SegmentedField
+                name="tierName"
+                label="Fare tier"
+                value={bulkTierName}
+                onChange={setBulkTierName}
+                options={(bulkPriceCabin === "economy"
+                  ? ECONOMY_FARE_TEMPLATE
+                  : BUSINESS_FARE_TEMPLATE
+                ).map((t) => ({ value: t.name, label: t.name }))}
+              />
               <label className="space-y-1 text-sm">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
                   {fareTripMode === "round_trip"
@@ -761,7 +887,7 @@ export function AdminDashboard({
                 />
                 Only fill in unpriced releases
               </label>
-              <div className="sm:col-span-4">
+              <div className="sm:col-span-2">
                 <p className="mb-3 text-xs text-muted">
                   Leave the checkbox unchecked to overwrite every matching
                   flight with this price. Check it only when you want to fill
@@ -800,16 +926,46 @@ export function AdminDashboard({
             </div>
           ) : (
             <>
+              <ListFilterBar
+                query={flightQuery}
+                onQueryChange={setFlightQuery}
+                placeholder="Search flight number, airline, route, date…"
+                chips={[
+                  { value: "all", label: "All", count: flights.length },
+                  { value: "live", label: "Live", count: activeCount },
+                  {
+                    value: "hidden",
+                    label: "Hidden",
+                    count: flights.length - activeCount,
+                  },
+                ]}
+                activeChip={flightFilter}
+                onChipChange={setFlightFilter}
+                resultCount={visibleFlights.length}
+                totalCount={flights.length}
+                itemLabel="flight"
+              />
+
+              {visibleFlights.length === 0 ? (
+                <NoMatches
+                  label="No flights match that search."
+                  onReset={() => {
+                    setFlightQuery("");
+                    setFlightFilter("all");
+                  }}
+                />
+              ) : (
+              <>
               <label className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted">
                 <SelectAllCheckbox
                   allSelected={flightBulk.allSelected}
                   someSelected={flightBulk.someSelected}
                   onToggle={flightBulk.toggleAll}
                 />
-                Select all ({flights.length})
+                Select all ({visibleFlights.length})
               </label>
             <ul className="divide-y divide-line border-y border-line bg-surface/60">
-              {flights.map((f) => (
+              {visibleFlights.map((f) => (
                 <li key={f.id} className="px-4 py-5 sm:px-5">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex min-w-0 items-start gap-3">
@@ -955,6 +1111,8 @@ export function AdminDashboard({
                 </li>
               ))}
             </ul>
+              </>
+              )}
             </>
           )}
         </section>
@@ -1069,43 +1227,38 @@ export function AdminDashboard({
                 className={fieldClass}
               />
             </label>
-            <label className="space-y-1 text-sm sm:col-span-2">
-              <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
-                Cabin / product
-              </span>
-              <select
-                name="cabinClass"
-                value={cabinClass}
-                onChange={(e) => onCabinChange(e.target.value as CabinClass)}
-                className={fieldClass}
-              >
-                <option value="business">Business (20-seat fare template)</option>
-                <option value="economy">Economy (same release structure)</option>
-              </select>
-            </label>
+            <SegmentedField
+              name="cabinClass"
+              label="Cabin / product"
+              className="sm:col-span-2"
+              value={cabinClass}
+              onChange={(next) => onCabinChange(next as CabinClass)}
+              options={[
+                {
+                  value: "business",
+                  label: "Business",
+                  hint: "20-seat fare template — Early Bird (5), Business Standard (10), Final Release (5).",
+                },
+                {
+                  value: "economy",
+                  label: "Economy",
+                  hint: "Same release structure as business, economy pricing.",
+                },
+              ]}
+            />
 
             <label className="space-y-1 text-sm sm:col-span-2">
               <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
                 Round-trip partner flight (optional)
               </span>
-              <select
+              <Combobox
                 name="returnLegFlightId"
-                defaultValue={editing?.returnLegFlightId ?? ""}
-                className={fieldClass}
-              >
-                <option value="">
-                  No pairing — sells as one-way only
-                </option>
-                {flights
-                  .filter((f) => f.id !== editing?.id)
-                  .map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.airline} {f.flightNumber} · {f.origin}→{f.destination}{" "}
-                      · {new Date(f.departureAt).toLocaleString("en-AU")} ·{" "}
-                      {f.cabinClass}
-                    </option>
-                  ))}
-              </select>
+                value={partnerFlightId}
+                onChange={setPartnerFlightId}
+                placeholder="No pairing — sells as one-way only"
+                searchPlaceholder="Search the return leg…"
+                options={partnerFlightOptions}
+              />
               <span className="block text-xs text-muted">
                 Pick the return leg this flight is chartered with. Customers
                 booking this flight will see a &ldquo;Round trip&rdquo; option
@@ -1294,31 +1447,19 @@ export function AdminDashboard({
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
                   Flight
                 </span>
-                <select
+                <Combobox
                   name="flightId"
                   required
                   value={walkInOutboundChoice}
-                  onChange={(e) => {
-                    setWalkInOutboundChoice(e.target.value);
+                  onChange={(next) => {
+                    setWalkInOutboundChoice(next);
                     setWalkInReturnChoice("");
                     setWalkInTripType("one_way");
                   }}
-                  className={fieldClass}
-                >
-                  <option value="">Select outbound flight</option>
-                  <option value={CUSTOM_FLIGHT_VALUE}>
-                    + Custom flight (not in system)
-                  </option>
-                  {flights
-                    .filter((f) => f.active && f.remainingSeats > 0)
-                    .map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.airline} {f.flightNumber} · {f.origin}→{f.destination}{" "}
-                        · {new Date(f.departureAt).toLocaleString("en-AU")} ·{" "}
-                        {f.remainingSeats} seats
-                      </option>
-                    ))}
-                </select>
+                  placeholder="Select outbound flight"
+                  searchPlaceholder="Flight number, route, date…"
+                  options={bookableFlightOptions}
+                />
               </label>
               {walkInOutboundChoice === CUSTOM_FLIGHT_VALUE && (
                 <CustomFlightFields prefix="outbound" />
@@ -1384,27 +1525,15 @@ export function AdminDashboard({
                   <span className="text-xs uppercase tracking-[0.12em] text-muted">
                     Return flight
                   </span>
-                  <select
+                  <Combobox
                     name="returnFlightId"
                     required
                     value={walkInReturnChoice}
-                    onChange={(e) => setWalkInReturnChoice(e.target.value)}
-                    className={fieldClass}
-                  >
-                    <option value="">Select return flight</option>
-                    <option value={CUSTOM_FLIGHT_VALUE}>
-                      + Custom flight (not in system)
-                    </option>
-                    {flights
-                      .filter((f) => f.active && f.remainingSeats > 0)
-                      .map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {f.airline} {f.flightNumber} · {f.origin}→
-                          {f.destination} ·{" "}
-                          {new Date(f.departureAt).toLocaleString("en-AU")}
-                        </option>
-                      ))}
-                  </select>
+                    onChange={setWalkInReturnChoice}
+                    placeholder="Select return flight"
+                    searchPlaceholder="Flight number, route, date…"
+                    options={bookableFlightOptions}
+                  />
                 </label>
               )}
               {walkInNeedsManualReturn &&
@@ -1415,27 +1544,14 @@ export function AdminDashboard({
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
                   Fare tier (optional override)
                 </span>
-                <select name="fareProductId" className={fieldClass}>
-                  <option value="">
-                    Auto — use each flight&apos;s current fare-release price
-                  </option>
-                  {charterFares
-                    .filter((f) => f.active)
-                    .map((f) => {
-                      const showRt =
-                        walkInTripType === "round_trip" &&
-                        f.roundTripPriceCents > 0;
-                      return (
-                      <option key={f.id} value={f.id}>
-                        {f.cabinClass === "business" ? "Business" : "Economy"} ·{" "}
-                        {f.name} —{" "}
-                        {showRt
-                          ? `${formatAud(f.roundTripPriceCents)} RT total`
-                          : `${formatAud(f.priceCents)} one-way`}
-                      </option>
-                      );
-                    })}
-                </select>
+                <Combobox
+                  name="fareProductId"
+                  value={walkInFareProductId}
+                  onChange={setWalkInFareProductId}
+                  placeholder="Auto — use each flight's current fare-release price"
+                  searchPlaceholder="Cabin or fare name…"
+                  options={fareProductOptions}
+                />
                 <span className="block text-xs text-muted">
                   Charges this catalogue price instead of the fare-release
                   price. Round-trip uses the stored RT package total. Must match
@@ -1569,33 +1685,39 @@ export function AdminDashboard({
                   className={fieldClass}
                 />
               </label>
-              <label className="space-y-1 text-sm sm:col-span-2">
-                <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                  How was this booked?
-                </span>
-                <select
-                  name="bookingSource"
-                  defaultValue="walk_in"
-                  className={fieldClass}
-                >
-                  <option value="walk_in">Walk-in (counter / phone)</option>
-                  <option value="online">
-                    Online (entered on customer&apos;s behalf)
-                  </option>
-                </select>
-              </label>
-              <label className="space-y-1 text-sm sm:col-span-2">
-                <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                  Payment method
-                </span>
-                <select name="paymentMethod" required className={fieldClass}>
-                  <option value="cash">Cash (mark paid now)</option>
-                  <option value="card">Credit card at counter (mark paid now)</option>
-                  <option value="bank_transfer">
-                    Bank transfer (48h unpaid hold)
-                  </option>
-                </select>
-              </label>
+              <SegmentedField
+                name="bookingSource"
+                label="How was this booked?"
+                className="sm:col-span-2"
+                defaultValue="walk_in"
+                options={[
+                  { value: "walk_in", label: "Walk-in", hint: "Counter or phone booking." },
+                  {
+                    value: "online",
+                    label: "Online",
+                    hint: "Entered on the customer's behalf.",
+                  },
+                ]}
+              />
+              <SegmentedField
+                name="paymentMethod"
+                label="Payment method"
+                className="sm:col-span-2"
+                defaultValue="cash"
+                options={[
+                  { value: "cash", label: "Cash", hint: "Marked paid now." },
+                  {
+                    value: "card",
+                    label: "Credit card",
+                    hint: "Taken at the counter — marked paid now.",
+                  },
+                  {
+                    value: "bank_transfer",
+                    label: "Bank transfer",
+                    hint: "48h unpaid seat hold until you confirm payment.",
+                  },
+                ]}
+              />
               <GstModeFields defaultMode="none" className="sm:col-span-2" />
               <label className="space-y-1 text-sm sm:col-span-2">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
@@ -1635,6 +1757,55 @@ export function AdminDashboard({
               No bookings yet.
             </div>
           ) : (
+            <>
+            <ListFilterBar
+              query={bookingQuery}
+              onQueryChange={setBookingQuery}
+              placeholder="Search ref, ticket, name, email, phone, flight…"
+              chips={[
+                { value: "all", label: "All", count: bookings.length },
+                {
+                  value: "confirmed",
+                  label: "Confirmed",
+                  count: bookings.filter((b) => b.status === "confirmed").length,
+                },
+                {
+                  value: "unpaid_bank",
+                  label: "Awaiting payment",
+                  count: bookings.filter(
+                    (b) =>
+                      b.paymentMethod === "bank_transfer" &&
+                      b.status === "pending_payment",
+                  ).length,
+                },
+                {
+                  value: "cancelled",
+                  label: "Cancelled",
+                  count: bookings.filter((b) => b.status === "cancelled").length,
+                },
+                {
+                  value: "hold_expired",
+                  label: "Expired",
+                  count: bookings.filter((b) => b.status === "hold_expired")
+                    .length,
+                },
+              ]}
+              activeChip={bookingFilter}
+              onChipChange={setBookingFilter}
+              resultCount={visibleBookings.length}
+              totalCount={bookings.length}
+              itemLabel="booking"
+            />
+
+            {visibleBookings.length === 0 ? (
+              <NoMatches
+                label="No bookings match that search."
+                onReset={() => {
+                  setBookingQuery("");
+                  setBookingFilter("all");
+                }}
+              />
+            ) : (
             <div className="overflow-x-auto border-y border-line bg-surface/60">
               <table className="w-full min-w-[1040px] text-left text-sm">
                 <thead>
@@ -1658,7 +1829,7 @@ export function AdminDashboard({
                   </tr>
                 </thead>
                 <tbody>
-                  {bookings.map((b) => (
+                  {visibleBookings.map((b) => (
                     <tr key={b.id} className="border-b border-line/70">
                       <td className="px-4 py-4 align-top">
                         <input
@@ -1810,6 +1981,8 @@ export function AdminDashboard({
                 </tbody>
               </table>
             </div>
+            )}
+            </>
           )}
         </section>
       )}

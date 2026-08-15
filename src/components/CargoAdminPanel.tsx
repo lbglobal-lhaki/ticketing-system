@@ -16,6 +16,8 @@ import {
 } from "@/components/BulkSelectBar";
 import { SubmitButton } from "@/components/SubmitButton";
 import { Spinner } from "@/components/Spinner";
+import { ListFilterBar, NoMatches } from "@/components/admin/ListFilterBar";
+import { SegmentedField } from "@/components/admin/SegmentedField";
 
 export type AdminCargoRow = {
   id: string;
@@ -149,10 +151,30 @@ export function CargoAdminPanel({
   // row's button show its own spinner instead of every row dimming the same way.
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
+  const [query, setQuery] = useState("");
+
   const filtered = useMemo(() => {
-    if (filter === "all") return submissions;
-    return submissions.filter((s) => s.status === filter);
-  }, [filter, submissions]);
+    const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return submissions.filter((s) => {
+      if (filter !== "all" && s.status !== filter) return false;
+      if (tokens.length === 0) return true;
+      // Answers are free-form Google Form fields, so search their values too —
+      // that's where the route, weight, and description actually live.
+      const hay = [
+        s.parcelNumber,
+        s.submitterName ?? "",
+        s.email ?? "",
+        s.phone ?? "",
+        s.notes ?? "",
+        ...Object.entries(s.answers).map(
+          ([key, value]) => `${key} ${formatCargoAnswer(value)}`,
+        ),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return tokens.every((t) => hay.includes(t));
+    });
+  }, [filter, query, submissions]);
 
   const filteredIds = useMemo(() => filtered.map((s) => s.id), [filtered]);
   const bulk = useBulkSelection(filteredIds);
@@ -252,31 +274,46 @@ export function CargoAdminPanel({
             auto-assigned parcel number. Use Emails for sender/receiver notices.
           </p>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
-            Filter
-            <select
-              value={filter}
-              onChange={(e) =>
-                setFilter(e.target.value as "all" | AdminCargoRow["status"])
-              }
-              className="mt-1 block w-full border border-line bg-white px-3 py-2 text-sm text-foreground sm:w-40"
-            >
-              <option value="all">All</option>
-              <option value="new">New</option>
-              <option value="reviewed">Reviewed</option>
-              <option value="closed">Closed</option>
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={openCreate}
-            className="btn-cta rounded-xl px-4 py-2.5 text-sm"
-          >
-            Add cargo form
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={openCreate}
+          className="btn-cta shrink-0 rounded-xl px-4 py-2.5 text-sm"
+        >
+          Add cargo form
+        </button>
       </div>
+
+      <ListFilterBar
+        query={query}
+        onQueryChange={setQuery}
+        placeholder="Search parcel no., sender, email, route, description…"
+        chips={[
+          { value: "all", label: "All", count: submissions.length },
+          {
+            value: "new",
+            label: "New",
+            count: submissions.filter((s) => s.status === "new").length,
+          },
+          {
+            value: "reviewed",
+            label: "Reviewed",
+            count: submissions.filter((s) => s.status === "reviewed").length,
+          },
+          {
+            value: "closed",
+            label: "Closed",
+            count: submissions.filter((s) => s.status === "closed").length,
+          },
+        ]}
+        activeChip={filter}
+        onChipChange={(next) =>
+          setFilter(next as "all" | AdminCargoRow["status"])
+        }
+        resultCount={filtered.length}
+        totalCount={submissions.length}
+        itemLabel="enquiry"
+        itemLabelPlural="enquiries"
+      />
 
       {localError && (
         <p className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -292,11 +329,19 @@ export function CargoAdminPanel({
         onClear={bulk.clear}
       />
 
-      {filtered.length === 0 ? (
+      {submissions.length === 0 ? (
         <p className="border border-dashed border-line bg-white/60 px-4 py-8 text-center text-sm text-muted">
           No cargo submissions yet. Add one manually or wait for a Google Form
           response.
         </p>
+      ) : filtered.length === 0 ? (
+        <NoMatches
+          label="No cargo enquiries match that search."
+          onReset={() => {
+            setQuery("");
+            setFilter("all");
+          }}
+        />
       ) : (
         <>
           <label className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted">
@@ -729,22 +774,18 @@ export function CargoAdminPanel({
                       placeholder="+61 …"
                     />
                   </label>
-                  <label className="block space-y-1 text-sm">
-                    <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
-                      Status
-                    </span>
-                    <select
-                      name="status"
-                      defaultValue={
-                        mode === "edit" ? active?.status || "new" : "new"
-                      }
-                      className={fieldClass}
-                    >
-                      <option value="new">New</option>
-                      <option value="reviewed">Reviewed</option>
-                      <option value="closed">Closed</option>
-                    </select>
-                  </label>
+                  <SegmentedField
+                    name="status"
+                    label="Status"
+                    defaultValue={
+                      mode === "edit" ? active?.status || "new" : "new"
+                    }
+                    options={[
+                      { value: "new", label: "New" },
+                      { value: "reviewed", label: "Reviewed" },
+                      { value: "closed", label: "Closed" },
+                    ]}
+                  />
                   <label className="flex items-center gap-2 pt-6 text-sm">
                     <input
                       type="checkbox"

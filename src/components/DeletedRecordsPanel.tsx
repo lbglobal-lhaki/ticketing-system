@@ -11,6 +11,7 @@ import {
   useBulkSelection,
 } from "@/components/BulkSelectBar";
 import { SubmitButton } from "@/components/SubmitButton";
+import { ListFilterBar, NoMatches } from "@/components/admin/ListFilterBar";
 
 export type DeletedEntityType = "flight" | "booking" | "invoice" | "cargo";
 
@@ -67,6 +68,7 @@ export function DeletedRecordsPanel({
   records: AdminDeletedRecordRow[];
 }) {
   const [miniTab, setMiniTab] = useState<MiniTab>("all");
+  const [query, setQuery] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [snapshots, setSnapshots] = useState<Record<string, unknown>>({});
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
@@ -104,13 +106,16 @@ export function DeletedRecordsPanel({
     return c;
   }, [records]);
 
-  const visible = useMemo(
-    () =>
-      miniTab === "all"
-        ? records
-        : records.filter((r) => r.entityType === miniTab),
-    [records, miniTab],
-  );
+  const visible = useMemo(() => {
+    const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return records.filter((r) => {
+      if (miniTab !== "all" && r.entityType !== miniTab) return false;
+      if (tokens.length === 0) return true;
+      const hay =
+        `${r.label} ${r.summary} ${r.deletedBy} ${ENTITY_LABEL[r.entityType]}`.toLowerCase();
+      return tokens.every((t) => hay.includes(t));
+    });
+  }, [records, miniTab, query]);
 
   const visibleIds = useMemo(() => visible.map((r) => r.id), [visible]);
   const bulk = useBulkSelection(visibleIds);
@@ -179,12 +184,29 @@ export function DeletedRecordsPanel({
         })}
       </nav>
 
+      <ListFilterBar
+        query={query}
+        onQueryChange={setQuery}
+        placeholder="Search ref, description, who deleted it…"
+        resultCount={visible.length}
+        totalCount={counts[miniTab]}
+        itemLabel="entry"
+        itemLabelPlural="entries"
+      />
+
       {visible.length === 0 ? (
-        <div className="border border-dashed border-line bg-surface/70 px-6 py-14 text-center text-sm text-muted">
-          {miniTab === "all"
-            ? "Nothing has been deleted yet."
-            : `No deleted ${ENTITY_LABEL[miniTab as DeletedEntityType].toLowerCase()}s yet.`}
-        </div>
+        query.trim() ? (
+          <NoMatches
+            label="No deleted entries match that search."
+            onReset={() => setQuery("")}
+          />
+        ) : (
+          <div className="border border-dashed border-line bg-surface/70 px-6 py-14 text-center text-sm text-muted">
+            {miniTab === "all"
+              ? "Nothing has been deleted yet."
+              : `No deleted ${ENTITY_LABEL[miniTab as DeletedEntityType].toLowerCase()}s yet.`}
+          </div>
+        )
       ) : (
         <>
           <label className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted">

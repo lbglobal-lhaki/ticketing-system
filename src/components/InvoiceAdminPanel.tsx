@@ -21,6 +21,7 @@ import {
 } from "@/components/BulkSelectBar";
 import { SubmitButton } from "@/components/SubmitButton";
 import { Spinner } from "@/components/Spinner";
+import { ListFilterBar, NoMatches } from "@/components/admin/ListFilterBar";
 import {
   GstModeFields,
   resolveGstMode,
@@ -129,7 +130,39 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
   // (otherwise Save after Generate silently writes pre-Generate values).
   const [formRevision, setFormRevision] = useState(0);
 
-  const invoiceIds = useMemo(() => rows.map((i) => i.id), [rows]);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const visibleRows = useMemo(() => {
+    const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return rows.filter((invoice) => {
+      if (statusFilter !== "all" && invoice.status !== statusFilter) {
+        return false;
+      }
+      if (tokens.length === 0) return true;
+      const hay = [
+        invoice.invoiceNumber,
+        invoice.bookingRef,
+        invoice.customerName,
+        invoice.customerEmail,
+        invoice.customerPhone,
+        invoice.routeLabel,
+        invoice.accountNumber,
+        invoice.bankReference ?? "",
+        invoice.cabinClass,
+        invoice.paymentMethod,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return tokens.every((t) => hay.includes(t));
+    });
+  }, [rows, query, statusFilter]);
+
+  // Bulk selection only ever covers what the current search shows.
+  const invoiceIds = useMemo(
+    () => visibleRows.map((i) => i.id),
+    [visibleRows],
+  );
   const bulk = useBulkSelection(invoiceIds);
 
   const active = useMemo(
@@ -324,16 +357,60 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
         </div>
       ) : (
         <>
+          <ListFilterBar
+            query={query}
+            onQueryChange={setQuery}
+            placeholder="Search invoice no., booking ref, name, email, route…"
+            chips={[
+              { value: "all", label: "All", count: rows.length },
+              {
+                value: "unpaid",
+                label: "Unpaid",
+                count: rows.filter((i) => i.status === "unpaid").length,
+              },
+              {
+                value: "paid",
+                label: "Paid",
+                count: rows.filter((i) => i.status === "paid").length,
+              },
+              {
+                value: "cancelled",
+                label: "Cancelled",
+                count: rows.filter((i) => i.status === "cancelled").length,
+              },
+              {
+                value: "failed",
+                label: "Failed",
+                count: rows.filter((i) => i.status === "failed").length,
+              },
+            ]}
+            activeChip={statusFilter}
+            onChipChange={setStatusFilter}
+            resultCount={visibleRows.length}
+            totalCount={rows.length}
+            itemLabel="invoice"
+          />
+
+          {visibleRows.length === 0 ? (
+            <NoMatches
+              label="No invoices match that search."
+              onReset={() => {
+                setQuery("");
+                setStatusFilter("all");
+              }}
+            />
+          ) : (
+          <>
           <label className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted">
             <SelectAllCheckbox
               allSelected={bulk.allSelected}
               someSelected={bulk.someSelected}
               onToggle={bulk.toggleAll}
             />
-            Select all ({rows.length})
+            Select all ({visibleRows.length})
           </label>
         <ul className="divide-y divide-line border-y border-line bg-surface/60">
-          {rows.map((invoice) => (
+          {visibleRows.map((invoice) => (
             <li key={invoice.id} className="px-4 py-5 sm:px-5">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex min-w-0 items-start gap-3">
@@ -472,6 +549,8 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
             </li>
           ))}
         </ul>
+          </>
+          )}
         </>
       )}
 
