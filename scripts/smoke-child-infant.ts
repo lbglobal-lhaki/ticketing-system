@@ -44,9 +44,8 @@ function formFromTravellers(groups: {
   for (const [prefix, rows] of Object.entries(groups)) {
     if (!rows) continue;
     for (const row of rows) {
+      // Companions submit no email/phone — contact details are primary-only.
       fd.append(`${prefix}PassengerName`, row.name || "");
-      fd.append(`${prefix}PassengerEmail`, row.email || "");
-      fd.append(`${prefix}PassengerPhone`, row.phone || "");
       fd.append(`${prefix}PassengerPassport`, row.passport || "");
       fd.append(`${prefix}PassengerNationality`, row.nationality || "");
       if (prefix === "child" || prefix === "infant") {
@@ -74,7 +73,7 @@ async function main() {
     console.log("0) parseCompanionTravellers");
     const parsed = parseCompanionTravellers(
       formFromTravellers({
-        extra: [{ name: "Extra Adult", email: "a@ex.com" }],
+        extra: [{ name: "Extra Adult" }],
         child: [
           {
             name: "Kid One",

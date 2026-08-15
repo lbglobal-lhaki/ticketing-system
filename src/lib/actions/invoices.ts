@@ -3,7 +3,6 @@
 import { requireAdmin } from "@/lib/adminAuth";
 
 import { revalidatePath } from "next/cache";
-import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import {
@@ -15,7 +14,6 @@ import {
 } from "@/lib/documents/invoiceFields";
 import {
   sendAirfareInvoiceEmail,
-  sendBookingConfirmationBundle,
   sendInvoiceEmailForBooking,
   sendTravelDocumentEmail,
 } from "@/lib/email/bookingMail";
@@ -52,7 +50,7 @@ export async function markInvoicePaidAction(formData: FormData) {
     );
   }
 
-  const invoice = await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     const updated = await tx.invoice.update({
       where: { id },
       data: {
@@ -68,16 +66,6 @@ export async function markInvoicePaidAction(formData: FormData) {
       where: { id: updated.bookingId },
       data: { status: "confirmed", holdExpiresAt: null },
     });
-    return updated;
-  });
-
-  const bookingId = invoice.bookingId;
-  after(async () => {
-    try {
-      await sendBookingConfirmationBundle(bookingId);
-    } catch (err) {
-      console.error("send confirmation after mark paid failed", err);
-    }
   });
 
   revalidatePath("/admin");
@@ -122,7 +110,6 @@ export async function markInvoiceUnpaidAction(formData: FormData) {
       data: {
         status: "unpaid",
         paidAt: null,
-        dueAt: holdExpiresAt,
         markedPaidByAdmin: true,
         pdfBlobUrl: null,
         pdfBlobPathname: null,

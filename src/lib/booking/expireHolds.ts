@@ -19,7 +19,7 @@ export function holdExpiredEmail(data: BookingDocumentData) {
     <p style="color:#2563EB;letter-spacing:0.12em;text-transform:uppercase;font-size:12px">${brand.airlineName}</p>
     <h1 style="font-size:24px;margin:8px 0 16px">Seat hold has ended</h1>
     <p>Dear ${data.passengerName},</p>
-    <p>Your bank-transfer booking <strong>${data.bookingRef}</strong> was held for 48 hours pending payment.</p>
+    <p>Your bank-transfer booking <strong>${data.bookingRef}</strong> was held pending payment.</p>
     <p>We have not received confirmation of payment, so the seats are <strong>no longer on hold</strong> and have been returned to the ticket pool.</p>
     <p><strong>Route:</strong> ${route}<br/>
     <strong>Departure:</strong> ${formatDocDateTime(data.flight.departureAt)}<br/>
@@ -31,7 +31,7 @@ export function holdExpiredEmail(data: BookingDocumentData) {
 
   const text = `Dear ${data.passengerName},
 
-Your seat hold for ${data.bookingRef} (${route}) has expired after 48 hours without payment.
+Your seat hold for ${data.bookingRef} (${route}) has expired without payment.
 Seats are no longer reserved. Please book again at ${brand.siteUrl}.
 
 Kind regards,

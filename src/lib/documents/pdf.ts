@@ -46,6 +46,11 @@ function findLocalChromePath(): string | null {
 
 let browserPromise: Promise<Browser> | null = null;
 
+/** Exposed for dev/QA tooling that needs the same warm Chromium instance. */
+export async function getPdfBrowser(): Promise<Browser> {
+  return getBrowser();
+}
+
 async function getBrowser(): Promise<Browser> {
   if (browserPromise) {
     try {
@@ -90,6 +95,17 @@ async function launchBrowser(): Promise<Browser> {
   return puppeteer.launch({ executablePath, headless: true });
 }
 
+export type HtmlToPdfOptions = {
+  /**
+   * Paint a repeating header/footer into the @page margin box. The margin is
+   * reserved on every sheet and sits outside the content box, so flowing
+   * content can never overlap it (no manual pagination required).
+   */
+  headerTemplate?: string;
+  footerTemplate?: string;
+  margin?: { top?: string; right?: string; bottom?: string; left?: string };
+};
+
 /**
  * Renders HTML to an A4 PDF buffer.
  *
@@ -102,7 +118,10 @@ async function launchBrowser(): Promise<Browser> {
  * - `domcontentloaded` is enough for fully inlined documents; `networkidle0`
  *   was waiting on nothing useful and adding seconds.
  */
-export async function htmlToPdf(html: string): Promise<Buffer> {
+export async function htmlToPdf(
+  html: string,
+  options?: HtmlToPdfOptions,
+): Promise<Buffer> {
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
@@ -113,30 +132,32 @@ export async function htmlToPdf(html: string): Promise<Buffer> {
 
     const fonts = loadPdfFontPayloads();
     if (fonts) {
+      // NOTE: keep this body free of *named* inner functions. Bundlers that
+      // enable esbuild's `keepNames` rewrite `const fn = () => {}` into
+      // `__name(fn, "fn")`, and that helper does not exist inside the page
+      // context — it throws "__name is not defined" at evaluate time.
       await page.evaluate(
         async (regularBase64: string, boldBase64: string) => {
-          const decode = (b64: string) => {
-            const binary = atob(b64);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) {
-              bytes[i] = binary.charCodeAt(i);
-            }
-            return bytes.buffer;
-          };
-
-          const loadFace = async (weight: string, b64: string) => {
-            const face = new FontFace("Arimo", decode(b64), {
-              style: "normal",
-              weight,
-            });
-            await face.load();
-            document.fonts.add(face);
-          };
-
-          await Promise.all([
-            loadFace("400", regularBase64),
-            loadFace("700", boldBase64),
-          ]);
+          await Promise.all(
+            (
+              [
+                ["400", regularBase64],
+                ["700", boldBase64],
+              ] as Array<[string, string]>
+            ).map(async ([weight, b64]) => {
+              const binary = atob(b64);
+              const bytes = new Uint8Array(binary.length);
+              for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+              }
+              const face = new FontFace("Arimo", bytes.buffer, {
+                style: "normal",
+                weight,
+              });
+              await face.load();
+              document.fonts.add(face);
+            }),
+          );
         },
         fonts.regularBase64,
         fonts.boldBase64,
@@ -160,10 +181,20 @@ export async function htmlToPdf(html: string): Promise<Buffer> {
       if (fontSet?.ready) await fontSet.ready;
     });
 
+    const usesMarginChrome = Boolean(
+      options?.headerTemplate || options?.footerTemplate,
+    );
+
     const pdf = await page.pdf({
       format: "A4",
       printBackground: true,
-      preferCSSPageSize: true,
+      // With margin chrome, Puppeteer's format + margin must be authoritative;
+      // a CSS `@page { margin: 0 }` would otherwise collapse the header box.
+      preferCSSPageSize: !usesMarginChrome,
+      displayHeaderFooter: usesMarginChrome,
+      headerTemplate: options?.headerTemplate ?? "",
+      footerTemplate: options?.footerTemplate ?? "",
+      margin: options?.margin,
     });
     return Buffer.from(pdf);
   } finally {

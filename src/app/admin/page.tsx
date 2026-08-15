@@ -241,7 +241,7 @@ export default async function AdminPage({
     deleted: "Flight deleted permanently — logged in the Deleted tab.",
     "flights-deleted": "Flights deleted permanently — logged in the Deleted tab.",
     "invoice-paid":
-      "Invoice marked paid. Confirmation email is sending in the background.",
+      "Invoice marked paid. No email was sent — use Travel doc / Invoice to send it.",
     "invoice-unpaid": "Invoice marked unpaid.",
     "invoice-sent":
       "Invoice email sent (or marked sent if email is not configured).",
@@ -250,8 +250,8 @@ export default async function AdminPage({
     "invoice-deleted": "Invoice deleted — logged in the Deleted tab.",
     "invoices-deleted": "Invoices deleted — logged in the Deleted tab.",
     "booking-paid":
-      "Bank transfer marked paid. Confirmation email is sending in the background.",
-    "booking-unpaid": "Booking marked unpaid — 48h hold restored.",
+      "Bank transfer marked paid. No email was sent — send documents from the Invoices tab.",
+    "booking-unpaid": "Booking marked unpaid — seat hold restored.",
     "booking-updated": "Booking saved.",
     "booking-deleted":
       "Booking (and its invoice, if any) deleted — logged in the Deleted tab.",

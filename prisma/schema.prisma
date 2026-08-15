@@ -246,7 +246,7 @@ model Booking {
   ticketNumber        String         @unique
   /// Secret for document/confirmation URLs (unguessable; required in query ?t=)
   accessToken         String         @unique
-  /// Bank-transfer seat hold deadline (48h). Null once confirmed/cancelled/expired.
+  /// Bank-transfer seat hold deadline (admin-set; 48h default). Null once confirmed/cancelled/expired.
   holdExpiresAt       DateTime?
   createdAt           DateTime       @default(now())
   invoice             Invoice?

@@ -25,6 +25,8 @@
 *.pem
 /tmp-eticket-preview/
 /tmp-invoice-preview/
+# Scratch output from the document smoke/preview scripts
+/tmp/
 
 # debug
 npm-debug.log*

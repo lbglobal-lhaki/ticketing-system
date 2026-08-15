@@ -4,6 +4,7 @@ import type { BookingDocumentData } from "@/lib/documents/templates";
 import {
   renderAirfareInvoiceHtml,
   renderTravelDocumentHtml,
+  travelDocumentPdfOptions,
 } from "@/lib/documents/templates";
 import { getOrCreateInvoicePdf } from "@/lib/documents/invoiceBlob";
 import { htmlToPdf } from "@/lib/documents/pdf";
@@ -21,7 +22,7 @@ async function travelDocAttachment(
   try {
     return {
       filename: `E-Ticket-Itinerary-${data.bookingRef}.pdf`,
-      content: await htmlToPdf(html),
+      content: await htmlToPdf(html, travelDocumentPdfOptions(data)),
       contentType: "application/pdf",
     };
   } catch (error) {
@@ -120,6 +121,7 @@ export async function loadBookingDocumentData(
     fareReleaseName: booking.fareReleaseName,
     fareProductName: booking.fareProductName,
     paymentMethod: booking.paymentMethod,
+    holdExpiresAt: booking.holdExpiresAt,
     amountPaidCents: booking.amountPaidCents,
     serviceFeeCents: booking.serviceFeeCents,
     tripType: booking.tripType,

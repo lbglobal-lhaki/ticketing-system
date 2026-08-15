@@ -115,7 +115,7 @@ export function makeInvoiceNumber() {
   return `INV-${stamp}-${rand}`;
 }
 
-/** Bank-transfer seat hold window (default 48 hours). */
+/** Bank-transfer seat hold window. Hours default to 48 when admin does not set a time. */
 export function bankHoldExpiresAt(from = new Date(), hours = 48) {
   return new Date(from.getTime() + hours * 60 * 60 * 1000);
 }

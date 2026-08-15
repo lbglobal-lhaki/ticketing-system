@@ -8,6 +8,7 @@ import {
 } from "@/components/PassengerGroupFields";
 import { SubmitButton } from "@/components/SubmitButton";
 import { updateBookingAction } from "@/lib/actions/walkIn";
+import { toDateTimeLocalValue } from "@/lib/datetime";
 import { formatAud } from "@/lib/pricing";
 
 export type EditablePassenger = {
@@ -37,6 +38,7 @@ export type EditableBooking = {
   amountPaidCents: number;
   status: string;
   paymentMethod: string | null;
+  holdExpiresAt: string | null;
   flightLabel: string;
   passengers: EditablePassenger[];
 };
@@ -47,8 +49,6 @@ const fieldClass =
 function toDraft(p: EditablePassenger): CompanionDraft {
   return {
     fullName: p.fullName,
-    email: p.email,
-    phone: p.phone,
     passportNumber: p.passportNumber,
     nationality: p.nationality,
     priceAud: ((p.priceCents || 0) / 100).toFixed(2),
@@ -139,6 +139,11 @@ export function BookingEditModal({
           className="space-y-4 overflow-y-auto px-4 py-4 sm:px-6"
         >
           <input type="hidden" name="id" value={booking.id} />
+          <input
+            type="hidden"
+            name="tzOffsetMinutes"
+            value={new Date().getTimezoneOffset()}
+          />
 
           <div className="space-y-3 border border-line bg-white/50 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
@@ -271,6 +276,30 @@ export function BookingEditModal({
                 className={fieldClass}
               />
             </label>
+            {booking.status === "pending_payment" &&
+            booking.paymentMethod === "bank_transfer" ? (
+              <label className="space-y-1 text-sm sm:col-span-2">
+                <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                  Seat hold expires
+                </span>
+                <input
+                  name="holdExpiresAt"
+                  type="datetime-local"
+                  required
+                  defaultValue={
+                    booking.holdExpiresAt
+                      ? toDateTimeLocalValue(new Date(booking.holdExpiresAt))
+                      : toDateTimeLocalValue(
+                          new Date(Date.now() + 48 * 60 * 60 * 1000),
+                        )
+                  }
+                  className={fieldClass}
+                />
+                <span className="block text-xs text-muted">
+                  Internal seat hold only — not written onto the invoice.
+                </span>
+              </label>
+            ) : null}
             <label className="space-y-1 text-sm sm:col-span-2">
               <span className="text-xs uppercase tracking-[0.12em] text-muted">
                 Amount (AUD) · currently {formatAud(booking.amountPaidCents)}

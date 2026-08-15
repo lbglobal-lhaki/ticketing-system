@@ -384,7 +384,7 @@ export async function confirmBooking(input: {
           serviceFeeCents > 0
             ? `Includes card processing fee and exclusive GST (10%).`
             : holdExpiresAt
-              ? "Awaiting bank transfer · seats held for 48 hours."
+              ? "Awaiting bank transfer."
               : "";
 
         const draftRaw = quote.travellersDraft;
@@ -550,7 +550,7 @@ export async function confirmBooking(input: {
             customerEmail: input.email,
             customerPhone: input.passengerPhone ?? "",
             notes: invoiceNotes,
-            dueAt: holdExpiresAt,
+            dueAt: null,
             paidAt: paid ? new Date() : null,
             markedPaidByAdmin: false,
           },

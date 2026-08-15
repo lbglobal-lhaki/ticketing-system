@@ -4,10 +4,12 @@ import { MoneyInput } from "@/components/MoneyInput";
 import type { PassengerType } from "@/lib/booking/passengers";
 import { passengerTypeLabel } from "@/lib/booking/passengers";
 
+/**
+ * Companions carry no contact details — email/phone are collected once on the
+ * primary passenger.
+ */
 export type CompanionDraft = {
   fullName: string;
-  email: string;
-  phone: string;
   passportNumber: string;
   nationality: string;
   priceAud: string;
@@ -20,8 +22,6 @@ const fieldClass =
 export function emptyCompanion(priceAud = "0.00"): CompanionDraft {
   return {
     fullName: "",
-    email: "",
-    phone: "",
     passportNumber: "",
     nationality: "",
     priceAud,
@@ -79,6 +79,9 @@ export function PassengerGroupFields({
             {label}s
           </p>
           <p className="mt-1 text-sm text-muted">{description}</p>
+          <p className="mt-1 text-sm text-muted">
+            Contact details (email and phone) come from the primary passenger.
+          </p>
         </div>
         {canChangeCount ? (
           <label className="space-y-1 text-sm">
@@ -141,29 +144,6 @@ export function PassengerGroupFields({
               required
               value={pax.fullName}
               onChange={(e) => update(i, { fullName: e.target.value })}
-              className={fieldClass}
-            />
-          </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-xs uppercase tracking-[0.12em] text-muted">
-              Email
-            </span>
-            <input
-              name={`${namePrefix}Email`}
-              type="email"
-              value={pax.email}
-              onChange={(e) => update(i, { email: e.target.value })}
-              className={fieldClass}
-            />
-          </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-xs uppercase tracking-[0.12em] text-muted">
-              Phone
-            </span>
-            <input
-              name={`${namePrefix}Phone`}
-              value={pax.phone}
-              onChange={(e) => update(i, { phone: e.target.value })}
               className={fieldClass}
             />
           </label>

@@ -146,8 +146,6 @@ function parseNamedGroup(
     throw new Error(`Maximum 8 ${type} passengers`);
   }
 
-  const emails = formData.getAll(`${prefix}PassengerEmail`).map(String);
-  const phones = formData.getAll(`${prefix}PassengerPhone`).map(String);
   const passports = formData.getAll(`${prefix}PassengerPassport`).map(String);
   const nationalities = formData
     .getAll(`${prefix}PassengerNationality`)
@@ -170,8 +168,9 @@ function parseNamedGroup(
 
     const raw = {
       fullName,
-      email: emails[i] ?? "",
-      phone: phones[i] ?? "",
+      // Companions have no contact fields; only the primary passenger does.
+      email: "",
+      phone: "",
       passportNumber: passports[i] ?? "",
       nationality: nationalities[i] ?? "",
       passengerType: type,

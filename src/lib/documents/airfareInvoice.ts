@@ -1,13 +1,14 @@
-import { readFileSync } from "fs";
-import path from "path";
 import { getBrand } from "@/lib/branding";
 import {
   cityName,
   computeInvoiceTotals,
-  ICON_GLOBE,
-  ICON_MAIL,
-  ICON_PHONE,
 } from "@/lib/documents/invoiceFields";
+import {
+  CONTENT_SIDE_PADDING_MM,
+  screenChromeCss,
+  screenFooterHtml,
+  screenHeaderHtml,
+} from "@/lib/documents/documentChrome";
 import { PDF_FONT_FAMILY, pdfFontFaceCss } from "@/lib/documents/pdfFonts";
 import type { BookingDocumentData } from "@/lib/documents/templates";
 import { passengerTypeLabel } from "@/lib/booking/passengers";
@@ -22,26 +23,15 @@ function esc(value: string | number | null | undefined) {
     .replaceAll("'", "&#39;");
 }
 
-function assetDataUri(filename: string) {
-  const candidates = [
-    path.join(process.cwd(), "public", "documents", "invoice-assets", filename),
-    path.join(process.cwd(), "public", "documents", "eticket-assets", filename),
-  ];
-  for (const filePath of candidates) {
-    try {
-      const buf = readFileSync(filePath);
-      return `data:image/png;base64,${buf.toString("base64")}`;
-    } catch {
-      /* try next */
-    }
-  }
-  return "";
-}
-
 /** PDF-style money: $1,234 */
+/**
+ * Always two decimals, matching `formatAud` used by the travel document — the
+ * old 0..2 range rendered GST of 40480 cents as "$404.8" and made the same
+ * total read differently on the invoice and the e-ticket.
+ */
 function money(cents: number) {
   const n = (Math.max(0, cents) / 100).toLocaleString("en-AU", {
-    minimumFractionDigits: 0,
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
   return `$${n}`;
@@ -196,10 +186,10 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     ["Travel Insurance", lines.travelInsuranceCents],
     ["Other Charges", lines.otherChargesCents],
   ] as const) {
+    // Zero-value lines were printed as "$0" rows purely for completeness; they
+    // padded every invoice with dead rows and pushed the totals onto page 2.
     if (cents > 0) {
       itemRows.push({ name, qty: 1, unitCents: cents, totalCents: cents });
-    } else {
-      itemRows.push({ name, qty: 0, unitCents: 0, totalCents: 0 });
     }
   }
   if ((invoice.serviceFeeCents || 0) > 0) {
@@ -235,22 +225,7 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     })
     .join("");
 
-  // header.png's canvas is 30px too short and crops the "GLOBAL" pill under
-  // the L&B logo — header-wide.png is the same artwork, uncropped.
-  const headerUri =
-    assetDataUri("header-wide.png") || assetDataUri("header-page1.png");
   const taxPct = ((invoice.gstRateBps ?? 0) / 100).toFixed(0);
-
-  const headerHtml = headerUri
-    ? `<img class="header-img" src="${headerUri}" alt="L&B Global · Drukair" />`
-    : `<div class="topbar-fallback"></div>`;
-  const footerHtml = `<div class="footer">
-      <div class="footer-row">
-        <div class="item"><span class="dot">${ICON_PHONE}</span>${esc(brand.agentPhonePrimary)} | ${esc(brand.agentPhoneSecondary)}</div>
-        <div class="item"><span class="dot">${ICON_GLOBE}</span>${esc(brand.agentWebsite)}</div>
-        <div class="item"><span class="dot">${ICON_MAIL}</span>${esc(brand.agentEmail)}</div>
-      </div>
-    </div>`;
 
   const introHtml = `
       <div class="meta-row">
@@ -315,24 +290,19 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
         <div class="row"><span>Booking Reference:</span><span><strong>${esc(data.bookingRef)}</strong></span></div>
       </div>`;
 
-  const continuationTitleHtml = `
-      <div class="continue-banner">
-        <div class="invoice-title continue-title">INVOICE</div>
-        <p class="continue-meta">${esc(invoice.invoiceNumber)} · ${esc(data.bookingRef)} · continued</p>
-      </div>`;
-
-  function itemsTableHtml(rows: ItemRow[], opts?: { continuedFrom?: boolean }) {
-    return `<table class="items">
+  // A <thead> repeats automatically on every page a long table spans, so the
+  // column labels stay visible without any manual page splitting.
+  const itemsTableHtml = `<table class="items">
         <thead>
           <tr>
-            <th>Item${opts?.continuedFrom ? " (continued)" : ""}</th>
+            <th>Item</th>
             <th class="num">Qty</th>
             <th class="num">Unit Price</th>
             <th class="num">Total</th>
           </tr>
         </thead>
         <tbody>
-          ${rows
+          ${itemRows
             .map(
               (row) => `<tr>
                 <td>${esc(row.name)}</td>
@@ -344,7 +314,6 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
             .join("")}
         </tbody>
       </table>`;
-  }
 
   const payTotalsHtml = `
       <div class="pay-totals-row">
@@ -404,63 +373,14 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       </div>
       </div>`;
 
-  // Split line items across A4 pages so content never paints over the footer.
-  // Page 1 has the intro (meta + passengers + flight); later pages are items-only.
-  // The payment/totals block always sits on the last page.
-  const paxPenalty = Math.max(0, travellers.length - 2);
-  const firstPageWithTotals = Math.max(2, 6 - Math.ceil(paxPenalty / 2));
-  const firstPageWithoutTotals = Math.max(3, 11 - Math.ceil(paxPenalty / 2));
-  const contWithTotals = 9;
-  const contWithoutTotals = 16;
-
-  const itemChunks: ItemRow[][] = [];
-  if (itemRows.length <= firstPageWithTotals) {
-    itemChunks.push(itemRows);
-  } else {
-    let remaining = itemRows.slice();
-    itemChunks.push(remaining.splice(0, firstPageWithoutTotals));
-    while (remaining.length > 0) {
-      const isLastChunk = remaining.length <= contWithTotals;
-      const take = isLastChunk ? remaining.length : contWithoutTotals;
-      // If the leftover after a full cont page would be tiny and totals need
-      // room, prefer leaving enough for the last page with totals.
-      if (
-        !isLastChunk &&
-        remaining.length - contWithoutTotals > 0 &&
-        remaining.length - contWithoutTotals < 2
-      ) {
-        itemChunks.push(remaining.splice(0, Math.max(1, remaining.length - 2)));
-      } else {
-        itemChunks.push(remaining.splice(0, take));
-      }
-    }
-  }
-
-  const pageCount = itemChunks.length;
-  const pagesHtml = itemChunks
-    .map((chunk, pageIndex) => {
-      const isFirst = pageIndex === 0;
-      const isLast = pageIndex === pageCount - 1;
-      const continued = !isFirst;
-      return `<section class="page">
-    ${headerHtml}
-    <div class="body">
-      ${isFirst ? introHtml : continuationTitleHtml}
-      ${itemsTableHtml(chunk, { continuedFrom: continued })}
-      ${
-        isLast
-          ? payTotalsHtml
-          : `<p class="page-continued">Continued on page ${pageIndex + 2} of ${pageCount}…</p>`
-      }
-    </div>
-    ${footerHtml}
-  </section>`;
-    })
-    .join("\n");
-
   const styles = `
     ${pdfFontFaceCss()}
-    @page { size: A4; margin: 0; }
+    /*
+     * Header and footer are painted by Chromium into the @page margin box
+     * (see documentChrome.ts), so content flows freely and can never overlap
+     * them. No fixed page heights, no manual row chunking.
+     */
+    @page { size: A4; }
     * { box-sizing: border-box; }
     html, body {
       margin: 0;
@@ -470,25 +390,22 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
-    .page {
-      width: 210mm;
-      min-height: 297mm;
-      height: 297mm;
-      max-height: 297mm;
-      margin: 0 auto 12px;
-      background: #fff;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      box-shadow: 0 4px 24px rgba(0,0,0,.08);
-    }
-    .header-img { display: block; width: 100%; height: auto; flex-shrink: 0; }
-    .topbar-fallback { height: 12px; background: #0b2c5a; flex-shrink: 0; }
     .body {
-      padding: 12px 36px 4px;
-      flex: 1 1 auto;
-      min-height: 0;
-      overflow: hidden;
+      padding: 12px ${CONTENT_SIDE_PADDING_MM}mm 4px;
+    }
+    ${screenChromeCss()}
+    /* On screen only, mimic the A4 sheet so the admin preview looks right. */
+    @media screen {
+      body {
+        background: #eef1f5;
+      }
+      .sheet {
+        width: 210mm;
+        min-height: 297mm;
+        margin: 0 auto;
+        background: #fff;
+        box-shadow: 0 4px 24px rgba(0,0,0,.08);
+      }
     }
     .meta-row {
       display: grid;
@@ -503,21 +420,6 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       font-weight: 800;
       letter-spacing: 0.02em;
       line-height: 1;
-    }
-    .continue-banner { margin-bottom: 10px; }
-    .continue-title { font-size: 28px; margin: 4px 0 4px; }
-    .continue-meta {
-      margin: 0 0 8px;
-      font-size: 12px;
-      color: #555;
-      font-weight: 600;
-    }
-    .page-continued {
-      margin: 14px 0 0;
-      font-size: 12px;
-      font-weight: 700;
-      color: #0b2c5a;
-      letter-spacing: 0.02em;
     }
     .meta {
       text-align: right;
@@ -617,6 +519,9 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       font-size: 13px;
       margin-top: 6px;
     }
+    /* Repeat column labels when the table spans pages; never split a row. */
+    table.items thead { display: table-header-group; }
+    table.items tr { break-inside: avoid; page-break-inside: avoid; }
     table.items th {
       text-align: left;
       font-size: 12px;
@@ -632,16 +537,30 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       vertical-align: middle;
     }
     table.items td:first-child { font-weight: 600; }
+    /*
+     * Table layout, not flex: Chromium *drops* content when it fragments a flex
+     * container across a page boundary (the "Payment Information" heading and
+     * SUBTOTAL row silently disappeared). Table cells fragment correctly.
+     */
     .pay-totals-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 24px;
+      display: table;
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
       margin-top: 8px;
     }
+    .pay-totals-row > .pay {
+      display: table-cell;
+      width: 60%;
+      vertical-align: top;
+      padding-right: 24px;
+    }
+    .pay-totals-row > .totals {
+      display: table-cell;
+      width: 40%;
+      vertical-align: top;
+    }
     .totals {
-      width: 260px;
-      flex-shrink: 0;
       font-size: 13px;
     }
     .totals .line {
@@ -665,8 +584,6 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     .pay {
       font-size: 13px;
       line-height: 1.55;
-      max-width: 420px;
-      flex: 1;
     }
     .pay h3 {
       margin: 0 0 8px;
@@ -692,45 +609,13 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
       text-transform: uppercase;
       color: ${unpaid ? "#8a3b12" : "#0f3d2e"};
     }
-    .footer {
-      margin-top: auto;
-      border-top: 2px solid #f5c518;
-      padding: 10px 28px 14px;
-      flex-shrink: 0;
-    }
-    .footer-row {
-      display: grid;
-      grid-template-columns: 1.2fr 1fr 1.1fr;
-      gap: 10px;
-      font-size: 12px;
-      color: #333;
-      font-weight: 500;
-    }
-    .footer .item { display: flex; align-items: center; gap: 8px; }
-    .footer .dot {
-      width: 22px; height: 22px; border-radius: 50%;
-      background: #f5c518; color: #fff;
-      display: inline-flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
-    }
-    .footer .dot svg { display: block; }
     @media print {
       html, body { background: #fff; }
-      .page {
-        box-shadow: none;
-        margin: 0;
-        width: 210mm;
-        height: 297mm;
-        min-height: 297mm;
-        max-height: 297mm;
-        page-break-after: always;
-        break-after: page;
-        page-break-inside: avoid;
+      .sheet { box-shadow: none; margin: 0; width: auto; min-height: 0; }
+      /* Keep these blocks whole rather than letting a page break bisect them. */
+      .meta-row, .flight, .pay-totals-row, .totals, .pax-line {
         break-inside: avoid;
-      }
-      .page:last-child {
-        page-break-after: auto;
-        break-after: auto;
+        page-break-inside: avoid;
       }
     }
   `;
@@ -743,7 +628,15 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
   <style>${styles}</style>
 </head>
 <body>
-  ${pagesHtml}
+  <div class="sheet">
+    ${screenHeaderHtml()}
+    <div class="body">
+      ${introHtml}
+      ${itemsTableHtml}
+      ${payTotalsHtml}
+    </div>
+    ${screenFooterHtml()}
+  </div>
 </body>
 </html>`;
 }

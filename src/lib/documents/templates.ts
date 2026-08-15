@@ -1,5 +1,11 @@
 import { renderAirfareInvoiceHtml as renderAirfareInvoiceHtmlImpl } from "@/lib/documents/airfareInvoice";
 import { renderTravelDocumentHtml as renderTravelDocumentHtmlImpl } from "@/lib/documents/travelDocument";
+import {
+  pdfFooterTemplate,
+  pdfHeaderTemplate,
+  pdfPageMargin,
+} from "@/lib/documents/documentChrome";
+import type { HtmlToPdfOptions } from "@/lib/documents/pdf";
 
 export type BookingDocumentPassenger = {
   fullName: string;
@@ -30,6 +36,7 @@ export type BookingDocumentData = {
   fareReleaseName: string;
   fareProductName?: string;
   paymentMethod: string | null;
+  holdExpiresAt?: Date | null;
   amountPaidCents: number;
   serviceFeeCents: number;
   tripType: string;
@@ -91,6 +98,37 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
 
 export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
   return renderAirfareInvoiceHtmlImpl(data);
+}
+
+/**
+ * PDF options for the airfare invoice — brand header and contact footer are
+ * painted into the reserved @page margin box on every sheet.
+ */
+export function invoicePdfOptions(data: BookingDocumentData): HtmlToPdfOptions {
+  return {
+    headerTemplate: pdfHeaderTemplate(),
+    footerTemplate: pdfFooterTemplate({
+      reference: data.invoice?.invoiceNumber || data.bookingRef,
+    }),
+    margin: pdfPageMargin(),
+  };
+}
+
+/**
+ * PDF options for the travel document / e-ticket.
+ *
+ * Deliberately empty: the reference document prints the brand band and contact
+ * strip on the covering letter only, while Chromium's `displayHeaderFooter`
+ * repeats a margin-box template on every sheet. The template therefore lays its
+ * own chrome out inline, and passing no header/footer here lets
+ * `preferCSSPageSize` honour `@page { margin: 0 }` so the charter banner can
+ * bleed to both paper edges.
+ */
+export function travelDocumentPdfOptions(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  data: BookingDocumentData,
+): HtmlToPdfOptions {
+  return {};
 }
 
 /** @deprecated alias — travel document combo */

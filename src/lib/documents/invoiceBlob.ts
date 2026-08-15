@@ -2,6 +2,7 @@ import { get, put } from "@vercel/blob";
 import { prisma } from "@/lib/db";
 import { htmlToPdf } from "@/lib/documents/pdf";
 import {
+  invoicePdfOptions,
   renderAirfareInvoiceHtml,
   type BookingDocumentData,
 } from "@/lib/documents/templates";
@@ -96,7 +97,10 @@ export async function getOrCreateInvoicePdf(
     }
   }
 
-  const pdf = await htmlToPdf(renderAirfareInvoiceHtml(data));
+  const pdf = await htmlToPdf(
+    renderAirfareInvoiceHtml(data),
+    invoicePdfOptions(data),
+  );
 
   if (isBlobConfigured()) {
     try {

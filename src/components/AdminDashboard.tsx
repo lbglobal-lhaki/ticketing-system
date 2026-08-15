@@ -52,6 +52,7 @@ import {
 import { Combobox, type ComboboxOption } from "@/components/admin/Combobox";
 import { SegmentedField } from "@/components/admin/SegmentedField";
 import { ListFilterBar, NoMatches } from "@/components/admin/ListFilterBar";
+import { bankHoldExpiresAt } from "@/lib/branding";
 import { formatFlightDateTime, toDateTimeLocalValue } from "@/lib/datetime";
 import {
   BUSINESS_FARE_TEMPLATE,
@@ -366,6 +367,9 @@ export function AdminDashboard({
   const [walkInAdults, setWalkInAdults] = useState<CompanionDraft[]>([]);
   const [walkInChildren, setWalkInChildren] = useState<CompanionDraft[]>([]);
   const [walkInInfants, setWalkInInfants] = useState<CompanionDraft[]>([]);
+  const [walkInPaymentMethod, setWalkInPaymentMethod] = useState<
+    "cash" | "card" | "bank_transfer"
+  >("cash");
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
   const [bulkPending, startBulkTransition] = useTransition();
 
@@ -421,6 +425,7 @@ export function AdminDashboard({
       setWalkInAdults([]);
       setWalkInChildren([]);
       setWalkInInfants([]);
+      setWalkInPaymentMethod("cash");
     }
     // After a successful flight add/edit, drop out of "edit" mode — otherwise
     // the redirect lands back on the Flights tab but the "Add / Edit" nav tab
@@ -1422,7 +1427,7 @@ export function AdminDashboard({
             <p className="mt-1 max-w-2xl text-sm text-muted">
               All bookings show credit card vs bank transfer. For bank transfer,
               confirm paid to send the confirmation email with e-ticket. Unpaid
-              bank holds expire after 48 hours and seats return to the pool.
+              bank holds expire at the time you set and seats return to the pool.
             </p>
           </div>
 
@@ -1435,8 +1440,9 @@ export function AdminDashboard({
             </h3>
             <p className="mt-1 text-sm text-muted">
               Counter / phone bookings. Cash or card = confirmed immediately.
-              Bank transfer = 48h seat hold. Choose GST mode below — it is
-              written onto the invoice. Docs are not emailed automatically.
+              Bank transfer = unpaid seat hold until the expiry you set. Choose
+              GST mode below — it is written onto the invoice. Docs are not
+              emailed automatically.
             </p>
             <form
               key={walkInFormKey}
@@ -1703,7 +1709,12 @@ export function AdminDashboard({
                 name="paymentMethod"
                 label="Payment method"
                 className="sm:col-span-2"
-                defaultValue="cash"
+                value={walkInPaymentMethod}
+                onChange={(next) =>
+                  setWalkInPaymentMethod(
+                    next as "cash" | "card" | "bank_transfer",
+                  )
+                }
                 options={[
                   { value: "cash", label: "Cash", hint: "Marked paid now." },
                   {
@@ -1714,10 +1725,30 @@ export function AdminDashboard({
                   {
                     value: "bank_transfer",
                     label: "Bank transfer",
-                    hint: "48h unpaid seat hold until you confirm payment.",
+                    hint: "Unpaid seat hold until the expiry you set below.",
                   },
                 ]}
               />
+              {walkInPaymentMethod === "bank_transfer" ? (
+                <label className="space-y-1 text-sm sm:col-span-2">
+                  <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                    Seat hold expires
+                  </span>
+                  <input
+                    name="holdExpiresAt"
+                    type="datetime-local"
+                    required
+                    defaultValue={toDateTimeLocalValue(
+                      bankHoldExpiresAt(new Date(), 48),
+                    )}
+                    className={fieldClass}
+                  />
+                  <span className="block text-xs text-muted">
+                    Seats stay reserved until this time. This is not shown on
+                    the invoice — set an invoice due date separately if needed.
+                  </span>
+                </label>
+              ) : null}
               <GstModeFields defaultMode="none" className="sm:col-span-2" />
               <label className="space-y-1 text-sm sm:col-span-2">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
@@ -2012,6 +2043,7 @@ export function AdminDashboard({
             amountPaidCents: editingBooking.amountPaidCents,
             status: editingBooking.status,
             paymentMethod: editingBooking.paymentMethod,
+            holdExpiresAt: editingBooking.holdExpiresAt,
             passengers: editingBooking.passengers ?? [],
             flightLabel: `${editingBooking.flight.flightNumber} ${editingBooking.flight.origin}→${editingBooking.flight.destination}${
               editingBooking.returnFlight

@@ -468,20 +468,29 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => openEditor(invoice.id, "travel")}
+                  {/*
+                   * View, not edit: "Edit / preview" already opens the modal,
+                   * so these open the rendered PDF full screen in a new tab
+                   * instead of duplicating that button.
+                   */}
+                  <a
+                    href={docBaseUrl(invoice, "travel")}
+                    target="_blank"
+                    rel="noreferrer"
                     className="border border-line px-3 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground"
+                    title="View travel document PDF full screen"
                   >
                     Travel doc
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openEditor(invoice.id, "airfare")}
+                  </a>
+                  <a
+                    href={docBaseUrl(invoice, "airfare")}
+                    target="_blank"
+                    rel="noreferrer"
                     className="border border-line px-3 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground"
+                    title="View airfare invoice PDF full screen"
                   >
                     Airfare invoice
-                  </button>
+                  </a>
                   <button
                     type="button"
                     onClick={() => openEditor(invoice.id, "travel")}
@@ -835,13 +844,16 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                         />
                       </label>
                       <label className="block text-xs text-muted">
-                        Due at
+                        Invoice due date
                         <input
                           name="dueAt"
                           type="datetime-local"
                           defaultValue={dueInputValue(active.dueAt)}
                           className={fieldClass}
                         />
+                        <span className="mt-1 block text-xs text-muted">
+                          Optional. Independent of the booking seat hold.
+                        </span>
                       </label>
                       <GstModeFields
                         defaultMode={resolveGstMode(active)}

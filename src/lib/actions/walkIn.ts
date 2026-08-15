@@ -4,7 +4,6 @@ import { requireAdmin } from "@/lib/adminAuth";
 
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { revalidatePath } from "next/cache";
-import { after } from "next/server";
 import { redirect } from "next/navigation";
 import {
   bankHoldExpiresAt,
@@ -22,9 +21,6 @@ import {
   defaultFareCalculationLine,
   defaultInvoiceIdentity,
 } from "@/lib/documents/invoiceFields";
-import {
-  sendBookingConfirmationBundle,
-} from "@/lib/email/bookingMail";
 import {
   decrementFareAndFlight,
   restoreFareAndFlight,
@@ -158,6 +154,25 @@ async function resolveLegFlightId(
     },
   });
   return flight.id;
+}
+
+function readHoldExpiresAt(formData: FormData, fallbackHours = 48): Date {
+  const raw = String(formData.get("holdExpiresAt") ?? "").trim();
+  const tzRaw = Number(formData.get("tzOffsetMinutes"));
+  const tzOffsetMinutes = Number.isFinite(tzRaw) ? tzRaw : 0;
+  if (!raw) {
+    return bankHoldExpiresAt(new Date(), fallbackHours);
+  }
+  let at: Date;
+  try {
+    at = parseDateTimeLocal(raw, tzOffsetMinutes);
+  } catch {
+    throw new Error("Invalid hold expiry date/time");
+  }
+  if (at.getTime() <= Date.now()) {
+    throw new Error("Hold expiry must be in the future");
+  }
+  return at;
 }
 
 async function decrementSeats(
@@ -460,9 +475,18 @@ export async function createWalkInBookingAction(formData: FormData) {
     });
 
     const bank = getBankTransferDetails();
-    const holdExpiresAt = paidUpfront
-      ? null
-      : bankHoldExpiresAt(new Date(), 48);
+    let holdExpiresAt: Date | null = null;
+    if (!paidUpfront) {
+      try {
+        holdExpiresAt = readHoldExpiresAt(formData);
+      } catch (e) {
+        redirect(
+          `/admin?tab=bookings&error=${encodeURIComponent(
+            e instanceof Error ? e.message : "Invalid hold expiry",
+          )}`,
+        );
+      }
+    }
 
     const gstNote =
       gstOverrideCents > 0
@@ -602,10 +626,10 @@ export async function createWalkInBookingAction(formData: FormData) {
           notes:
             (paidUpfront
               ? `Walk-in booking · paid by ${data.paymentMethod}`
-              : "Walk-in booking · awaiting bank transfer (48h hold)") +
+              : "Walk-in booking · awaiting bank transfer") +
             (usingCustomPrice ? " · custom admin-set price" : "") +
             gstNote,
-          dueAt: holdExpiresAt,
+          dueAt: null,
           paidAt: paidUpfront ? new Date() : null,
           markedPaidByAdmin: paidUpfront,
         },
@@ -670,14 +694,6 @@ export async function markBookingPaidAction(formData: FormData) {
     }
   });
 
-  after(async () => {
-    try {
-      await sendBookingConfirmationBundle(id);
-    } catch (err) {
-      console.error("mark booking paid email failed", err);
-    }
-  });
-
   revalidatePath("/admin");
   redirect("/admin?tab=bookings&saved=booking-paid");
 }
@@ -714,16 +730,15 @@ export async function markBookingUnpaidAction(formData: FormData) {
       },
     });
     await tx.invoice.update({
-      where: { id: booking.invoice!.id },
-      data: {
-        status: "unpaid",
-        paidAt: null,
-        dueAt: holdExpiresAt,
-        markedPaidByAdmin: true,
-        pdfBlobUrl: null,
-        pdfBlobPathname: null,
-      },
-    });
+        where: { id: booking.invoice!.id },
+        data: {
+          status: "unpaid",
+          paidAt: null,
+          markedPaidByAdmin: true,
+          pdfBlobUrl: null,
+          pdfBlobPathname: null,
+        },
+      });
   });
 
   revalidatePath("/admin");
@@ -904,13 +919,17 @@ async function syncAllBookingPassengers(
     const row = existing[i];
     const seat = allocatesSeat(pax.passengerType);
     if (row) {
+      // Only the primary passenger (index 0) submits contact details, so an
+      // empty companion email/phone means "not collected" — keep whatever is
+      // already stored instead of blanking it on a plain edit-and-save.
+      const isPrimary = i === 0;
       await tx.bookingPassenger.update({
         where: { id: row.id },
         data: {
           sortOrder: i,
           fullName: pax.fullName,
-          email: pax.email || "",
-          phone: pax.phone || "",
+          ...(isPrimary || pax.email ? { email: pax.email || "" } : {}),
+          ...(isPrimary || pax.phone ? { phone: pax.phone || "" } : {}),
           passportNumber: pax.passportNumber || "",
           nationality: pax.nationality || "",
           passengerType: pax.passengerType,
@@ -1058,6 +1077,15 @@ export async function updateBookingAction(formData: FormData) {
         }
       }
 
+      let holdExpiresAt: Date | undefined;
+      if (
+        formData.has("holdExpiresAt") &&
+        booking.status === "pending_payment" &&
+        booking.paymentMethod === "bank_transfer"
+      ) {
+        holdExpiresAt = readHoldExpiresAt(formData);
+      }
+
       await tx.booking.update({
         where: { id: booking.id },
         data: {
@@ -1070,6 +1098,7 @@ export async function updateBookingAction(formData: FormData) {
           extraBaggageKg: data.extraBaggageKg,
           fareReleaseName: data.fareReleaseName || booking.fareReleaseName,
           amountPaidCents,
+          ...(holdExpiresAt ? { holdExpiresAt } : {}),
         },
       });
 

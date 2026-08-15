@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { canAccessBooking } from "@/lib/documentAccess";
 import { prisma } from "@/lib/db";
-import { renderTravelDocumentHtml } from "@/lib/documents/templates";
+import {
+  renderTravelDocumentHtml,
+  travelDocumentPdfOptions,
+} from "@/lib/documents/templates";
 import { htmlToPdf } from "@/lib/documents/pdf";
 import { loadBookingDocumentData } from "@/lib/email/bookingMail";
 
@@ -63,7 +66,7 @@ export async function GET(
     }
 
     try {
-      const pdf = await htmlToPdf(html);
+      const pdf = await htmlToPdf(html, travelDocumentPdfOptions(data));
       return new NextResponse(new Uint8Array(pdf), {
         headers: {
           "Content-Type": "application/pdf",

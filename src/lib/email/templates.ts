@@ -128,9 +128,9 @@ export function bankTransferEmail(data: BookingDocumentData) {
         data.accessToken,
       )
     : brand.siteUrl;
-  const due = data.invoice?.dueAt
-    ? formatDocDateTime(data.invoice.dueAt)
-    : "the due date on your invoice";
+  const holdUntil = data.holdExpiresAt
+    ? formatDocDateTime(data.holdExpiresAt)
+    : null;
 
   const html = `
   <div style="font-family:Georgia,serif;color:#0F172A;line-height:1.55;max-width:640px">
@@ -152,8 +152,12 @@ export function bankTransferEmail(data: BookingDocumentData) {
     <p><a href="${invoiceUrl}">View Airfare Invoice &amp; bank details</a></p>
     <h2 style="font-size:14px;letter-spacing:0.12em;text-transform:uppercase;color:#2563EB;border-bottom:1px solid #E2E8F0;padding-bottom:6px;margin-top:24px">Transaction instructions</h2>
     <p>No online payment was taken. After you complete the bank transfer, email a <strong>screenshot of the payment</strong> to <a href="mailto:${esc(brand.paymentProofEmail)}"><strong>${esc(brand.paymentProofEmail)}</strong></a> so we can confirm your booking and send your e-ticket.</p>
-    <p>Your seats are held for <strong>48 hours</strong>. Once payment has been received and verified, we will email your booking confirmation and electronic ticket.</p>
-    <p>If payment is not confirmed before ${esc(due)}, the hold will be released, seats return to the ticket pool, and you will need to book again.</p>
+    ${
+      holdUntil
+        ? `<p>Your seats are held until <strong>${esc(holdUntil)}</strong>. Once payment has been received and verified, we will email your booking confirmation and electronic ticket.</p>
+    <p>If payment is not confirmed before ${esc(holdUntil)}, the hold will be released, seats return to the ticket pool, and you will need to book again.</p>`
+        : `<p>Once payment has been received and verified, we will email your booking confirmation and electronic ticket.</p>`
+    }
     <p>Kind regards,<br/>${esc(brand.reservationsTeam)}<br/>${esc(brand.issuingAgent)}</p>
   </div>`;
 
