@@ -80,20 +80,43 @@ function makeData(nAdults: number): BookingDocumentData {
   } as unknown as BookingDocumentData;
 }
 
+/*
+ * The invoice used to paginate itself, emitting one `.page` wrapper (each with
+ * its own `.header-img` / `.footer`) per sheet. Chrome now lives in Chromium's
+ * @page margin box and the content simply flows, so counting those wrappers
+ * measured nothing — this asserts what the HTML can actually still prove.
+ * Real sheet counts are covered by scripts/smoke-document-pagination.ts, which
+ * renders PDFs and reads their MediaBoxes.
+ */
 let failed = 0;
-for (const n of [1, 2, 6, 10]) {
-  const html = renderAirfareInvoiceHtml(makeData(n));
-  const pages = (html.match(/class="page"/g) || []).length;
-  const headers = (html.match(/class="header-img"/g) || []).length;
-  const footers = (html.match(/class="footer"/g) || []).length;
-  const ok =
-    pages >= 1 &&
-    headers === pages &&
-    footers === pages &&
-    (n < 6 ? pages === 1 : pages >= 2);
-  console.log(
-    `${ok ? "✓" : "✗"} ${n} adults → pages=${pages} headers=${headers} footers=${footers}`,
-  );
-  if (!ok) failed += 1;
+
+function check(cond: unknown, msg: string) {
+  console.log(`${cond ? "✓" : "✗"} ${msg}`);
+  if (!cond) failed += 1;
 }
+
+for (const n of [1, 2, 6, 10]) {
+  const data = makeData(n);
+  const html = renderAirfareInvoiceHtml(data);
+
+  const listed = data.passengers.filter((p) =>
+    html.includes(p.fullName),
+  ).length;
+  check(listed === n, `${n} adults → all ${n} traveller(s) listed (${listed})`);
+
+  const adultLines = (html.match(/Airfare — Adult —/g) || []).length;
+  // A lone traveller collapses to a single "Airfare" line, as on the reference.
+  check(
+    n === 1 ? adultLines === 0 : adultLines === n,
+    `${n} adults → ${n === 1 ? "single airfare line" : `${n} per-adult line(s)`} (${adultLines})`,
+  );
+
+  // Self-pagination is gone; a stray wrapper would mean it crept back in.
+  check(
+    !html.includes('class="page"'),
+    `${n} adults → no hand-rolled page wrappers`,
+  );
+}
+
 if (failed) process.exit(1);
+console.log("\ninvoice HTML structure OK");

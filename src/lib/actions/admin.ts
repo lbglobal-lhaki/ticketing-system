@@ -138,6 +138,11 @@ export async function updateFlightAction(formData: FormData) {
   }
 
   const data = parsed.data;
+  // Same guard as create — editing must not be able to produce PER → PER.
+  if (data.origin === data.destination) {
+    redirectFormError("From and To must be different");
+  }
+
   const tzOffsetMinutes = parseTzOffsetMinutes(formData);
   let departureAt: Date;
   let arrivalAt: Date;

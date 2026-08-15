@@ -132,7 +132,7 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
   if (hasPartyMix && lines.airfareCents > 0) {
     const childTotal = children.reduce((s, p) => s + (p.priceCents || 0), 0);
     const infantTotal = infants.reduce((s, p) => s + (p.priceCents || 0), 0);
-    let adultTotal = Math.max(0, lines.airfareCents - childTotal - infantTotal);
+    const adultTotal = Math.max(0, lines.airfareCents - childTotal - infantTotal);
     const adultUnit =
       adults.length > 0 ? Math.round(adultTotal / adults.length) : 0;
     // Absorb rounding drift on the last adult line.

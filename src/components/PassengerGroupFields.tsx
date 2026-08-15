@@ -49,6 +49,8 @@ export function PassengerGroupFields({
   description,
 }: Props) {
   const label = passengerTypeLabel(type);
+  // "Child" does not pluralise by adding an s — the group heading read "CHILDS".
+  const pluralLabel = type === "child" ? "Children" : `${label}s`;
   const needsPrice = type === "child" || type === "infant";
   const namePrefix = `${prefix}Passenger`;
 
@@ -76,7 +78,7 @@ export function PassengerGroupFields({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-            {label}s
+            {pluralLabel}
           </p>
           <p className="mt-1 text-sm text-muted">{description}</p>
           <p className="mt-1 text-sm text-muted">

@@ -634,20 +634,14 @@ export function AdminDashboard({
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }, [pathname, router, searchParams, tab]);
 
-  useEffect(() => {
-    if (editing) {
-      setCabinClass(editing.cabinClass);
-      setPartnerFlightId(editing.returnLegFlightId ?? "");
-      setFareRows(
-        editing.fareReleases.length > 0
-          ? editing.fareReleases.map((r) => ({
-              ...r,
-              roundTripPriceCents: r.roundTripPriceCents ?? 0,
-            }))
-          : templateToRows(editing.cabinClass),
-      );
-    }
-  }, [editing]);
+  /*
+   * There is deliberately no effect syncing form state from `editing`.
+   * `editing` is a useMemo over the `flights` prop, so it took a new identity
+   * on every dashboard data refresh and re-ran the sync — throwing away
+   * whatever prices the admin had typed but not yet saved. openEdit() below
+   * seeds cabin / pairing / fare rows synchronously before the form is shown,
+   * which is the only path that ever selects a flight to edit.
+   */
 
   function openAdd() {
     setEditingId(null);
@@ -1285,7 +1279,10 @@ export function AdminDashboard({
               {fareRows.map((row, index) => (
                 <div
                   key={`${row.id ?? "new"}-${index}-${row.priceCents}-${row.roundTripPriceCents}`}
-                  className="grid gap-3 border-t border-line pt-4 sm:grid-cols-4"
+                  /* 5 columns so name(2) + seats + one-way + round-trip sit on
+                     one line — at 4 the round-trip price wrapped onto a row of
+                     its own with three empty cells beside it. */
+                  className="grid gap-3 border-t border-line pt-4 sm:grid-cols-5"
                 >
                   <input type="hidden" name="fareSortOrder" value={row.sortOrder} />
                   <input type="hidden" name="fareReleaseId" value={row.id ?? ""} />
@@ -1912,8 +1909,12 @@ export function AdminDashboard({
                             b.seatsBooked > 1
                               ? `${b.seatsBooked} seats`
                               : null,
-                            kids > 0 ? `${kids} child` : null,
-                            infants > 0 ? `${infants} infant` : null,
+                            kids > 0
+                              ? `${kids} ${kids === 1 ? "child" : "children"}`
+                              : null,
+                            infants > 0
+                              ? `${infants} infant${infants === 1 ? "" : "s"}`
+                              : null,
                           ].filter(Boolean);
                           return parts.length ? (
                             <p className="text-xs text-muted">

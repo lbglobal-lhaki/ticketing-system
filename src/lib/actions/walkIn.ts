@@ -85,6 +85,8 @@ async function resolveLegFlightId(
   prefix: "outbound" | "return",
   selectedId: string,
   seats: number,
+  /** Ids of rows created here, so a failed booking can roll them back. */
+  createdIds: string[],
 ): Promise<string> {
   if (selectedId !== CUSTOM_FLIGHT_VALUE) return selectedId;
 
@@ -153,6 +155,7 @@ async function resolveLegFlightId(
       },
     },
   });
+  createdIds.push(flight.id);
   return flight.id;
 }
 
@@ -272,12 +275,20 @@ export async function createWalkInBookingAction(formData: FormData) {
     customTotalCents = Math.round(amount * 100);
   }
 
+  // A "Custom flight (not in system)" leg is inserted before the rest of the
+  // booking is validated, so anything that fails afterwards (unpriced fare,
+  // mismatched return route, bad hold expiry) would otherwise leave a hidden
+  // stray flight behind on every retry. Track them and roll back.
+  const createdCustomFlightIds: string[] = [];
+  let bookingCreated = false;
+
   try {
     const flightId = await resolveLegFlightId(
       formData,
       "outbound",
       data.flightId,
       data.seatsBooked,
+      createdCustomFlightIds,
     );
     const returnFlightId = data.returnFlightId
       ? await resolveLegFlightId(
@@ -285,6 +296,7 @@ export async function createWalkInBookingAction(formData: FormData) {
           "return",
           data.returnFlightId,
           data.seatsBooked,
+          createdCustomFlightIds,
         )
       : "";
 
@@ -637,6 +649,7 @@ export async function createWalkInBookingAction(formData: FormData) {
 
       return { booking, invoice };
     });
+    bookingCreated = true;
 
     // Do not auto-email travel docs / invoices on walk-in create — admins
     // often need to edit the documents first, then send from the Invoices tab.
@@ -645,6 +658,15 @@ export async function createWalkInBookingAction(formData: FormData) {
       `/admin?tab=bookings&saved=walk-in&ref=${encodeURIComponent(created.booking.bookingRef)}`,
     );
   } catch (error) {
+    // Checked before the redirect rethrow: validation failures inside the try
+    // bail out via redirect() too, and those must still roll back.
+    if (!bookingCreated && createdCustomFlightIds.length > 0) {
+      await prisma.flight
+        .deleteMany({ where: { id: { in: createdCustomFlightIds } } })
+        .catch(() => {
+          /* best effort — never mask the original failure */
+        });
+    }
     // Next.js implements redirect() by throwing — must rethrow so the
     // navigation isn't swallowed and shown as "NEXT_REDIRECT" in the UI.
     if (isRedirectError(error)) throw error;
@@ -923,6 +945,14 @@ async function syncAllBookingPassengers(
       // empty companion email/phone means "not collected" — keep whatever is
       // already stored instead of blanking it on a plain edit-and-save.
       const isPrimary = i === 0;
+      // The edit form never submits an adult fare (only children/infants have
+      // a price field), so `pax.priceCents` is always 0 for adults. Writing
+      // that through would wipe the fare a walk-in stored at booking time on
+      // every unrelated edit — keep what's already on the row instead.
+      const keepsAdultFare =
+        pax.passengerType === "adult" &&
+        row.passengerType === "adult" &&
+        pax.priceCents === 0;
       await tx.bookingPassenger.update({
         where: { id: row.id },
         data: {
@@ -933,7 +963,7 @@ async function syncAllBookingPassengers(
           passportNumber: pax.passportNumber || "",
           nationality: pax.nationality || "",
           passengerType: pax.passengerType,
-          priceCents: pax.priceCents,
+          priceCents: keepsAdultFare ? row.priceCents : pax.priceCents,
           allocatesSeat: seat,
         },
       });

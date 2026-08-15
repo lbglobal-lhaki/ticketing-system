@@ -514,7 +514,15 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                   >
                     ⬇ Invoice
                   </a>
-                  {invoice.status !== "paid" ? (
+                  {/*
+                   * Not simply "!== paid": an invoice only reaches "cancelled"
+                   * when its booking's hold expired (expireHolds.ts), and
+                   * markInvoicePaidAction refuses those — so offering the
+                   * button there is an action that can only ever error.
+                   * "failed" stays actionable: a declined card followed by cash
+                   * at the counter is a real recovery path.
+                   */}
+                  {invoice.status === "unpaid" || invoice.status === "failed" ? (
                     <form action={markInvoicePaidAction}>
                       <input type="hidden" name="id" value={invoice.id} />
                       <SubmitButton

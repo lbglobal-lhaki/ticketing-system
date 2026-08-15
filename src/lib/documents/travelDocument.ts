@@ -348,6 +348,47 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
           },
         ];
 
+  /*
+   * Per-traveller fare, derived the same way the airfare invoice derives its
+   * line items, so the two documents can never disagree.
+   *
+   * The stored per-passenger price cannot be trusted on its own: online
+   * bookings (confirmBooking.ts) and booking edits both write 0 for every
+   * adult and price only children/infants, so reading it directly printed the
+   * whole booking's airfare on every adult's sheet. Children and infants keep
+   * their own stored amount; the adults split whatever airfare is left, with
+   * the last adult absorbing any rounding drift.
+   */
+  const airfareTotalCents = lines.airfareCents || totals.linesCents;
+  const adultTravellers = travellers.filter(
+    (pax) => (pax.passengerType || "adult") === "adult",
+  );
+  const pricedCompanionCents = travellers
+    .filter((pax) => pax.passengerType === "child" || pax.passengerType === "infant")
+    .reduce((sum, pax) => sum + Math.max(0, pax.priceCents ?? 0), 0);
+  const adultTotalCents = Math.max(0, airfareTotalCents - pricedCompanionCents);
+  const adultUnitCents =
+    adultTravellers.length > 0
+      ? Math.round(adultTotalCents / adultTravellers.length)
+      : 0;
+
+  const fareByTraveller = new Map<BookingDocumentPassenger, number>();
+  let adultAssigned = 0;
+  let adultSeen = 0;
+  for (const pax of travellers) {
+    if ((pax.passengerType || "adult") !== "adult") {
+      fareByTraveller.set(pax, Math.max(0, pax.priceCents ?? 0));
+      continue;
+    }
+    const isLastAdult = adultSeen === adultTravellers.length - 1;
+    const cents = isLastAdult
+      ? Math.max(0, adultTotalCents - adultAssigned)
+      : adultUnitCents;
+    adultAssigned += cents;
+    adultSeen += 1;
+    fareByTraveller.set(pax, cents);
+  }
+
   const assets: TicketAssets = {
     banner:
       assetDataUri("charter-banner-wide.png") ||
@@ -433,8 +474,7 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
     const type = pax.passengerType || "adult";
     const noSeat = type === "infant" || pax.allocatesSeat === false;
     const ticketCode = displayTicketCode(pax.ticketNumber);
-    const paxFare = pax.priceCents && pax.priceCents > 0 ? pax.priceCents : 0;
-    const fareCents = paxFare || lines.airfareCents || totals.linesCents;
+    const fareCents = fareByTraveller.get(pax) ?? 0;
 
     return `
   <section class="sheet ticket">
