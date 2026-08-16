@@ -22,6 +22,13 @@ import {
 import { SubmitButton } from "@/components/SubmitButton";
 import { Spinner } from "@/components/Spinner";
 import { ListFilterBar, NoMatches } from "@/components/admin/ListFilterBar";
+import { Button } from "@/components/ui/Button";
+import {
+  Menu,
+  MenuDivider,
+  MenuItem,
+  MenuLabel,
+} from "@/components/ui/Menu";
 import {
   GstModeFields,
   resolveGstMode,
@@ -333,16 +340,6 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
 
   return (
     <section className="space-y-6">
-      <div>
-        <h2 className="font-[family-name:var(--font-syne)] text-2xl font-semibold tracking-tight">
-          Invoices
-        </h2>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Open a document popup to preview and edit the travel pack or
-          airfare invoice — generate and email each one independently.
-        </p>
-      </div>
-
       <BulkSelectBar
         count={bulk.selected.size}
         itemLabel="invoice"
@@ -467,53 +464,58 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                 </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  {/*
-                   * View, not edit: "Edit / preview" already opens the modal,
-                   * so these open the rendered PDF full screen in a new tab
-                   * instead of duplicating that button.
-                   */}
-                  <a
-                    href={docBaseUrl(invoice, "travel")}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="border border-line px-3 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground"
-                    title="View travel document PDF full screen"
-                  >
-                    Travel doc
-                  </a>
-                  <a
-                    href={docBaseUrl(invoice, "airfare")}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="border border-line px-3 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground"
-                    title="View airfare invoice PDF full screen"
-                  >
-                    Airfare invoice
-                  </a>
-                  <button
-                    type="button"
+                {/*
+                  Seven equally-loud buttons per row was the single biggest
+                  source of noise on this page. "Edit / preview" — the one
+                  reached for most — stays visible; the six view/download/
+                  status/delete actions move into an overflow menu. Every
+                  action, form, handler and confirm dialog is unchanged; only
+                  where they sit on screen has.
+                */}
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <Button
+                    variant="primary"
+                    size="sm"
                     onClick={() => openEditor(invoice.id, "travel")}
-                    className="bg-accent-deep px-3 py-2 text-sm font-semibold text-white transition hover:bg-accent"
                   >
                     Edit / preview
-                  </button>
-                  <a
-                    href={downloadUrl(invoice, "travel")}
-                    download
-                    className="border border-line px-3 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground"
-                    title="Download travel document PDF"
-                  >
-                    ⬇ Travel doc
-                  </a>
-                  <a
-                    href={downloadUrl(invoice, "airfare")}
-                    download
-                    className="border border-line px-3 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground"
-                    title="Download airfare invoice PDF"
-                  >
-                    ⬇ Invoice
-                  </a>
+                  </Button>
+
+                  <Menu label={`Actions for ${invoice.invoiceNumber}`}>
+                    <MenuLabel>View</MenuLabel>
+                    <MenuItem>
+                      <a
+                        href={docBaseUrl(invoice, "travel")}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Travel document
+                      </a>
+                    </MenuItem>
+                    <MenuItem>
+                      <a
+                        href={docBaseUrl(invoice, "airfare")}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Airfare invoice
+                      </a>
+                    </MenuItem>
+
+                    <MenuDivider />
+                    <MenuLabel>Download</MenuLabel>
+                    <MenuItem>
+                      <a href={downloadUrl(invoice, "travel")} download>
+                        Travel document PDF
+                      </a>
+                    </MenuItem>
+                    <MenuItem>
+                      <a href={downloadUrl(invoice, "airfare")} download>
+                        Airfare invoice PDF
+                      </a>
+                    </MenuItem>
+
+                    <MenuDivider />
                   {/*
                    * Not simply "!== paid": an invoice only reaches "cancelled"
                    * when its booking's hold expired (expireHolds.ts), and
@@ -523,44 +525,46 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                    * at the counter is a real recovery path.
                    */}
                   {invoice.status === "unpaid" || invoice.status === "failed" ? (
-                    <form action={markInvoicePaidAction}>
-                      <input type="hidden" name="id" value={invoice.id} />
-                      <SubmitButton
-                        pendingLabel="Confirming…"
-                        className="border border-line px-3 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Mark paid
-                      </SubmitButton>
-                    </form>
+                    <MenuItem>
+                      <form action={markInvoicePaidAction}>
+                        <input type="hidden" name="id" value={invoice.id} />
+                        <SubmitButton pendingLabel="Confirming…">
+                          Mark paid
+                        </SubmitButton>
+                      </form>
+                    </MenuItem>
                   ) : invoice.paymentMethod === "bank_transfer" ? (
-                    <form action={markInvoiceUnpaidAction}>
+                    <MenuItem>
+                      <form action={markInvoiceUnpaidAction}>
+                        <input type="hidden" name="id" value={invoice.id} />
+                        <SubmitButton pendingLabel="Updating…">
+                          Mark unpaid
+                        </SubmitButton>
+                      </form>
+                    </MenuItem>
+                  ) : null}
+
+                  <MenuDivider />
+                  <MenuItem tone="danger">
+                    <form action={deleteInvoiceAction}>
                       <input type="hidden" name="id" value={invoice.id} />
                       <SubmitButton
-                        pendingLabel="Updating…"
-                        className="border border-line px-3 py-2 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                        pendingLabel="Deleting…"
+                        onClick={(e) => {
+                          if (
+                            !confirm(
+                              `Delete invoice ${invoice.invoiceNumber} permanently? It will be recorded in the Deleted tab.`,
+                            )
+                          ) {
+                            e.preventDefault();
+                          }
+                        }}
                       >
-                        Mark unpaid
+                        Delete
                       </SubmitButton>
                     </form>
-                  ) : null}
-                  <form action={deleteInvoiceAction}>
-                    <input type="hidden" name="id" value={invoice.id} />
-                    <SubmitButton
-                      pendingLabel="Deleting…"
-                      onClick={(e) => {
-                        if (
-                          !confirm(
-                            `Delete invoice ${invoice.invoiceNumber} permanently? It will be recorded in the Deleted tab.`,
-                          )
-                        ) {
-                          e.preventDefault();
-                        }
-                      }}
-                      className="px-3 py-2 text-sm font-medium text-muted/70 transition hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Delete
-                    </SubmitButton>
-                  </form>
+                  </MenuItem>
+                  </Menu>
                 </div>
               </div>
             </li>

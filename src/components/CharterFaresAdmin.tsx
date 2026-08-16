@@ -54,16 +54,10 @@ export function CharterFaresAdmin({ fares }: { fares: AdminCharterFare[] }) {
 
   return (
     <section className="space-y-8">
-      <div>
-        <h2 className="font-[family-name:var(--font-syne)] text-2xl font-semibold tracking-tight">
-          Charter fare products
-        </h2>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Perth ⇄ Paro rules shown to customers. One-way and round-trip prices
-          are set separately — round trip is a full package total, not double
-          one-way.
-        </p>
-      </div>
+      <p className="max-w-2xl text-sm text-muted">
+        One-way and round-trip prices are set separately — round trip is a full
+        package total, not double one-way.
+      </p>
 
       <div>
         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">

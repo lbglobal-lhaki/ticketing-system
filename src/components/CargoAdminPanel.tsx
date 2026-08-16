@@ -266,10 +266,7 @@ export function CargoAdminPanel({
     <section className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="font-[family-name:var(--font-syne)] text-2xl font-semibold tracking-tight">
-            Cargo enquiries
-          </h2>
-          <p className="mt-1 text-sm text-muted">
+          <p className="max-w-2xl text-sm text-muted">
             Google Form submissions and manual entries. Each enquiry gets an
             auto-assigned parcel number. Use Emails for sender/receiver notices.
           </p>

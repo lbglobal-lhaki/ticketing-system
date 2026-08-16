@@ -2,27 +2,10 @@
 
 import type { SystemAnalytics } from "@/lib/analytics/systemAnalytics";
 import { formatAud } from "@/lib/pricing";
+import { StatCard as UiStatCard } from "@/components/ui/StatCard";
 
-function StatCard({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="border border-line bg-white px-4 py-4 shadow-sm">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-        {label}
-      </p>
-      <p className="mt-2 font-[family-name:var(--font-syne)] text-2xl font-semibold tracking-tight text-foreground">
-        {value}
-      </p>
-      {hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
-    </div>
-  );
+function StatCard(props: { label: string; value: string; hint?: string }) {
+  return <UiStatCard {...props} />;
 }
 
 function statusLabel(status: string) {
@@ -38,27 +21,8 @@ export function SystemAnalyticsSection({
 
   return (
     <section className="space-y-8">
-      <div>
-        <h2 className="font-[family-name:var(--font-syne)] text-2xl font-semibold tracking-tight">
-          Operations overview
-        </h2>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Snapshot of flights, tickets, sales, pending payments, and cargo in
-          the system.
-        </p>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Active flights"
-          value={String(flights.active)}
-          hint={`${flights.upcoming} upcoming · ${flights.inactive} hidden`}
-        />
-        <StatCard
-          label="Tickets sold"
-          value={String(bookings.ticketsSold)}
-          hint={`${bookings.confirmed} confirmed · ${bookings.pendingPayment} pending`}
-        />
+      {/* Hero row — the four numbers ops actually check on arrival. */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Confirmed sales"
           value={formatAud(sales.revenueCents)}
@@ -73,11 +37,21 @@ export function SystemAnalyticsSection({
           value={formatAud(sales.pendingCents)}
           hint={`${payments.bankPendingBookings} bank holds · ${payments.unpaidInvoices} unpaid invoices`}
         />
+        <StatCard
+          label="Tickets sold"
+          value={String(bookings.ticketsSold)}
+          hint={`${bookings.confirmed} confirmed · ${bookings.pendingPayment} pending`}
+        />
+        <StatCard
+          label="Active flights"
+          value={String(flights.active)}
+          hint={`${flights.upcoming} upcoming · ${flights.inactive} hidden`}
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="border border-line bg-white p-5 shadow-sm">
-          <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-accent">
+        <div className="rounded-card border border-line bg-surface p-5 shadow-ui-sm">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
             Flights & seats
           </h3>
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -100,8 +74,8 @@ export function SystemAnalyticsSection({
           </dl>
         </div>
 
-        <div className="border border-line bg-white p-5 shadow-sm">
-          <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-accent">
+        <div className="rounded-card border border-line bg-surface p-5 shadow-ui-sm">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
             Bookings
           </h3>
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -126,8 +100,8 @@ export function SystemAnalyticsSection({
           </dl>
         </div>
 
-        <div className="border border-line bg-white p-5 shadow-sm">
-          <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-accent">
+        <div className="rounded-card border border-line bg-surface p-5 shadow-ui-sm">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
             Invoices & payments
           </h3>
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -154,8 +128,8 @@ export function SystemAnalyticsSection({
           </dl>
         </div>
 
-        <div className="border border-line bg-white p-5 shadow-sm">
-          <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-accent">
+        <div className="rounded-card border border-line bg-surface p-5 shadow-ui-sm">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
             Cargo
           </h3>
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -182,8 +156,8 @@ export function SystemAnalyticsSection({
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="border border-line bg-white p-5 shadow-sm">
-          <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-accent">
+        <div className="rounded-card border border-line bg-surface p-5 shadow-ui-sm">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
             Recent bookings
           </h3>
           {analytics.recentBookings.length === 0 ? (
@@ -212,8 +186,8 @@ export function SystemAnalyticsSection({
           )}
         </div>
 
-        <div className="border border-line bg-white p-5 shadow-sm">
-          <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-accent">
+        <div className="rounded-card border border-line bg-surface p-5 shadow-ui-sm">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
             Upcoming flights
           </h3>
           {analytics.upcomingFlights.length === 0 ? (

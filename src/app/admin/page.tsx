@@ -285,54 +285,35 @@ export default async function AdminPage({
   const initialTab = parseTab(params.tab) ?? "analytics";
 
   return (
-    <main className="relative min-h-[calc(100svh-4rem)] overflow-hidden">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{
-          backgroundImage: `
-            radial-gradient(ellipse at 10% 0%, rgba(37, 99, 235, 0.14), transparent 42%),
-            radial-gradient(ellipse at 90% 20%, rgba(220, 38, 38, 0.08), transparent 36%),
-            linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 40%, #EEF2FF 100%)
-          `,
-        }}
-      />
-
-      <div className="relative mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 sm:py-12">
-        <div className="flex flex-col gap-6 border-b border-line pb-8 sm:flex-row sm:items-end sm:justify-between">
-          <div className="max-w-2xl">
-            <div className="flex items-center gap-3">
-              <img
-                src="/drukair_logo.png"
-                alt=""
-                width={40}
-                height={40}
-                className="size-10 object-contain"
-              />
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">
-                {process.env.NEXT_PUBLIC_BRAND_SHORT_NAME || "L&B Global"} ·
-                Operations
-              </p>
-            </div>
-            <h1 className="heading-gradient mt-3 font-[family-name:var(--font-syne)] text-4xl font-semibold tracking-tight sm:text-5xl">
-              Dashboard
-            </h1>
-            <p className="mt-3 text-sm leading-relaxed text-muted sm:text-base">
-              Publish flights, set ticket prices, confirm bank transfers, and
-              create walk-in bookings for counter customers.
+    <main className="admin-ui min-h-[calc(100svh-4rem)] bg-background">
+      <div className="border-b border-line bg-surface">
+        <div className="mx-auto flex w-full max-w-[100rem] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <img
+              src="/drukair_logo.png"
+              alt=""
+              width={28}
+              height={28}
+              className="size-7 shrink-0 object-contain"
+            />
+            <p className="truncate text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              {process.env.NEXT_PUBLIC_BRAND_SHORT_NAME || "L&B Global"}
+              <span className="text-muted/60"> · Operations</span>
             </p>
           </div>
           <form action={logout}>
             <SubmitButton
               pendingLabel="Signing out…"
-              className="border border-line bg-surface px-4 py-2.5 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-70"
+              className="inline-flex min-h-10 items-center rounded-control border border-line bg-surface px-3.5 text-sm font-medium text-muted transition-colors hover:border-accent/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
             >
               Sign out
             </SubmitButton>
           </form>
         </div>
+      </div>
 
-        <div className="pt-8">
+      <div>
+        <div>
           <Suspense
             fallback={
               <p className="text-sm text-muted">Loading dashboard…</p>

@@ -62,6 +62,9 @@ import {
   fareTemplateForCabin,
 } from "@/lib/fares/templates";
 import { formatAud } from "@/lib/pricing";
+import { AdminShell, type NavGroup } from "@/components/ui/AdminShell";
+import { Button } from "@/components/ui/Button";
+import { Alert } from "@/components/ui/Feedback";
 
 const CUSTOM_FLIGHT_VALUE = "__custom__";
 
@@ -172,6 +175,57 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "cargo", label: "Cargo" },
   { id: "deleted", label: "Deleted" },
 ];
+
+/**
+ * Sidebar grouping. Same eight destinations in the same order as the tab strip
+ * they replace — only the presentation is grouped, so `?tab=` and every
+ * redirect target are unaffected.
+ */
+const NAV_GROUPS: { label: string; ids: Tab[] }[] = [
+  { label: "Overview", ids: ["analytics"] },
+  { label: "Inventory", ids: ["flights", "form", "fares"] },
+  { label: "Sales", ids: ["bookings", "invoices"] },
+  { label: "Operations", ids: ["cargo", "deleted"] },
+];
+
+/** Page heading + one-line explainer per section. */
+const PAGE_META: Record<Tab, { title: string; description: string }> = {
+  analytics: {
+    title: "Overview",
+    description: "How the charter is selling right now.",
+  },
+  flights: {
+    title: "Flights",
+    description:
+      "Every departure and the seats it still has. Prices are set per cabin and ticket type.",
+  },
+  form: {
+    title: "Flight",
+    description: "Schedule, round-trip pairing, cabins and ticket types.",
+  },
+  fares: {
+    title: "Charter fares",
+    description:
+      "The fare catalogue customers choose from — one set per cabin.",
+  },
+  bookings: {
+    title: "Bookings",
+    description:
+      "Confirm bank transfers, edit traveller details, and book at the counter.",
+  },
+  invoices: {
+    title: "Invoices",
+    description: "Generate, preview and email travel documents and tax invoices.",
+  },
+  cargo: {
+    title: "Cargo",
+    description: "Freight enquiries from the website.",
+  },
+  deleted: {
+    title: "Deleted",
+    description: "Anything removed from the dashboard is recorded here.",
+  },
+};
 
 const TAB_IDS = new Set<string>(TABS.map((t) => t.id));
 
@@ -542,6 +596,26 @@ export function AdminDashboard({
   );
 
   const activeCount = flights.filter((f) => f.active).length;
+  const unpaidInvoiceCount = invoices.filter((i) => i.status === "unpaid").length;
+
+  const navGroups = useMemo<NavGroup[]>(() => {
+    const labelFor = (id: Tab) => {
+      if (id === "form") return editing ? "Edit flight" : "Add flight";
+      return TABS.find((t) => t.id === id)?.label ?? id;
+    };
+    const countFor = (id: Tab) =>
+      id === "invoices" && unpaidInvoiceCount > 0 ? unpaidInvoiceCount : undefined;
+    return NAV_GROUPS.map((group) => ({
+      label: group.label,
+      items: group.ids.map((id) => ({
+        id,
+        label: labelFor(id),
+        count: countFor(id),
+      })),
+    }));
+  }, [editing, unpaidInvoiceCount]);
+
+  const pageMeta = PAGE_META[tab];
 
   const visibleFlights = useMemo(
     () =>
@@ -840,67 +914,29 @@ export function AdminDashboard({
           </div>
         </div>
       )}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <nav className="flex flex-wrap gap-1 border-b border-line">
-          {TABS.map((item) => {
-            const active = tab === item.id;
-            const label =
-              item.id === "form"
-                ? editing
-                  ? "Edit flight"
-                  : "Add flight"
-                : item.label;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  if (item.id === "form" && !editingId) openAdd();
-                  else selectTab(item.id);
-                }}
-                className={`relative px-4 py-3 text-sm font-medium transition ${
-                  active ? "text-foreground" : "text-muted hover:text-foreground"
-                }`}
-              >
-                {label}
-                {active && (
-                  <span className="absolute inset-x-2 bottom-0 h-0.5 bg-accent" />
-                )}
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="flex flex-wrap items-center gap-4 text-sm text-muted">
-          <p>
-            <span className="font-semibold text-foreground">{activeCount}</span>{" "}
-            active · {flights.length} total
-          </p>
-          <p>
-            <span className="font-semibold text-foreground">
-              {bookings.length}
-            </span>{" "}
-            recent bookings
-          </p>
-          <p>
-            <span className="font-semibold text-foreground">
-              {invoices.filter((i) => i.status === "unpaid").length}
-            </span>{" "}
-            unpaid invoices
-          </p>
-        </div>
-      </div>
-
-      {savedMessage && (
-        <p className="border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent-deep">
-          {savedMessage}
-        </p>
-      )}
-      {errorMessage && (
-        <p className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {errorMessage}
-        </p>
-      )}
+      <AdminShell
+        groups={navGroups}
+        activeId={tab}
+        onSelect={(id) => {
+          // Identical to the old tab buttons: "Add / Edit" with nothing being
+          // edited resets the flight form first.
+          if (id === "form" && !editingId) openAdd();
+          else selectTab(id as Tab);
+        }}
+        title={
+          tab === "form" ? (editing ? "Edit flight" : "Add a flight") : pageMeta.title
+        }
+        description={pageMeta.description}
+        actions={
+          tab === "flights" ? (
+            <Button variant="primary" onClick={openAdd}>
+              Add flight
+            </Button>
+          ) : undefined
+        }
+      >
+      {savedMessage && <Alert tone="success">{savedMessage}</Alert>}
+      {errorMessage && <Alert tone="danger">{errorMessage}</Alert>}
 
       {tab === "analytics" && (
         <SystemAnalyticsSection analytics={analytics} />
@@ -908,25 +944,6 @@ export function AdminDashboard({
 
       {tab === "flights" && (
         <section className="space-y-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h2 className="font-[family-name:var(--font-syne)] text-2xl font-semibold tracking-tight">
-                Flight inventory
-              </h2>
-              <p className="mt-1 max-w-xl text-sm text-muted">
-                Each flight sells in order: Early Bird → Standard → Final
-                Release. One-way and round-trip prices are set separately —
-                round trip is not double one-way.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={openAdd}
-              className="bg-accent-deep px-5 py-3 text-sm font-semibold tracking-wide text-white transition hover:bg-accent"
-            >
-              Add flight
-            </button>
-          </div>
 
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
@@ -958,21 +975,30 @@ export function AdminDashboard({
             </div>
           </div>
 
-          <div className="border border-line bg-surface/80 p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">
-              Bulk pricing ·{" "}
-              {fareTripMode === "round_trip" ? "Round trip" : "One way"}
-            </p>
-            <h3 className="mt-2 font-[family-name:var(--font-syne)] text-xl font-semibold">
-              Apply a{" "}
-              {fareTripMode === "round_trip" ? "round-trip" : "one-way"} price
-              to a fare tier across all flights
-            </h3>
-            <p className="mt-1 max-w-2xl text-sm text-muted">
-              Set &quot;Early Bird&quot; business once and it updates every
-              business flight that has that tier — instead of opening each
-              flight one by one.
-            </p>
+          {/*
+            Bulk pricing is an occasional power tool, not the point of this
+            page — collapsed by default so the flight list is what you land on.
+            The form inside is unchanged.
+          */}
+          <details className="group rounded-card border border-line bg-surface shadow-ui-sm">
+            <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 [&::-webkit-details-marker]:hidden">
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-foreground">
+                  Bulk pricing
+                </span>
+                <span className="mt-0.5 block text-sm text-muted">
+                  Apply one {fareTripMode === "round_trip" ? "round-trip" : "one-way"}{" "}
+                  price to a fare tier across every matching flight.
+                </span>
+              </span>
+              <span
+                aria-hidden
+                className="shrink-0 text-muted transition-transform group-open:rotate-180"
+              >
+                ▾
+              </span>
+            </summary>
+            <div className="border-t border-line px-5 pb-5 pt-4">
             <form
               key={`bulk-${fareTripMode}-${searchParams.get("saved")}-${searchParams.get("count")}`}
               action={bulkUpdateFareTierPriceAction}
@@ -1033,13 +1059,14 @@ export function AdminDashboard({
                 </p>
                 <SubmitButton
                   pendingLabel="Applying…"
-                  className="bg-accent-deep px-5 py-3 text-sm font-semibold tracking-wide text-white transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex min-h-10 items-center rounded-control border border-line bg-surface px-4 text-sm font-medium text-foreground transition-colors hover:border-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Apply to matching flights
                 </SubmitButton>
               </div>
             </form>
-          </div>
+            </div>
+          </details>
 
           <BulkSelectBar
             count={flightBulk.selected.size}
@@ -1633,16 +1660,6 @@ export function AdminDashboard({
 
       {tab === "bookings" && (
         <section className="space-y-8">
-          <div>
-            <h2 className="font-[family-name:var(--font-syne)] text-2xl font-semibold tracking-tight">
-              Bookings log
-            </h2>
-            <p className="mt-1 max-w-2xl text-sm text-muted">
-              All bookings show credit card vs bank transfer. For bank transfer,
-              confirm paid to send the confirmation email with e-ticket. Unpaid
-              bank holds expire at the time you set and seats return to the pool.
-            </p>
-          </div>
 
           <div className="border border-line bg-surface/80 p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">
@@ -2265,6 +2282,8 @@ export function AdminDashboard({
       {tab === "deleted" && (
         <DeletedRecordsPanel records={deletedRecords} />
       )}
+
+      </AdminShell>
 
       {editingBooking && (
         <BookingEditModal

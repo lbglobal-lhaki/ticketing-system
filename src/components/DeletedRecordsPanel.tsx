@@ -140,10 +140,7 @@ export function DeletedRecordsPanel({
   return (
     <section className="space-y-6">
       <div>
-        <h2 className="font-[family-name:var(--font-syne)] text-2xl font-semibold tracking-tight">
-          Deleted
-        </h2>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
+        <p className="max-w-2xl text-sm text-muted">
           Every flight, booking, invoice, and cargo enquiry deleted from the
           dashboard is logged here with a full snapshot of the record. Use
           &ldquo;Delete forever&rdquo; to purge an entry from this log too —
