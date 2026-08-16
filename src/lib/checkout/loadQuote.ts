@@ -15,7 +15,12 @@ export type CheckoutQuoteState = {
 async function loadQuoteRecord(quoteId: string) {
   return prisma.priceQuote.findUnique({
     where: { id: quoteId },
-    include: { flight: true, returnFlight: true },
+    // Cabin comes off the held fare release — a flight sells both cabins.
+    include: {
+      flight: true,
+      returnFlight: true,
+      fareRelease: { select: { cabinClass: true } },
+    },
   });
 }
 

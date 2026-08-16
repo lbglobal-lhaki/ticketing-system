@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { cabinsOnFlight, seatsByCabin } from "@/lib/fares/templates";
 
 export type SystemAnalytics = {
   generatedAt: string;
@@ -58,7 +59,12 @@ export type SystemAnalytics = {
     departureAt: string;
     remainingSeats: number;
     totalSeats: number;
-    cabinClass: string;
+    /** Per-cabin seat pools — one departure now sells business and economy. */
+    cabins: Array<{
+      cabinClass: string;
+      remainingSeats: number;
+      totalSeats: number;
+    }>;
   }>;
 };
 
@@ -169,7 +175,9 @@ export async function getSystemAnalytics(): Promise<SystemAnalytics> {
         departureAt: true,
         remainingSeats: true,
         totalSeats: true,
-        cabinClass: true,
+        fareReleases: {
+          select: { cabinClass: true, totalSeats: true, remainingSeats: true },
+        },
       },
     }),
   ]);
@@ -289,7 +297,10 @@ export async function getSystemAnalytics(): Promise<SystemAnalytics> {
       departureAt: f.departureAt.toISOString(),
       remainingSeats: f.remainingSeats,
       totalSeats: f.totalSeats,
-      cabinClass: f.cabinClass,
+      cabins: cabinsOnFlight(f.fareReleases).map((cabin) => ({
+        cabinClass: cabin,
+        ...seatsByCabin(f.fareReleases)[cabin],
+      })),
     })),
   };
 }

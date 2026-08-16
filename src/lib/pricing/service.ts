@@ -17,6 +17,7 @@ export type FlightPriceResult = PriceBreakdown & {
 
 type FareReleasePriceFields = {
   id: string;
+  cabinClass: string;
   name: string;
   sortOrder: number;
   totalSeats: number;
@@ -40,7 +41,11 @@ export async function priceFlight(
     totalSeats: number;
     fareReleases?: FareReleasePriceFields[];
   },
-  options?: { tripType?: "one_way" | "round_trip" },
+  options?: {
+    tripType?: "one_way" | "round_trip";
+    /** Cabin to price. A flight sells both, so this decides which pool. */
+    cabinClass?: string;
+  },
 ): Promise<FlightPriceResult> {
   const releases =
     flight.fareReleases ??
@@ -49,8 +54,12 @@ export async function priceFlight(
       orderBy: { sortOrder: "asc" },
     }));
 
-  const current = getCurrentFareRelease(releases);
   const isRoundTrip = options?.tripType === "round_trip";
+  const current = getCurrentFareRelease(
+    releases,
+    options?.cabinClass ?? "economy",
+    { roundTrip: isRoundTrip },
+  );
   const basePriceCents = current
     ? isRoundTrip
       ? current.roundTripPriceCents

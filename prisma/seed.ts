@@ -82,13 +82,13 @@ async function main() {
   let created = 0;
 
   for (const schedule of schedules) {
-    for (const cabinClass of cabins) {
-      const template = fareTemplateForCabin(cabinClass);
+    // One flight per departure carrying every cabin's buckets — cabins are
+    // fare releases on the same aircraft, not separate flights.
+    const releases = cabins.flatMap((cabinClass) => {
       const releasePrices =
-        cabinClass === "business"
-          ? businessReleasePrices
-          : economyReleasePrices;
-      const releases = template.map((t, i) => ({
+        cabinClass === "business" ? businessReleasePrices : economyReleasePrices;
+      return fareTemplateForCabin(cabinClass).map((t, i) => ({
+        cabinClass,
         name: t.name,
         sortOrder: t.sortOrder,
         totalSeats: t.totalSeats,
@@ -96,30 +96,29 @@ async function main() {
         priceCents: releasePrices[i] ?? releasePrices[0],
         active: true,
       }));
-      const totalSeats = releases.reduce((s, r) => s + r.totalSeats, 0);
+    });
+    const totalSeats = releases.reduce((s, r) => s + r.totalSeats, 0);
 
-      await prisma.flight.create({
-        data: {
-          airline: schedule.airline,
-          flightNumber: schedule.flightNumber,
-          origin: schedule.origin,
-          destination: schedule.destination,
-          departureAt: schedule.departureAt,
-          cabinClass,
-          arrivalAt: addHours(schedule.departureAt, schedule.durationHours),
-          currency: "AUD",
-          totalSeats,
-          remainingSeats: totalSeats,
-          active: true,
-          fareReleases: { create: releases },
-        },
-      });
-      created += 1;
-    }
+    await prisma.flight.create({
+      data: {
+        airline: schedule.airline,
+        flightNumber: schedule.flightNumber,
+        origin: schedule.origin,
+        destination: schedule.destination,
+        departureAt: schedule.departureAt,
+        arrivalAt: addHours(schedule.departureAt, schedule.durationHours),
+        currency: "AUD",
+        totalSeats,
+        remainingSeats: totalSeats,
+        active: true,
+        fareReleases: { create: releases },
+      },
+    });
+    created += 1;
   }
 
   console.log(
-    `Seeded ${created} Drukair PER⇄PBH flights (KB500–KB${500 + SCHEDULE_COUNT - 1} · economy + business)`,
+    `Seeded ${created} Drukair PER⇄PBH flights (KB500–KB${500 + SCHEDULE_COUNT - 1}), each selling economy + business`,
   );
 }
 

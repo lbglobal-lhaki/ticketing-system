@@ -9,6 +9,11 @@ import {
   type DateStripDay,
 } from "@/lib/flights/results";
 import { getCharterCabinFromPrices } from "@/lib/fares/charter";
+import {
+  cabinsOnFlight,
+  seatsByCabin,
+  type CabinClassValue,
+} from "@/lib/fares/templates";
 import { airportLabel, buildAirportOptions, formatFlightTime } from "@/lib/format";
 import type { AirportOption } from "@/lib/format";
 import { formatAud } from "@/lib/pricing";
@@ -185,13 +190,12 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
     businessRoundTrip: businessRtFromCents,
   } = await getCharterCabinFromPrices();
 
-  function catalogPrice(flight: {
-    cabinClass: string;
-    remainingSeats: number;
-    totalSeats: number;
-  }) {
+  function catalogPrice(
+    cabinClass: CabinClassValue,
+    seats: { remainingSeats: number; totalSeats: number },
+  ) {
     const catalog =
-      flight.cabinClass === "business"
+      cabinClass === "business"
         ? isRoundTrip
           ? businessRtFromCents
           : businessFromCents
@@ -206,12 +210,39 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
       demandMultiplier: 1,
       scarcityMultiplier: 1,
       demandScore: 0,
-      remainingSeats: flight.remainingSeats,
-      totalSeats: flight.totalSeats,
+      remainingSeats: seats.remainingSeats,
+      totalSeats: seats.totalSeats,
       fareReleaseId: null as string | null,
       fareReleaseName: null as string | null,
       farePriced: cents > 0,
     };
+  }
+
+  /*
+   * One row per cabin the flight actually sells, so a single departure yields
+   * both an economy and a business entry for the result card. A cabin with no
+   * releases (an all-economy charter) simply produces nothing.
+   */
+  function cabinRowsFor<
+    F extends {
+      departureAt: Date;
+      fareReleases: {
+        cabinClass: string;
+        totalSeats: number;
+        remainingSeats: number;
+      }[];
+    },
+  >(flight: F) {
+    const seats = seatsByCabin(flight.fareReleases);
+    return cabinsOnFlight(flight.fareReleases).map((cabinClass) => ({
+      flight,
+      cabin: {
+        cabinClass,
+        totalSeats: seats[cabinClass].totalSeats,
+        remainingSeats: seats[cabinClass].remainingSeats,
+      },
+      price: catalogPrice(cabinClass, seats[cabinClass]),
+    }));
   }
 
   /** Full catalogue — every active flight, route, cabin, and date. */
@@ -226,6 +257,11 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
       },
       orderBy: { departureAt: "asc" },
       include: {
+        // Cabin seat pools live on the releases now — the flight's own totals
+        // are the whole airframe and would overstate either cabin.
+        fareReleases: {
+          select: { cabinClass: true, totalSeats: true, remainingSeats: true },
+        },
         returnLegFlight: {
           select: {
             id: true,
@@ -238,10 +274,7 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
       },
     });
 
-    const priced = flights.map((flight) => ({
-      flight,
-      price: catalogPrice(flight),
-    }));
+    const priced = flights.flatMap(cabinRowsFor);
 
     const centerDate =
       priced[0] != null ? dayKey(priced[0].flight.departureAt) : date;
@@ -259,10 +292,12 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
     // (economy + business rows in the DB) merges into a single card.
     const partyQs = partyQuery(adults, children, infants);
     const grouped = groupFlightResults(
-      priced.map(({ flight, price }) => ({
+      priced.map(({ flight, cabin, price }) => ({
         flight,
+        cabin,
         price,
-        href: `/flights/${flight.id}?${partyQs}`,
+        // Carry the cabin so the fare page opens on the one that was clicked.
+        href: `/flights/${flight.id}?${partyQs}&cabinClass=${cabin.cabinClass}`,
         ctaLabel: "Select",
       })),
     );
@@ -318,6 +353,11 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
   if (isRoundTrip && outboundId) {
     const outbound = await prisma.flight.findFirst({
       where: { id: outboundId, active: true },
+      include: {
+        fareReleases: {
+          select: { cabinClass: true, totalSeats: true, remainingSeats: true },
+        },
+      },
     });
     if (!outbound) {
       return (
@@ -330,7 +370,8 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
       );
     }
 
-    const outboundPrice = catalogPrice(outbound);
+    const outboundSeats = seatsByCabin(outbound.fareReleases)[cabinClass];
+    const outboundPrice = catalogPrice(cabinClass, outboundSeats);
     const activeReturnDate = returnDate ?? date;
     const { windowStart, windowEnd } = searchWindow(activeReturnDate);
     const returns = await prisma.flight.findMany({
@@ -348,6 +389,11 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
       },
       orderBy: { departureAt: "asc" },
       include: {
+        // Cabin seat pools live on the releases now — the flight's own totals
+        // are the whole airframe and would overstate either cabin.
+        fareReleases: {
+          select: { cabinClass: true, totalSeats: true, remainingSeats: true },
+        },
         returnLegFlight: {
           select: {
             id: true,
@@ -360,10 +406,7 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
       },
     });
 
-    const priced = returns.map((flight) => ({
-      flight,
-      price: catalogPrice(flight),
-    }));
+    const priced = returns.flatMap(cabinRowsFor);
 
     const dayFares = await buildDayFares(
       priced.map(({ flight, price }) => ({
@@ -379,7 +422,7 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
     const returnRows = onSelectedDay.length > 0 ? onSelectedDay : priced;
 
     const grouped = groupFlightResults(
-      returnRows.map(({ flight, price }) => {
+      returnRows.map(({ flight, cabin, price }) => {
         const params = new URLSearchParams({
           outboundId: outbound.id,
           returnId: flight.id,
@@ -387,10 +430,11 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
           adults: String(adults),
           children: String(children),
           infants: String(infants),
-          cabinClass,
+          cabinClass: cabin.cabinClass,
         });
         return {
           flight,
+          cabin,
           price,
           href: `/flights/trip?${params.toString()}`,
           ctaLabel: "Select return",
@@ -488,6 +532,9 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
     },
     orderBy: { departureAt: "asc" },
     include: {
+      fareReleases: {
+        select: { cabinClass: true, totalSeats: true, remainingSeats: true },
+      },
       returnLegFlight: {
         select: {
           id: true,
@@ -500,10 +547,7 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
     },
   });
 
-  const priced = flights.map((flight) => ({
-    flight,
-    price: catalogPrice(flight),
-  }));
+  const priced = flights.flatMap(cabinRowsFor);
 
   const dayFares = await buildDayFares(
     priced.map(({ flight, price }) => ({
@@ -524,10 +568,11 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
   // to send customers through here, even when they searched "Round trip".
   const partyQs = partyQuery(adults, children, infants);
   const grouped = groupFlightResults(
-    displayRows.map(({ flight, price }) => ({
+    displayRows.map(({ flight, cabin, price }) => ({
       flight,
+      cabin,
       price,
-      href: `/flights/${flight.id}?${partyQs}`,
+      href: `/flights/${flight.id}?${partyQs}&cabinClass=${cabin.cabinClass}`,
       ctaLabel: "Select",
     })),
   ).map((row) =>

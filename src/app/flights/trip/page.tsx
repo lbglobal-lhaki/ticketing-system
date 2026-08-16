@@ -5,6 +5,11 @@ import { SelectedFlightSummary } from "@/components/fares/SelectedFlightSummary"
 import { getBrand } from "@/lib/branding";
 import { prisma } from "@/lib/db";
 import { buildCharterFareProducts } from "@/lib/fares/charter";
+import {
+  cabinsOnFlight,
+  parseCabin,
+  seatsByCabin,
+} from "@/lib/fares/templates";
 
 function parseCount(raw: string | undefined, fallback: number, min: number, max: number) {
   const n = Number(raw);
@@ -22,6 +27,7 @@ export default async function TripReviewPage({
     children?: string;
     infants?: string;
     passengers?: string;
+    cabinClass?: string;
   }>;
 }) {
   const raw = await searchParams;
@@ -46,11 +52,25 @@ export default async function TripReviewPage({
   ]);
   if (!outbound || !returnFlight) notFound();
 
+  /*
+   * Both legs must sell the cabin the customer picked on the results card;
+   * seats are counted per cabin because the flight total covers the whole
+   * aircraft and would call a full business cabin "available".
+   */
+  const shared = cabinsOnFlight(outbound.fareReleases).filter((c) =>
+    cabinsOnFlight(returnFlight.fareReleases).includes(c),
+  );
+  const requested = parseCabin(raw.cabinClass ?? shared[0] ?? "economy");
+  const cabinClass = shared.includes(requested)
+    ? requested
+    : (shared[0] ?? "economy");
+
   const soldOut =
-    outbound.remainingSeats < 1 || returnFlight.remainingSeats < 1;
+    seatsByCabin(outbound.fareReleases)[cabinClass].remainingSeats < 1 ||
+    seatsByCabin(returnFlight.fareReleases)[cabinClass].remainingSeats < 1;
 
   const products = await buildCharterFareProducts({
-    cabinClass: outbound.cabinClass,
+    cabinClass,
     available: !soldOut,
   });
 

@@ -122,13 +122,13 @@ async function main() {
         destination: "PBH",
         departureAt: new Date(Date.now() + 10 * 864e5),
         arrivalAt: new Date(Date.now() + 10 * 864e5 + 8 * 3600e3),
-        cabinClass: "economy",
         currency: "AUD",
         totalSeats: seats,
         remainingSeats: seats,
         active: false,
         fareReleases: {
           create: {
+            cabinClass: "economy",
             name: "Smoke",
             sortOrder: 1,
             totalSeats: seats,

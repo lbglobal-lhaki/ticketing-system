@@ -161,12 +161,12 @@ async function main() {
         destination: "PBH",
         departureAt: dep,
         arrivalAt: new Date(dep.getTime() + 8 * 60 * 60 * 1000),
-        cabinClass: "economy",
         totalSeats: 20,
         remainingSeats: 20,
         active: false,
         fareReleases: {
           create: {
+            cabinClass: "economy",
             name: "Smoke Economy",
             priceCents: 100_000,
             roundTripPriceCents: 199_900,
@@ -188,12 +188,12 @@ async function main() {
         destination: "PER",
         departureAt: ret,
         arrivalAt: new Date(ret.getTime() + 8 * 60 * 60 * 1000),
-        cabinClass: "economy",
         totalSeats: 20,
         remainingSeats: 20,
         active: false,
         fareReleases: {
           create: {
+            cabinClass: "economy",
             name: "Smoke Economy Return",
             priceCents: 99_900,
             roundTripPriceCents: 199_900,

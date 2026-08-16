@@ -55,6 +55,7 @@ export const adminLoginSchema = z.object({
 });
 
 export const fareReleaseInputSchema = z.object({
+  cabinClass: z.enum(["economy", "business"]),
   name: z.string().trim().min(1).max(80),
   totalSeats: z.coerce.number().int().min(0).max(800),
   remainingSeats: z.coerce.number().int().min(0).max(800).optional(),
@@ -78,10 +79,16 @@ export const flightFormSchema = z.object({
     .transform((v) => v.toUpperCase()),
   departureAt: z.string().min(1, "Departure date/time required"),
   arrivalAt: z.string().min(1, "Arrival date/time required"),
-  cabinClass: z.enum(["economy", "business"]),
 });
 
+/**
+ * Fare releases for one flight, across every cabin it sells. Each row carries
+ * its own cabin, so business and economy buckets arrive in a single submission
+ * — the flight form lists them under cabin headings rather than the admin
+ * creating a separate flight per cabin.
+ */
 export function parseFareReleasesFromForm(formData: FormData) {
+  const cabins = formData.getAll("fareCabinClass").map(String);
   const names = formData.getAll("fareName").map(String);
   const totals = formData.getAll("fareTotalSeats").map(String);
   const remainings = formData.getAll("fareRemainingSeats").map(String);
@@ -92,6 +99,7 @@ export function parseFareReleasesFromForm(formData: FormData) {
 
   const releases = names.map((name, i) =>
     fareReleaseInputSchema.parse({
+      cabinClass: cabins[i] || "economy",
       name,
       totalSeats: totals[i] ?? "0",
       remainingSeats: remainings[i] || totals[i] || "0",
@@ -110,8 +118,20 @@ export function parseFareReleasesFromForm(formData: FormData) {
     throw new Error("Total seats across fare releases must be at least 1");
   }
 
+  // A cabin whose buckets all hold 0 seats can never be sold; that is almost
+  // always a half-filled form rather than a deliberate "no business class".
+  for (const cabin of ["business", "economy"] as const) {
+    const inCabin = releases.filter((r) => r.cabinClass === cabin);
+    if (inCabin.length > 0 && inCabin.every((r) => r.totalSeats === 0)) {
+      throw new Error(
+        `${cabin === "business" ? "Business" : "Economy"} has fare releases but no seats — set seats or remove the cabin`,
+      );
+    }
+  }
+
   return releases.map((r, i) => ({
     id: ids[i]?.trim() || undefined,
+    cabinClass: r.cabinClass,
     name: r.name,
     sortOrder: r.sortOrder,
     totalSeats: r.totalSeats,

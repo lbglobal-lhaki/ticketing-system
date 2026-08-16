@@ -192,6 +192,8 @@ export default async function AdminPage({
         include: {
           flight: true,
           returnFlight: true,
+          // A flight sells both cabins — the booked one is its fare release's.
+          fareRelease: { select: { cabinClass: true } },
           invoice: { select: { id: true, status: true } },
           passengers: { orderBy: { sortOrder: "asc" } },
         },
@@ -205,7 +207,7 @@ export default async function AdminPage({
               bookingRef: true,
               passportNumber: true,
               nationality: true,
-              flight: { select: { cabinClass: true } },
+              fareRelease: { select: { cabinClass: true } },
             },
           },
         },
@@ -391,13 +393,13 @@ export default async function AdminPage({
               destination: f.destination,
               departureAt: f.departureAt.toISOString(),
               arrivalAt: f.arrivalAt.toISOString(),
-              cabinClass: f.cabinClass as "economy" | "business",
               totalSeats: f.totalSeats,
               remainingSeats: f.remainingSeats,
               active: f.active,
               returnLegFlightId: f.returnLegFlightId,
               fareReleases: f.fareReleases.map((r) => ({
                 id: r.id,
+                cabinClass: r.cabinClass as "economy" | "business",
                 name: r.name,
                 sortOrder: r.sortOrder,
                 totalSeats: r.totalSeats,
@@ -445,7 +447,9 @@ export default async function AdminPage({
                 flightNumber: b.flight.flightNumber,
                 origin: b.flight.origin,
                 destination: b.flight.destination,
-                cabinClass: b.flight.cabinClass as "economy" | "business",
+                cabinClass: (b.fareRelease?.cabinClass ?? "economy") as
+                  | "economy"
+                  | "business",
               },
               returnFlight: b.returnFlight
                 ? {
@@ -493,9 +497,8 @@ export default async function AdminPage({
               createdAt: invoice.createdAt.toISOString(),
               bookingRef: invoice.booking.bookingRef,
               bookingId: invoice.bookingId,
-              cabinClass: invoice.booking.flight.cabinClass as
-                | "economy"
-                | "business",
+              cabinClass: (invoice.booking.fareRelease?.cabinClass ??
+                "economy") as "economy" | "business",
             }))}
             deletedRecords={deletedRecords.map((row) => ({
               id: row.id,

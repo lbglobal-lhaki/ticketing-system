@@ -83,6 +83,9 @@ enum DeletedEntityType {
   cargo
 }
 
+/// One physical departure. Cabins are *not* separate flights — a single
+/// aircraft carries both, so cabin lives on FareRelease and one Flight row
+/// holds every cabin's fare buckets (e.g. 20 business + 120 economy = 140).
 model Flight {
   id             String     @id @default(cuid())
   airline        String
@@ -91,9 +94,8 @@ model Flight {
   destination    String
   departureAt    DateTime
   arrivalAt      DateTime
-  cabinClass     CabinClass @default(business)
   currency       String     @default("AUD")
-  /// Sum of fare-release seat pools (kept in sync for search / sold-out)
+  /// Sum of every cabin's fare-release seat pools (whole aircraft).
   totalSeats     Int
   remainingSeats Int
   active         Boolean    @default(true)
@@ -121,11 +123,14 @@ model Flight {
   @@index([returnLegFlightId])
 }
 
-/// Fare bucket sold in order (Early Bird → Standard → Final Release).
+/// Fare bucket sold in order (Early Bird → Standard → Final Release) *within a
+/// cabin*. The cabin lives here rather than on Flight so one departure can sell
+/// business and economy side by side; a booking's cabin is its fare release's.
 model FareRelease {
-  id             String @id @default(cuid())
+  id             String     @id @default(cuid())
   flightId       String
-  flight         Flight @relation(fields: [flightId], references: [id], onDelete: Cascade)
+  flight         Flight     @relation(fields: [flightId], references: [id], onDelete: Cascade)
+  cabinClass     CabinClass @default(economy)
   name           String
   sortOrder      Int
   totalSeats     Int
@@ -142,7 +147,7 @@ model FareRelease {
   bookings       Booking[]    @relation("OutboundFareBooking")
   returnBookings Booking[]    @relation("ReturnFareBooking")
 
-  @@index([flightId, sortOrder])
+  @@index([flightId, cabinClass, sortOrder])
 }
 
 model DemandEvent {

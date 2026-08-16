@@ -233,9 +233,18 @@ export function SystemAnalyticsSection({
                       {new Date(f.departureAt).toLocaleString("en-AU", {
                         dateStyle: "medium",
                         timeStyle: "short",
-                      })}{" "}
-                      · {f.cabinClass}
+                      })}
                     </p>
+                    {f.cabins.length > 0 ? (
+                      <p className="text-muted">
+                        {f.cabins
+                          .map(
+                            (c) =>
+                              `${c.cabinClass === "business" ? "Business" : "Economy"} ${c.remainingSeats}/${c.totalSeats}`,
+                          )
+                          .join(" · ")}
+                      </p>
+                    ) : null}
                   </div>
                   <p className="shrink-0 text-muted">
                     {f.remainingSeats}/{f.totalSeats} seats

@@ -55,13 +55,13 @@ async function seed() {
       destination: "PBH",
       departureAt: new Date(Date.now() + 21 * 864e5),
       arrivalAt: new Date(Date.now() + 21 * 864e5 + 8 * 3600e3),
-      cabinClass: "economy",
       currency: "AUD",
       totalSeats: seats,
       remainingSeats: seats,
       active: false, // never shown publicly
       fareReleases: {
         create: {
+          cabinClass: "economy",
           name: "Verify Release",
           sortOrder: 1,
           totalSeats: seats,

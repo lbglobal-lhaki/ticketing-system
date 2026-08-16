@@ -171,9 +171,6 @@ export type GroupFlightInput = {
     destination: string;
     departureAt: Date;
     arrivalAt: Date;
-    cabinClass: string;
-    remainingSeats: number;
-    totalSeats: number;
     returnLegFlight?: {
       id: string;
       flightNumber: string;
@@ -181,6 +178,16 @@ export type GroupFlightInput = {
       remainingSeats: number;
       active: boolean;
     } | null;
+  };
+  /**
+   * One entry per cabin the flight sells. A flight carries both cabins on the
+   * same departure, so seats are per-cabin here rather than per-flight — the
+   * flight's own totals are the whole airframe and would overstate either one.
+   */
+  cabin: {
+    cabinClass: "economy" | "business";
+    remainingSeats: number;
+    totalSeats: number;
   };
   price: {
     displayPriceCents: number;
@@ -222,8 +229,7 @@ export function groupFlightResults(rows: GroupFlightInput[]): FlightResultRow[] 
       row.flight.arrivalAt.toISOString(),
     ].join("|");
 
-    const cabin =
-      row.flight.cabinClass === "business" ? "business" : "economy";
+    const cabin = row.cabin.cabinClass;
     const fare: CabinFare = {
       flightId: row.flight.id,
       cabinClass: cabin,
@@ -231,8 +237,8 @@ export function groupFlightResults(rows: GroupFlightInput[]): FlightResultRow[] 
       basePriceCents: row.price.basePriceCents,
       fareReleaseName: row.price.fareReleaseName || null,
       farePriced: row.price.farePriced,
-      remainingSeats: row.flight.remainingSeats,
-      totalSeats: row.flight.totalSeats,
+      remainingSeats: row.cabin.remainingSeats,
+      totalSeats: row.cabin.totalSeats,
       href: row.href,
       ctaLabel: row.ctaLabel,
     };

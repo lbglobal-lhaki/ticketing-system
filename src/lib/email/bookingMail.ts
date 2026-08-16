@@ -65,6 +65,9 @@ export async function loadBookingDocumentData(
     include: {
       flight: true,
       returnFlight: true,
+      // Cabin lives on the booked fare release now — one flight sells both.
+      fareRelease: { select: { cabinClass: true } },
+      returnFareRelease: { select: { cabinClass: true } },
       invoice: true,
       quote: true,
       passengers: { orderBy: { sortOrder: "asc" } },
@@ -126,8 +129,19 @@ export async function loadBookingDocumentData(
     serviceFeeCents: booking.serviceFeeCents,
     tripType: booking.tripType,
     stripePaymentIntentId: booking.invoice?.stripePaymentIntentId,
-    flight: booking.flight,
-    returnFlight: booking.returnFlight,
+    flight: {
+      ...booking.flight,
+      cabinClass: booking.fareRelease?.cabinClass ?? "economy",
+    },
+    returnFlight: booking.returnFlight
+      ? {
+          ...booking.returnFlight,
+          cabinClass:
+            booking.returnFareRelease?.cabinClass ??
+            booking.fareRelease?.cabinClass ??
+            "economy",
+        }
+      : null,
     invoice: booking.invoice
       ? {
           invoiceNumber: booking.invoice.invoiceNumber,

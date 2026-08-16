@@ -7,10 +7,12 @@
  *   Outbound KB920  PBH→PER  22nd of month, dep 09:00, arr 00:25 (+1 day)
  *   Return   KB921  PER→PBH  23rd of month, dep 01:25, arr 10:35
  *
- * Repeated every month from Oct 2026 through Dec 2027 inclusive, for both
- * economy and business cabins. Each outbound leg's `returnLegFlightId` is
- * set to its matching return leg so the site can offer a one-click
- * "Round trip" fare without a separate manual return search.
+ * Repeated every month from Oct 2026 through Dec 2027 inclusive. Each
+ * departure is ONE flight carrying both cabins (business + economy fare
+ * releases on the same aircraft) — not one flight per cabin. Each outbound
+ * leg's `returnLegFlightId` is set to its matching return leg so the site can
+ * offer a one-click "Round trip" fare without a separate manual return
+ * search.
  *
  * Run with: npx tsx scripts/reseedCharterSchedule.ts
  */
@@ -18,7 +20,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import {
-  fareTemplateForCabin,
+  defaultFlightFareTemplate,
   totalSeatsFromReleases,
 } from "../src/lib/fares/templates";
 
@@ -39,7 +41,6 @@ if (!connectionString) {
 const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
 
-const CABINS = ["economy", "business"] as const;
 const START = { year: 2026, month: 10 }; // October 2026 (1-indexed month)
 const END = { year: 2027, month: 12 }; // December 2027 inclusive
 
@@ -150,64 +151,62 @@ async function main() {
   const months = monthsInRange();
   let pairsCreated = 0;
 
+  // One aircraft per departure: every cabin's buckets on the same flight.
+  const buildReleases = () =>
+    defaultFlightFareTemplate().map((t) => ({
+      cabinClass: t.cabinClass,
+      name: t.name,
+      sortOrder: t.sortOrder,
+      totalSeats: t.totalSeats,
+      remainingSeats: t.totalSeats,
+      priceCents: 0,
+      active: true,
+    }));
+  const seatsPerFlight = totalSeatsFromReleases(buildReleases());
+
   for (const { year, month } of months) {
-    for (const cabinClass of CABINS) {
-      const template = fareTemplateForCabin(cabinClass);
-      const releases = template.map((t) => ({
-        name: t.name,
-        sortOrder: t.sortOrder,
-        totalSeats: t.totalSeats,
-        remainingSeats: t.totalSeats,
-        priceCents: 0,
+    const outbound = await prisma.flight.create({
+      data: {
+        airline: "Drukair",
+        flightNumber: "KB920",
+        origin: "PBH",
+        destination: "PER",
+        departureAt: utc(year, month, 22, 9, 0),
+        arrivalAt: utc(year, month, 23, 0, 25),
+        currency: "AUD",
+        totalSeats: seatsPerFlight,
+        remainingSeats: seatsPerFlight,
         active: true,
-      }));
-      const totalSeats = totalSeatsFromReleases(releases);
+        fareReleases: { create: buildReleases() },
+      },
+    });
 
-      const outbound = await prisma.flight.create({
-        data: {
-          airline: "Drukair",
-          flightNumber: "KB920",
-          origin: "PBH",
-          destination: "PER",
-          departureAt: utc(year, month, 22, 9, 0),
-          arrivalAt: utc(year, month, 23, 0, 25),
-          cabinClass,
-          currency: "AUD",
-          totalSeats,
-          remainingSeats: totalSeats,
-          active: true,
-          fareReleases: { create: releases },
-        },
-      });
+    const returnLeg = await prisma.flight.create({
+      data: {
+        airline: "Drukair",
+        flightNumber: "KB921",
+        origin: "PER",
+        destination: "PBH",
+        departureAt: utc(year, month, 23, 1, 25),
+        arrivalAt: utc(year, month, 23, 10, 35),
+        currency: "AUD",
+        totalSeats: seatsPerFlight,
+        remainingSeats: seatsPerFlight,
+        active: true,
+        fareReleases: { create: buildReleases() },
+      },
+    });
 
-      const returnLeg = await prisma.flight.create({
-        data: {
-          airline: "Drukair",
-          flightNumber: "KB921",
-          origin: "PER",
-          destination: "PBH",
-          departureAt: utc(year, month, 23, 1, 25),
-          arrivalAt: utc(year, month, 23, 10, 35),
-          cabinClass,
-          currency: "AUD",
-          totalSeats,
-          remainingSeats: totalSeats,
-          active: true,
-          fareReleases: { create: releases },
-        },
-      });
+    await prisma.flight.update({
+      where: { id: outbound.id },
+      data: { returnLegFlightId: returnLeg.id },
+    });
 
-      await prisma.flight.update({
-        where: { id: outbound.id },
-        data: { returnLegFlightId: returnLeg.id },
-      });
-
-      pairsCreated += 1;
-    }
+    pairsCreated += 1;
   }
 
   console.log(
-    `Seeded ${pairsCreated} PBH⇄PER charter pairs (${pairsCreated * 2} flights) across ${months.length} months (${START.month}/${START.year} → ${END.month}/${END.year}), economy + business, prices left at 0 for admin to set.`,
+    `Seeded ${pairsCreated} PBH⇄PER charter pairs (${pairsCreated * 2} flights) across ${months.length} months (${START.month}/${START.year} → ${END.month}/${END.year}). Each flight carries ${seatsPerFlight} seats across business + economy; prices left at 0 for admin to set.`,
   );
 }
 

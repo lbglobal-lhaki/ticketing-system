@@ -25,7 +25,10 @@ export function FlightSummarySidebar({
 }: FlightSummarySidebarProps) {
   const { quote, isRound } = state;
   const fareLabel =
-    [quote.flight.cabinClass === "business" ? "Business" : "Economy", quote.fareProductName]
+    [
+      quote.fareRelease?.cabinClass === "business" ? "Business" : "Economy",
+      quote.fareProductName,
+    ]
       .filter(Boolean)
       .join(" · ") || "Charter fare";
 

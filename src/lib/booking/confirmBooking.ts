@@ -14,6 +14,12 @@ import {
 } from "@/lib/documents/invoiceFields";
 import { getCurrentFareRelease } from "@/lib/fares/current";
 import {
+  cabinLabel,
+  cabinsOnFlight,
+  parseCabin,
+  seatsByCabin,
+} from "@/lib/fares/templates";
+import {
   getQuoteTtlMinutes,
   resolveAdultLegFares,
   splitRoundTripPackageCents,
@@ -40,6 +46,8 @@ export async function createPriceQuote(input: {
   sessionId: string;
   /** Selected charter fare product (Saver / Flexi / …) — locks catalogue price. */
   fareProductId?: string;
+  /** Cabin to book. Ignored when a fare product is given — that carries its own. */
+  cabinClass?: string;
   adults?: number;
   children?: number;
   infants?: number;
@@ -60,7 +68,43 @@ export async function createPriceQuote(input: {
     return { ok: false as const, error: "Outbound flight is sold out" };
   }
 
-  const outboundCurrent = getCurrentFareRelease(flight.fareReleases);
+  /*
+   * One flight now sells both cabins, so the cabin has to be resolved before a
+   * fare release can be picked — otherwise a business tier could be handed to
+   * an economy booking simply because it sorts first. The selected charter
+   * fare product is cabin-specific and is the authority; `input.cabinClass` is
+   * the fallback for the few paths that start checkout without one.
+   */
+  const product = input.fareProductId
+    ? await prisma.charterFareProduct.findFirst({
+        where: { id: input.fareProductId, active: true },
+      })
+    : null;
+  if (input.fareProductId && !product) {
+    return { ok: false as const, error: "Selected fare product is unavailable" };
+  }
+  const cabinClass = parseCabin(
+    product?.cabinClass ?? input.cabinClass ?? "economy",
+  );
+
+  const outboundCabins = cabinsOnFlight(flight.fareReleases);
+  if (!outboundCabins.includes(cabinClass)) {
+    return {
+      ok: false as const,
+      error: `This flight does not sell ${cabinLabel(cabinClass)} class`,
+    };
+  }
+  const outboundCabinSeats = seatsByCabin(flight.fareReleases)[cabinClass];
+  if (outboundCabinSeats.remainingSeats < 1) {
+    return {
+      ok: false as const,
+      error: `${cabinLabel(cabinClass)} class is sold out on the outbound flight`,
+    };
+  }
+
+  const outboundCurrent = getCurrentFareRelease(flight.fareReleases, cabinClass, {
+    roundTrip: isRoundTrip,
+  });
   if (!outboundCurrent) {
     return {
       ok: false as const,
@@ -107,7 +151,21 @@ export async function createPriceQuote(input: {
         error: "Return flight must match the reverse route",
       };
     }
-    returnCurrent = getCurrentFareRelease(returnFlight.fareReleases);
+    if (!cabinsOnFlight(returnFlight.fareReleases).includes(cabinClass)) {
+      return {
+        ok: false as const,
+        error: `The return flight does not sell ${cabinLabel(cabinClass)} class`,
+      };
+    }
+    if (seatsByCabin(returnFlight.fareReleases)[cabinClass].remainingSeats < 1) {
+      return {
+        ok: false as const,
+        error: `${cabinLabel(cabinClass)} class is sold out on the return flight`,
+      };
+    }
+    returnCurrent = getCurrentFareRelease(returnFlight.fareReleases, cabinClass, {
+      roundTrip: true,
+    });
     if (!returnCurrent || returnCurrent.roundTripPriceCents <= 0) {
       return {
         ok: false as const,
@@ -124,19 +182,9 @@ export async function createPriceQuote(input: {
   let fareReleaseName = outboundCurrent.name;
   let returnFareReleaseName = returnCurrent?.name ?? "";
 
-  if (input.fareProductId) {
-    const product = await prisma.charterFareProduct.findFirst({
-      where: { id: input.fareProductId, active: true },
-    });
-    if (!product) {
-      return { ok: false as const, error: "Selected fare product is unavailable" };
-    }
-    if (product.cabinClass !== flight.cabinClass) {
-      return {
-        ok: false as const,
-        error: "Selected fare does not match this flight cabin",
-      };
-    }
+  if (product) {
+    // Cabin already resolved from this product above, so there is nothing left
+    // to cross-check against the flight — it sells the cabin or we bailed out.
     fareProductCode = product.code;
     fareProductName = product.name;
     fareReleaseName = product.name;

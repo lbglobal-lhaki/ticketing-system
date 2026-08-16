@@ -92,7 +92,6 @@ export async function createFlightAction(formData: FormData) {
       destination: data.destination,
       departureAt,
       arrivalAt,
-      cabinClass: data.cabinClass,
       currency: "AUD",
       totalSeats: totals.totalSeats,
       remainingSeats: totals.remainingSeats,
@@ -100,6 +99,7 @@ export async function createFlightAction(formData: FormData) {
       returnLegFlightId,
       fareReleases: {
         create: releases.map((r) => ({
+          cabinClass: r.cabinClass,
           name: r.name,
           sortOrder: r.sortOrder,
           totalSeats: r.totalSeats,
@@ -190,6 +190,7 @@ export async function updateFlightAction(formData: FormData) {
 
     for (const r of releases) {
       const releaseData = {
+        cabinClass: r.cabinClass,
         name: r.name,
         sortOrder: r.sortOrder,
         totalSeats: r.totalSeats,
@@ -256,7 +257,6 @@ export async function updateFlightAction(formData: FormData) {
         destination: data.destination,
         departureAt,
         arrivalAt,
-        cabinClass: data.cabinClass,
         totalSeats: totals.totalSeats,
         remainingSeats: totals.remainingSeats,
         // Preserve hidden/removed status — editing must not republish a flight.
@@ -347,7 +347,10 @@ export async function bulkUpdateFareTierPriceAction(formData: FormData) {
   const result = await prisma.fareRelease.updateMany({
     where: {
       name: tierName,
-      flight: { cabinClass },
+      // Cabin now lives on the release itself, so this no longer has to hop
+      // through the flight — and it correctly leaves the other cabin's
+      // same-named tiers ("Early Bird" exists in both) untouched.
+      cabinClass,
       ...(onlyUnpriced
         ? isRoundTrip
           ? { roundTripPriceCents: 0 }

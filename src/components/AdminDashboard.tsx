@@ -56,7 +56,10 @@ import { bankHoldExpiresAt } from "@/lib/branding";
 import { formatFlightDateTime, toDateTimeLocalValue } from "@/lib/datetime";
 import {
   BUSINESS_FARE_TEMPLATE,
+  CABIN_CLASSES,
   ECONOMY_FARE_TEMPLATE,
+  defaultFlightFareTemplate,
+  fareTemplateForCabin,
 } from "@/lib/fares/templates";
 import { formatAud } from "@/lib/pricing";
 
@@ -65,8 +68,11 @@ const CUSTOM_FLIGHT_VALUE = "__custom__";
 type CabinClass = "economy" | "business";
 type TripType = "one_way" | "round_trip";
 
-type FareRow = {
+/** A fare bucket as the server sends it. */
+type SavedFareRow = {
   id?: string;
+  /** Cabin this bucket belongs to — one flight sells several. */
+  cabinClass: CabinClass;
   name: string;
   sortOrder: number;
   totalSeats: number;
@@ -74,6 +80,13 @@ type FareRow = {
   priceCents: number;
   roundTripPriceCents: number;
 };
+
+/**
+ * A bucket while it is being edited. `uid` is a stable client-side key: the
+ * price inputs are uncontrolled, so keying them by array index would hand a
+ * removed row's typed price to its neighbour.
+ */
+type FareRow = SavedFareRow & { uid: string };
 
 type FlightRow = {
   id: string;
@@ -83,12 +96,11 @@ type FlightRow = {
   destination: string;
   departureAt: string;
   arrivalAt: string;
-  cabinClass: CabinClass;
   totalSeats: number;
   remainingSeats: number;
   active: boolean;
   returnLegFlightId: string | null;
-  fareReleases: FareRow[];
+  fareReleases: SavedFareRow[];
 };
 
 type BookingPassengerRow = {
@@ -180,6 +192,20 @@ function cabinLabel(cabin: CabinClass) {
   return cabin === "business" ? "Business" : "Economy";
 }
 
+/** Cabins a flight sells, derived from its fare releases. */
+function cabinsOf(flight: { fareReleases: SavedFareRow[] }): CabinClass[] {
+  const seen = new Set(flight.fareReleases.map((r) => r.cabinClass));
+  return CABIN_CLASSES.filter((c) => seen.has(c as CabinClass)) as CabinClass[];
+}
+
+/** Per-cabin seat pools for a flight row. */
+function cabinSeatsOf(flight: { fareReleases: SavedFareRow[] }) {
+  return cabinsOf(flight).map((cabin) => {
+    const rows = flight.fareReleases.filter((r) => r.cabinClass === cabin);
+    return { cabin, ...seatTotals(rows) };
+  });
+}
+
 /** Every free-text search on this page: all terms must appear somewhere. */
 function matchesQuery(query: string, ...fields: (string | number | null | undefined)[]) {
   const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -196,18 +222,28 @@ function flightOption(
   return {
     value: flight.id,
     label: `${flight.airline} ${flight.flightNumber} · ${flight.origin} → ${flight.destination}`,
-    description: `${formatFlightDateTime(flight.departureAt)} · ${cabinLabel(flight.cabinClass)}`,
+    description: `${formatFlightDateTime(flight.departureAt)} · ${
+      cabinsOf(flight)
+        .map((c) => cabinLabel(c))
+        .join(" + ") || "No cabins"
+    }`,
     meta: options?.showSeats
       ? `${flight.remainingSeats} seat${flight.remainingSeats === 1 ? "" : "s"}`
       : undefined,
-    keywords: `${flight.origin}${flight.destination} ${flight.cabinClass}`,
+    keywords: `${flight.origin}${flight.destination} ${cabinsOf(flight).join(" ")}`,
   };
 }
 
+let fareRowSeq = 0;
+function nextFareUid() {
+  fareRowSeq += 1;
+  return `fare-${fareRowSeq}`;
+}
+
 function templateToRows(cabin: CabinClass): FareRow[] {
-  const template =
-    cabin === "economy" ? ECONOMY_FARE_TEMPLATE : BUSINESS_FARE_TEMPLATE;
-  return template.map((t) => ({
+  return fareTemplateForCabin(cabin).map((t) => ({
+    uid: nextFareUid(),
+    cabinClass: t.cabinClass as CabinClass,
     name: t.name,
     sortOrder: t.sortOrder,
     totalSeats: t.totalSeats,
@@ -215,6 +251,36 @@ function templateToRows(cabin: CabinClass): FareRow[] {
     priceCents: 0,
     roundTripPriceCents: 0,
   }));
+}
+
+/** A brand-new flight starts with every cabin's default buckets. */
+function defaultFareRows(): FareRow[] {
+  return defaultFlightFareTemplate().map((t) => ({
+    uid: nextFareUid(),
+    cabinClass: t.cabinClass as CabinClass,
+    name: t.name,
+    sortOrder: t.sortOrder,
+    totalSeats: t.totalSeats,
+    remainingSeats: t.totalSeats,
+    priceCents: 0,
+    roundTripPriceCents: 0,
+  }));
+}
+
+/** Saved releases arriving from the server have no client uid yet. */
+function withUids(rows: SavedFareRow[]): FareRow[] {
+  return rows.map((r) => ({ ...r, uid: nextFareUid() }));
+}
+
+function seatTotals(rows: SavedFareRow[]) {
+  return rows.reduce(
+    (acc, r) => {
+      acc.total += r.totalSeats;
+      acc.remaining += r.remainingSeats;
+      return acc;
+    },
+    { total: 0, remaining: 0 },
+  );
 }
 
 /** Inline fields for a walk-in leg that isn't in the Flight table at all. */
@@ -346,16 +412,13 @@ export function AdminDashboard({
     parseClientTab(searchParams.get("tab")) ?? initialTab ?? "analytics";
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [cabinClass, setCabinClass] = useState<CabinClass>("business");
   const [partnerFlightId, setPartnerFlightId] = useState("");
   const [bulkPriceCabin, setBulkPriceCabin] = useState<CabinClass>("business");
   const [bulkTierName, setBulkTierName] = useState(
     () => BUSINESS_FARE_TEMPLATE[0]!.name,
   );
   const [fareTripMode, setFareTripMode] = useState<TripType>("one_way");
-  const [fareRows, setFareRows] = useState<FareRow[]>(() =>
-    templateToRows("business"),
-  );
+  const [fareRows, setFareRows] = useState<FareRow[]>(() => defaultFareRows());
   const [flightQuery, setFlightQuery] = useState("");
   const [flightFilter, setFlightFilter] = useState("all");
   const [bookingQuery, setBookingQuery] = useState("");
@@ -363,6 +426,7 @@ export function AdminDashboard({
   const [walkInOutboundChoice, setWalkInOutboundChoice] = useState("");
   const [walkInReturnChoice, setWalkInReturnChoice] = useState("");
   const [walkInFareProductId, setWalkInFareProductId] = useState("");
+  const [walkInCabin, setWalkInCabin] = useState<CabinClass>("economy");
   const [walkInTripType, setWalkInTripType] = useState<TripType>("one_way");
   const [walkInAdults, setWalkInAdults] = useState<CompanionDraft[]>([]);
   const [walkInChildren, setWalkInChildren] = useState<CompanionDraft[]>([]);
@@ -421,6 +485,7 @@ export function AdminDashboard({
       setWalkInOutboundChoice("");
       setWalkInReturnChoice("");
       setWalkInFareProductId("");
+      setWalkInCabin("economy");
       setWalkInTripType("one_way");
       setWalkInAdults([]);
       setWalkInChildren([]);
@@ -441,6 +506,16 @@ export function AdminDashboard({
     () => flights.find((f) => f.id === walkInOutboundChoice) ?? null,
     [flights, walkInOutboundChoice],
   );
+  /** Live seat position for a cabin on the chosen outbound flight. */
+  function walkInCabinHint(cabin: CabinClass) {
+    if (!walkInOutboundFlight) return "Pick a flight to see seats.";
+    const seats = cabinSeatsOf(walkInOutboundFlight).find(
+      (c) => c.cabin === cabin,
+    );
+    if (!seats) return "Not sold on this flight.";
+    return `${seats.remaining} of ${seats.total} seats left.`;
+  }
+
   // Fixed charter round-trip pairing — the return leg is already known for
   // this outbound flight, so the admin shouldn't have to search for it.
   const walkInPairedReturn = useMemo(() => {
@@ -480,7 +555,7 @@ export function AdminDashboard({
           f.origin,
           f.destination,
           `${f.origin}${f.destination}`,
-          f.cabinClass,
+          cabinsOf(f).join(" "),
           formatFlightDateTime(f.departureAt),
         );
       }),
@@ -561,7 +636,7 @@ export function AdminDashboard({
         keywords: "auto default none",
       },
       ...charterFares
-        .filter((f) => f.active)
+        .filter((f) => f.active && f.cabinClass === walkInCabin)
         .map((f) => {
           const showRt =
             walkInTripType === "round_trip" && f.roundTripPriceCents > 0;
@@ -575,7 +650,7 @@ export function AdminDashboard({
           };
         }),
     ],
-    [charterFares, walkInTripType],
+    [charterFares, walkInTripType, walkInCabin],
   );
 
   function bulkDeleteFlights() {
@@ -643,11 +718,81 @@ export function AdminDashboard({
    * which is the only path that ever selects a flight to edit.
    */
 
+  /*
+   * Fare-row editing. Rows live in one flat list (that is how the form posts
+   * them) but are rendered grouped by cabin, so every mutation takes the index
+   * into the flat list and re-numbers sortOrder within the affected cabin.
+   */
+  function renumber(rows: FareRow[]): FareRow[] {
+    const perCabin = new Map<CabinClass, number>();
+    return rows.map((row) => {
+      const next = (perCabin.get(row.cabinClass) ?? 0) + 1;
+      perCabin.set(row.cabinClass, next);
+      return { ...row, sortOrder: next };
+    });
+  }
+
+  function updateFareRow(index: number, patch: Partial<FareRow>) {
+    setFareRows((rows) =>
+      rows.map((row, i) => (i === index ? { ...row, ...patch } : row)),
+    );
+  }
+
+  function addFareRow(cabin: CabinClass) {
+    setFareRows((rows) => {
+      const row: FareRow = {
+        uid: nextFareUid(),
+        cabinClass: cabin,
+        name: "",
+        sortOrder: 0,
+        totalSeats: 0,
+        remainingSeats: 0,
+        priceCents: 0,
+        roundTripPriceCents: 0,
+      };
+      // Insert after the cabin's last row so cabins stay contiguous.
+      let insertAt = rows.length;
+      for (let i = rows.length - 1; i >= 0; i--) {
+        if (rows[i]!.cabinClass === cabin) {
+          insertAt = i + 1;
+          break;
+        }
+      }
+      const next = [...rows];
+      next.splice(insertAt, 0, row);
+      return renumber(next);
+    });
+  }
+
+  function removeFareRow(index: number) {
+    setFareRows((rows) => renumber(rows.filter((_, i) => i !== index)));
+  }
+
+  function addCabin(cabin: CabinClass) {
+    setFareRows((rows) => renumber([...rows, ...templateToRows(cabin)]));
+  }
+
+  function removeCabin(cabin: CabinClass) {
+    const seated = fareRows.filter(
+      (r) => r.cabinClass === cabin && r.totalSeats !== r.remainingSeats,
+    );
+    if (
+      seated.length > 0 &&
+      !confirm(
+        `${cabinLabel(cabin)} has seats already sold. Removing the cabin deletes its ticket types — bookings that used them keep their record but the cabin stops selling. Continue?`,
+      )
+    ) {
+      return;
+    }
+    setFareRows((rows) =>
+      renumber(rows.filter((r) => r.cabinClass !== cabin)),
+    );
+  }
+
   function openAdd() {
     setEditingId(null);
-    setCabinClass("business");
     setPartnerFlightId("");
-    setFareRows(templateToRows("business"));
+    setFareRows(defaultFareRows());
     selectTab("form");
   }
 
@@ -656,26 +801,20 @@ export function AdminDashboard({
     if (flight) {
       // Sync fare rows before the form mounts so uncontrolled MoneyInputs
       // get the real saved prices (not stale zeros from the previous flight).
-      setCabinClass(flight.cabinClass);
       setPartnerFlightId(flight.returnLegFlightId ?? "");
       setFareRows(
         flight.fareReleases.length > 0
-          ? flight.fareReleases.map((r) => ({
-              ...r,
-              roundTripPriceCents: r.roundTripPriceCents ?? 0,
-            }))
-          : templateToRows(flight.cabinClass),
+          ? withUids(
+              flight.fareReleases.map((r) => ({
+                ...r,
+                roundTripPriceCents: r.roundTripPriceCents ?? 0,
+              })),
+            )
+          : defaultFareRows(),
       );
     }
     setEditingId(id);
     selectTab("form");
-  }
-
-  function onCabinChange(next: CabinClass) {
-    setCabinClass(next);
-    if (!editing) {
-      setFareRows(templateToRows(next));
-    }
   }
 
   return (
@@ -985,8 +1124,16 @@ export function AdminDashboard({
                             f.active ? "text-accent" : "text-red-700"
                           }`}
                         >
-                          {f.active ? "Live" : "Hidden"} · {f.cabinClass}
+                          {f.active ? "Live" : "Hidden"}
                         </span>
+                        {cabinSeatsOf(f).map(({ cabin, total, remaining }) => (
+                          <span
+                            key={cabin}
+                            className="border border-line px-2 py-0.5 text-xs font-medium text-muted"
+                          >
+                            {cabinLabel(cabin)} {remaining}/{total}
+                          </span>
+                        ))}
                       </div>
                       <p className="text-sm text-foreground">
                         {f.origin} → {f.destination}
@@ -998,8 +1145,10 @@ export function AdminDashboard({
                         Arrives {formatFlightDateTime(f.arrivalAt)}
                       </p>
                       <p className="text-sm text-muted">
-                        {f.remainingSeats}/{f.totalSeats} seats across fare
-                        releases
+                        {f.remainingSeats}/{f.totalSeats} seats on the aircraft
+                        {cabinSeatsOf(f).length > 1
+                          ? " (all cabins combined)"
+                          : ""}
                       </p>
                     </div>
                     </div>
@@ -1127,8 +1276,9 @@ export function AdminDashboard({
               {editing ? "Edit flight" : "Add a flight"}
             </h2>
             <p className="mt-2 text-sm text-muted">
-              Business defaults to 20 seats across Early Bird (5), Business
-              Standard (10), and Final Release (5). Set every price yourself.
+              One flight, both cabins. Defaults to a 140-seat aircraft —
+              Business 20 and Economy 120 — but every cabin, ticket type, seat
+              count and price below is yours to change.
             </p>
           </div>
 
@@ -1226,26 +1376,6 @@ export function AdminDashboard({
                 className={fieldClass}
               />
             </label>
-            <SegmentedField
-              name="cabinClass"
-              label="Cabin / product"
-              className="sm:col-span-2"
-              value={cabinClass}
-              onChange={(next) => onCabinChange(next as CabinClass)}
-              options={[
-                {
-                  value: "business",
-                  label: "Business",
-                  hint: "20-seat fare template — Early Bird (5), Business Standard (10), Final Release (5).",
-                },
-                {
-                  value: "economy",
-                  label: "Economy",
-                  hint: "Same release structure as business, economy pricing.",
-                },
-              ]}
-            />
-
             <label className="space-y-1 text-sm sm:col-span-2">
               <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
                 Round-trip partner flight (optional)
@@ -1266,129 +1396,215 @@ export function AdminDashboard({
               </span>
             </label>
 
-            <div className="sm:col-span-2 space-y-4 border border-line bg-white/50 p-4">
-              <div>
-                <p className="font-[family-name:var(--font-syne)] text-lg font-semibold">
-                  Fare releases
-                </p>
-                <p className="mt-1 text-sm text-muted">
-                  Sold in order. Leave price at 0 until you are ready — that
-                  release will not sell.
+            <div className="sm:col-span-2 space-y-5 border border-line bg-white/50 p-4">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p className="font-[family-name:var(--font-syne)] text-lg font-semibold">
+                    Cabins &amp; ticket types
+                  </p>
+                  <p className="mt-1 max-w-xl text-sm text-muted">
+                    Each cabin sells its ticket types in order, top to bottom.
+                    Leave a price at 0 to hold a ticket type back — it will not
+                    sell until you price it.
+                  </p>
+                </div>
+                <p className="text-sm text-muted">
+                  Aircraft total:{" "}
+                  <span className="font-medium text-foreground">
+                    {seatTotals(fareRows).total} seats
+                  </span>
                 </p>
               </div>
-              {fareRows.map((row, index) => (
-                <div
-                  key={`${row.id ?? "new"}-${index}-${row.priceCents}-${row.roundTripPriceCents}`}
-                  /* 5 columns so name(2) + seats + one-way + round-trip sit on
-                     one line — at 4 the round-trip price wrapped onto a row of
-                     its own with three empty cells beside it. */
-                  className="grid gap-3 border-t border-line pt-4 sm:grid-cols-5"
-                >
-                  <input type="hidden" name="fareSortOrder" value={row.sortOrder} />
-                  <input type="hidden" name="fareReleaseId" value={row.id ?? ""} />
-                  <label className="space-y-1 text-sm sm:col-span-2">
-                    <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                      Release name
-                    </span>
-                    <input
-                      name="fareName"
-                      required
-                      value={row.name}
-                      onChange={(e) => {
-                        const next = [...fareRows];
-                        next[index] = { ...row, name: e.target.value };
-                        setFareRows(next);
-                      }}
-                      className={fieldClass}
-                    />
-                  </label>
-                  <label className="space-y-1 text-sm">
-                    <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                      Seats
-                    </span>
-                    <input
-                      name="fareTotalSeats"
-                      type="number"
-                      min={0}
-                      required
-                      value={row.totalSeats}
-                      onChange={(e) => {
-                        const totalSeats = Number(e.target.value);
-                        const next = [...fareRows];
-                        next[index] = {
-                          ...row,
-                          totalSeats,
-                          remainingSeats: editing
-                            ? Math.min(row.remainingSeats, totalSeats)
-                            : totalSeats,
-                        };
-                        setFareRows(next);
-                      }}
-                      className={fieldClass}
-                    />
-                  </label>
-                  <label className="space-y-1 text-sm">
-                    <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                      One-way price (AUD)
-                    </span>
-                    <MoneyInput
-                      key={`ow-${row.id ?? index}-${row.priceCents}`}
-                      name="farePriceAud"
-                      required
-                      defaultValue={(row.priceCents / 100).toFixed(2)}
-                      className={fieldClass}
-                    />
-                  </label>
-                  <label className="space-y-1 text-sm">
-                    <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                      Round-trip package (AUD)
-                    </span>
-                    <MoneyInput
-                      key={`rt-${row.id ?? index}-${row.roundTripPriceCents}`}
-                      name="fareRoundTripPriceAud"
-                      required
-                      defaultValue={(row.roundTripPriceCents / 100).toFixed(2)}
-                      className={fieldClass}
-                    />
-                  </label>
-                  {editing && (
-                    <label className="space-y-1 text-sm sm:col-span-2">
-                      <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                        Seats still for sale
-                      </span>
-                      <input
-                        name="fareRemainingSeats"
-                        type="number"
-                        min={0}
-                        required
-                        value={row.remainingSeats}
-                        onChange={(e) => {
-                          const next = [...fareRows];
-                          next[index] = {
-                            ...row,
-                            remainingSeats: Number(e.target.value),
-                          };
-                          setFareRows(next);
-                        }}
-                        className={fieldClass}
-                      />
-                    </label>
-                  )}
-                  {!editing && (
-                    <input
-                      type="hidden"
-                      name="fareRemainingSeats"
-                      value={row.totalSeats}
-                    />
-                  )}
-                </div>
-              ))}
-              <p className="text-sm text-muted">
-                Total seats:{" "}
-                <span className="font-medium text-foreground">
-                  {fareRows.reduce((s, r) => s + r.totalSeats, 0)}
-                </span>
-              </p>
+
+              {CABIN_CLASSES.map((cabinValue) => {
+                const cabin = cabinValue as CabinClass;
+                const rows = fareRows
+                  .map((row, index) => ({ row, index }))
+                  .filter((entry) => entry.row.cabinClass === cabin);
+
+                if (rows.length === 0) {
+                  return (
+                    <div
+                      key={cabin}
+                      className="flex flex-wrap items-center justify-between gap-3 border border-dashed border-line px-4 py-3"
+                    >
+                      <p className="text-sm text-muted">
+                        No {cabinLabel(cabin)} cabin on this flight.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => addCabin(cabin)}
+                        className="border border-line px-3 py-1.5 text-sm font-medium text-accent transition hover:border-accent"
+                      >
+                        + Add {cabinLabel(cabin)} cabin
+                      </button>
+                    </div>
+                  );
+                }
+
+                const totals = seatTotals(rows.map((entry) => entry.row));
+                return (
+                  <div key={cabin} className="border border-line bg-white">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-surface/70 px-4 py-3">
+                      <div>
+                        <p className="text-sm font-semibold uppercase tracking-[0.12em] text-foreground">
+                          {cabinLabel(cabin)}
+                        </p>
+                        <p className="text-xs text-muted">
+                          {rows.length} ticket type
+                          {rows.length === 1 ? "" : "s"} ·{" "}
+                          {editing
+                            ? totals.remaining + "/" + totals.total + " seats left"
+                            : totals.total + " seats"}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => addFareRow(cabin)}
+                          className="border border-line px-3 py-1.5 text-xs font-medium text-accent transition hover:border-accent"
+                        >
+                          + Add ticket type
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeCabin(cabin)}
+                          className="px-2 py-1.5 text-xs font-medium text-muted/80 transition hover:text-red-700"
+                        >
+                          Remove cabin
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="divide-y divide-line/70">
+                      {rows.map((entry, position) => (
+                        <div
+                          key={entry.row.uid}
+                          className="grid items-start gap-3 px-4 py-4 sm:grid-cols-6"
+                        >
+                          <input
+                            type="hidden"
+                            name="fareCabinClass"
+                            value={entry.row.cabinClass}
+                          />
+                          <input
+                            type="hidden"
+                            name="fareSortOrder"
+                            value={position + 1}
+                          />
+                          <input
+                            type="hidden"
+                            name="fareReleaseId"
+                            value={entry.row.id ?? ""}
+                          />
+                          <label className="space-y-1 text-sm sm:col-span-2">
+                            <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                              Ticket type
+                            </span>
+                            <input
+                              name="fareName"
+                              required
+                              value={entry.row.name}
+                              onChange={(e) =>
+                                updateFareRow(entry.index, {
+                                  name: e.target.value,
+                                })
+                              }
+                              className={fieldClass}
+                            />
+                          </label>
+                          <label className="space-y-1 text-sm">
+                            <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                              Seats
+                            </span>
+                            <input
+                              name="fareTotalSeats"
+                              type="number"
+                              min={0}
+                              required
+                              value={entry.row.totalSeats}
+                              onChange={(e) => {
+                                const totalSeats = Number(e.target.value);
+                                updateFareRow(entry.index, {
+                                  totalSeats,
+                                  remainingSeats: editing
+                                    ? Math.min(
+                                        entry.row.remainingSeats,
+                                        totalSeats,
+                                      )
+                                    : totalSeats,
+                                });
+                              }}
+                              className={fieldClass}
+                            />
+                          </label>
+                          <label className="space-y-1 text-sm">
+                            <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                              One-way $
+                            </span>
+                            <MoneyInput
+                              key={"ow-" + entry.row.uid + "-" + entry.row.priceCents}
+                              name="farePriceAud"
+                              required
+                              defaultValue={(entry.row.priceCents / 100).toFixed(2)}
+                              className={fieldClass}
+                            />
+                          </label>
+                          <label className="space-y-1 text-sm">
+                            <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                              Round trip $
+                            </span>
+                            <MoneyInput
+                              key={"rt-" + entry.row.uid + "-" + entry.row.roundTripPriceCents}
+                              name="fareRoundTripPriceAud"
+                              required
+                              defaultValue={(
+                                entry.row.roundTripPriceCents / 100
+                              ).toFixed(2)}
+                              className={fieldClass}
+                            />
+                          </label>
+                          <div className="flex items-end justify-end">
+                            <button
+                              type="button"
+                              onClick={() => removeFareRow(entry.index)}
+                              className="pb-3 text-xs font-medium text-muted/80 transition hover:text-red-700"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                          {editing ? (
+                            <label className="space-y-1 text-sm sm:col-span-2">
+                              <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                                Seats still for sale
+                              </span>
+                              <input
+                                name="fareRemainingSeats"
+                                type="number"
+                                min={0}
+                                required
+                                value={entry.row.remainingSeats}
+                                onChange={(e) =>
+                                  updateFareRow(entry.index, {
+                                    remainingSeats: Number(e.target.value),
+                                  })
+                                }
+                                className={fieldClass}
+                              />
+                            </label>
+                          ) : (
+                            <input
+                              type="hidden"
+                              name="fareRemainingSeats"
+                              value={entry.row.totalSeats}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="flex flex-wrap gap-3 sm:col-span-2">
@@ -1543,6 +1759,29 @@ export function AdminDashboard({
                 walkInReturnChoice === CUSTOM_FLIGHT_VALUE && (
                   <CustomFlightFields prefix="return" />
                 )}
+              <SegmentedField
+                name="cabinClass"
+                label="Cabin"
+                className="sm:col-span-2"
+                value={walkInCabin}
+                onChange={(next) => {
+                  setWalkInCabin(next as CabinClass);
+                  // Tier options are cabin-specific; drop a now-mismatched pick.
+                  setWalkInFareProductId("");
+                }}
+                options={[
+                  {
+                    value: "economy",
+                    label: "Economy",
+                    hint: walkInCabinHint("economy"),
+                  },
+                  {
+                    value: "business",
+                    label: "Business",
+                    hint: walkInCabinHint("business"),
+                  },
+                ]}
+              />
               <label className="space-y-1 text-sm sm:col-span-2">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
                   Fare tier (optional override)

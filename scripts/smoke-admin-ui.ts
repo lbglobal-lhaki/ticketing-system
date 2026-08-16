@@ -70,11 +70,13 @@ async function main() {
     await page.waitForSelector('input[name="password"]', { timeout: 20_000 });
     await page.type('input[name="password"]', password);
     await Promise.all([
-      page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 60_000 }),
+      page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 90_000 }),
       page.click('button[type="submit"]'),
     ]);
-    const signedIn = await page.$('nav button');
-    assert(Boolean(signedIn), "signed in and dashboard shell rendered");
+    // The dashboard streams in after the navigation commits — querying the
+    // shell immediately raced the redirect and tore down the execution context.
+    await page.waitForSelector("nav button", { timeout: 90_000 });
+    assert(true, "signed in and dashboard shell rendered");
 
     for (const tab of TABS) {
       console.log(`\n2) Tab: ${tab}`);

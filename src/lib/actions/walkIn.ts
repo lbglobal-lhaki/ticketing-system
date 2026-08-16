@@ -33,6 +33,11 @@ import {
 import { parseDateTimeLocal } from "@/lib/datetime";
 import { getCurrentFareRelease } from "@/lib/fares/current";
 import {
+  cabinLabel,
+  cabinsOnFlight,
+  parseCabin,
+} from "@/lib/fares/templates";
+import {
   getBankTransferDetails,
   isBankTransferConfigured,
 } from "@/lib/payments/bank";
@@ -46,6 +51,7 @@ const walkInSchema = z.object({
   flightId: z.string().min(1),
   returnFlightId: z.string().optional().or(z.literal("")),
   fareProductId: z.string().optional().or(z.literal("")),
+  cabinClass: z.enum(["economy", "business"]).default("economy"),
   passengerName: z.string().trim().min(2).max(120),
   email: z.string().trim().email(),
   passengerPhone: z.string().trim().max(40).optional().or(z.literal("")),
@@ -69,7 +75,6 @@ const customFlightSchema = z.object({
   destination: z.string().trim().length(3).transform((v) => v.toUpperCase()),
   departureAt: z.string().min(1),
   arrivalAt: z.string().min(1),
-  cabinClass: z.enum(["economy", "business"]),
   priceAud: z.coerce.number().min(0).max(100000),
 });
 
@@ -85,6 +90,8 @@ async function resolveLegFlightId(
   prefix: "outbound" | "return",
   selectedId: string,
   seats: number,
+  /** Cabin the one-off leg sells — its single fare release carries it. */
+  cabinClass: "economy" | "business",
   /** Ids of rows created here, so a failed booking can roll them back. */
   createdIds: string[],
 ): Promise<string> {
@@ -97,7 +104,6 @@ async function resolveLegFlightId(
     destination: formData.get(`${prefix}CustomDestination`),
     departureAt: formData.get(`${prefix}CustomDepartureAt`),
     arrivalAt: formData.get(`${prefix}CustomArrivalAt`),
-    cabinClass: formData.get(`${prefix}CustomCabinClass`),
     priceAud: formData.get(`${prefix}CustomPriceAud`) || "0",
   });
   if (!parsed.success) {
@@ -134,7 +140,6 @@ async function resolveLegFlightId(
       destination: data.destination,
       departureAt,
       arrivalAt,
-      cabinClass: data.cabinClass,
       currency: "AUD",
       totalSeats: seats,
       remainingSeats: seats,
@@ -142,6 +147,7 @@ async function resolveLegFlightId(
       active: false,
       fareReleases: {
         create: {
+          cabinClass,
           name: "Walk-in fare",
           sortOrder: 1,
           totalSeats: seats,
@@ -207,6 +213,7 @@ export async function createWalkInBookingAction(formData: FormData) {
     flightId: formData.get("flightId"),
     returnFlightId: formData.get("returnFlightId") || "",
     fareProductId: formData.get("fareProductId") || "",
+    cabinClass: formData.get("cabinClass") || "economy",
     passengerName: formData.get("passengerName"),
     email: formData.get("email"),
     passengerPhone: formData.get("passengerPhone") || "",
@@ -283,11 +290,27 @@ export async function createWalkInBookingAction(formData: FormData) {
   let bookingCreated = false;
 
   try {
+    /*
+     * One flight sells both cabins now, so every lookup below has to be scoped
+     * to one. A selected charter fare tier is cabin-specific and wins over the
+     * form's cabin toggle; otherwise the toggle decides.
+     */
+    const fareProduct = data.fareProductId
+      ? await prisma.charterFareProduct.findFirst({
+          where: { id: data.fareProductId, active: true },
+        })
+      : null;
+    if (data.fareProductId && !fareProduct) {
+      throw new Error("Selected fare tier is unavailable");
+    }
+    const cabinClass = parseCabin(fareProduct?.cabinClass ?? data.cabinClass);
+
     const flightId = await resolveLegFlightId(
       formData,
       "outbound",
       data.flightId,
       data.seatsBooked,
+      cabinClass,
       createdCustomFlightIds,
     );
     const returnFlightId = data.returnFlightId
@@ -296,6 +319,7 @@ export async function createWalkInBookingAction(formData: FormData) {
           "return",
           data.returnFlightId,
           data.seatsBooked,
+          cabinClass,
           createdCustomFlightIds,
         )
       : "";
@@ -315,9 +339,20 @@ export async function createWalkInBookingAction(formData: FormData) {
     const skipsSystemFarePricing = usingFareOverride || usingCustomPrice;
     const isRoundTrip = Boolean(returnFlightId);
 
-    const outboundCurrent = getCurrentFareRelease(flight.fareReleases);
+    if (!cabinsOnFlight(flight.fareReleases).includes(cabinClass)) {
+      throw new Error(
+        `Outbound flight does not sell ${cabinLabel(cabinClass)} class`,
+      );
+    }
+    const outboundCurrent = getCurrentFareRelease(
+      flight.fareReleases,
+      cabinClass,
+      { roundTrip: isRoundTrip },
+    );
     if (!outboundCurrent) {
-      throw new Error("Outbound flight has no active fare release");
+      throw new Error(
+        `Outbound flight has no active ${cabinLabel(cabinClass)} fare release`,
+      );
     }
     if (!skipsSystemFarePricing) {
       const outboundNeeded = isRoundTrip
@@ -353,9 +388,20 @@ export async function createWalkInBookingAction(formData: FormData) {
           "Return flight must match the reverse route of the outbound flight",
         );
       }
-      returnCurrent = getCurrentFareRelease(returnFlight.fareReleases);
+      if (!cabinsOnFlight(returnFlight.fareReleases).includes(cabinClass)) {
+        throw new Error(
+          `Return flight does not sell ${cabinLabel(cabinClass)} class`,
+        );
+      }
+      returnCurrent = getCurrentFareRelease(
+        returnFlight.fareReleases,
+        cabinClass,
+        { roundTrip: true },
+      );
       if (!returnCurrent) {
-        throw new Error("Return flight has no active fare release");
+        throw new Error(
+          `Return flight has no active ${cabinLabel(cabinClass)} fare release`,
+        );
       }
       if (!skipsSystemFarePricing && returnCurrent.roundTripPriceCents <= 0) {
         throw new Error(
@@ -393,17 +439,9 @@ export async function createWalkInBookingAction(formData: FormData) {
     let fareProductCode = "";
     let fareProductName = "";
     let outboundReleaseName = outboundCurrent.name;
-    if (data.fareProductId) {
-      const product = await prisma.charterFareProduct.findFirst({
-        where: { id: data.fareProductId, active: true },
-      });
-      if (!product) throw new Error("Selected fare tier is unavailable");
-      if (product.cabinClass !== flight.cabinClass) {
-        throw new Error("Selected fare tier does not match the outbound cabin");
-      }
-      if (returnFlight && returnFlight.cabinClass !== product.cabinClass) {
-        throw new Error("Selected fare tier does not match the return cabin");
-      }
+    if (fareProduct) {
+      const product = fareProduct;
+      // Cabin came from this product above, so both legs already matched it.
       fareProductCode = product.code;
       fareProductName = product.name;
       outboundReleaseName = product.name;
