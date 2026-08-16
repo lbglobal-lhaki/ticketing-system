@@ -53,7 +53,7 @@ export function ListFilterBar({
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             placeholder={placeholder}
-            className="w-full min-w-0 bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
+            className="min-h-10 w-full min-w-0 bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
           />
           {query ? (
             <button

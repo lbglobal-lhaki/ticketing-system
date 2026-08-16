@@ -41,7 +41,7 @@ export function Table({
 
 export function THead({ children }: { children: ReactNode }) {
   return (
-    <thead className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
+    <thead className="sticky top-0 z-10 [background-image:linear-gradient(180deg,rgba(37,99,235,0.07),rgba(37,99,235,0.02))] backdrop-blur-sm">
       {children}
     </thead>
   );
@@ -57,7 +57,7 @@ export function Th({ children, align = "left", className, ...rest }: ThProps) {
       scope="col"
       className={cn(
         "whitespace-nowrap border-b border-line px-4 py-3",
-        "text-xs font-medium uppercase tracking-[0.08em] text-muted",
+        "text-xs font-semibold uppercase tracking-[0.08em] text-accent-deep",
         align === "right" && "text-right",
         className,
       )}
@@ -80,7 +80,7 @@ export function Tr({
   className?: string;
 }) {
   return (
-    <tr className={cn("transition-colors hover:bg-background/70", className)}>
+    <tr className={cn("transition-colors hover:bg-accent/5", className)}>
       {children}
     </tr>
   );

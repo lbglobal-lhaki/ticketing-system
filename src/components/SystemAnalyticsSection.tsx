@@ -2,9 +2,17 @@
 
 import type { SystemAnalytics } from "@/lib/analytics/systemAnalytics";
 import { formatAud } from "@/lib/pricing";
-import { StatCard as UiStatCard } from "@/components/ui/StatCard";
+import {
+  StatCard as UiStatCard,
+  type StatTone,
+} from "@/components/ui/StatCard";
 
-function StatCard(props: { label: string; value: string; hint?: string }) {
+function StatCard(props: {
+  label: string;
+  value: string;
+  hint?: string;
+  statTone?: StatTone;
+}) {
   return <UiStatCard {...props} />;
 }
 
@@ -24,6 +32,7 @@ export function SystemAnalyticsSection({
       {/* Hero row — the four numbers ops actually check on arrival. */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
+          statTone="green"
           label="Confirmed sales"
           value={formatAud(sales.revenueCents)}
           hint={
@@ -33,16 +42,19 @@ export function SystemAnalyticsSection({
           }
         />
         <StatCard
+          statTone="red"
           label="Pending payments"
           value={formatAud(sales.pendingCents)}
           hint={`${payments.bankPendingBookings} bank holds · ${payments.unpaidInvoices} unpaid invoices`}
         />
         <StatCard
+          statTone="blue"
           label="Tickets sold"
           value={String(bookings.ticketsSold)}
           hint={`${bookings.confirmed} confirmed · ${bookings.pendingPayment} pending`}
         />
         <StatCard
+          statTone="indigo"
           label="Active flights"
           value={String(flights.active)}
           hint={`${flights.upcoming} upcoming · ${flights.inactive} hidden`}
@@ -50,8 +62,8 @@ export function SystemAnalyticsSection({
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-card border border-line bg-surface p-5 shadow-ui-sm">
-          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+        <div className="accent-top relative rounded-card border border-line bg-surface p-5 shadow-ui-sm">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-accent-deep">
             Flights & seats
           </h3>
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -74,8 +86,8 @@ export function SystemAnalyticsSection({
           </dl>
         </div>
 
-        <div className="rounded-card border border-line bg-surface p-5 shadow-ui-sm">
-          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+        <div className="accent-top relative rounded-card border border-line bg-surface p-5 shadow-ui-sm">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-accent-deep">
             Bookings
           </h3>
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -100,8 +112,8 @@ export function SystemAnalyticsSection({
           </dl>
         </div>
 
-        <div className="rounded-card border border-line bg-surface p-5 shadow-ui-sm">
-          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+        <div className="accent-top relative rounded-card border border-line bg-surface p-5 shadow-ui-sm">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-accent-deep">
             Invoices & payments
           </h3>
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -128,8 +140,8 @@ export function SystemAnalyticsSection({
           </dl>
         </div>
 
-        <div className="rounded-card border border-line bg-surface p-5 shadow-ui-sm">
-          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+        <div className="accent-top relative rounded-card border border-line bg-surface p-5 shadow-ui-sm">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-accent-deep">
             Cargo
           </h3>
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -156,8 +168,8 @@ export function SystemAnalyticsSection({
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-card border border-line bg-surface p-5 shadow-ui-sm">
-          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+        <div className="accent-top relative rounded-card border border-line bg-surface p-5 shadow-ui-sm">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-accent-deep">
             Recent bookings
           </h3>
           {analytics.recentBookings.length === 0 ? (
@@ -186,8 +198,8 @@ export function SystemAnalyticsSection({
           )}
         </div>
 
-        <div className="rounded-card border border-line bg-surface p-5 shadow-ui-sm">
-          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+        <div className="accent-top relative rounded-card border border-line bg-surface p-5 shadow-ui-sm">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-accent-deep">
             Upcoming flights
           </h3>
           {analytics.upcomingFlights.length === 0 ? (

@@ -9,6 +9,7 @@ import {
 import { SubmitButton } from "@/components/SubmitButton";
 import { updateBookingAction } from "@/lib/actions/walkIn";
 import { toDateTimeLocalValue } from "@/lib/datetime";
+import { DateTimePicker } from "@/components/ui/DateTimePicker";
 import { formatAud } from "@/lib/pricing";
 
 export type EditablePassenger = {
@@ -278,27 +279,20 @@ export function BookingEditModal({
             </label>
             {booking.status === "pending_payment" &&
             booking.paymentMethod === "bank_transfer" ? (
-              <label className="space-y-1 text-sm sm:col-span-2">
-                <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                  Seat hold expires
-                </span>
-                <input
-                  name="holdExpiresAt"
-                  type="datetime-local"
-                  required
-                  defaultValue={
-                    booking.holdExpiresAt
-                      ? toDateTimeLocalValue(new Date(booking.holdExpiresAt))
-                      : toDateTimeLocalValue(
-                          new Date(Date.now() + 48 * 60 * 60 * 1000),
-                        )
-                  }
-                  className={fieldClass}
-                />
-                <span className="block text-xs text-muted">
-                  Internal seat hold only — not written onto the invoice.
-                </span>
-              </label>
+              <DateTimePicker
+                name="holdExpiresAt"
+                label="Seat hold expires"
+                required
+                wrapperClassName="sm:col-span-2"
+                defaultValue={
+                  booking.holdExpiresAt
+                    ? toDateTimeLocalValue(new Date(booking.holdExpiresAt))
+                    : toDateTimeLocalValue(
+                        new Date(Date.now() + 48 * 60 * 60 * 1000),
+                      )
+                }
+                helper="Internal seat hold only — not written onto the invoice."
+              />
             ) : null}
             <label className="space-y-1 text-sm sm:col-span-2">
               <span className="text-xs uppercase tracking-[0.12em] text-muted">

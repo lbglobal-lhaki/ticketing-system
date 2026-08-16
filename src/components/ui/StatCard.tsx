@@ -2,6 +2,30 @@ import type { ReactNode } from "react";
 import { cn } from "@/components/ui/cn";
 import { TrendDownIcon, TrendUpIcon } from "@/components/ui/icons";
 
+/** Per-metric accent so the hero row reads at a glance. */
+export type StatTone = "blue" | "red" | "green" | "indigo";
+
+const TONE_SURFACE: Record<StatTone, string> = {
+  blue: "[background-image:var(--grad-stat-blue)]",
+  red: "[background-image:var(--grad-stat-red)]",
+  green: "[background-image:var(--grad-stat-green)]",
+  indigo: "[background-image:var(--grad-stat-indigo)]",
+};
+
+const TONE_CHIP: Record<StatTone, string> = {
+  blue: "[background-image:var(--grad-badge-info)] text-white",
+  red: "[background-image:var(--grad-badge-promo)] text-white",
+  green: "[background-color:var(--success)] text-white",
+  indigo: "[background-image:var(--grad-subtle-blue)] text-white",
+};
+
+const TONE_VALUE: Record<StatTone, string> = {
+  blue: "text-accent",
+  red: "text-accent-red",
+  green: "[color:var(--success)]",
+  indigo: "text-accent-deep",
+};
+
 export type StatCardProps = {
   label: ReactNode;
   value: ReactNode;
@@ -14,6 +38,8 @@ export type StatCardProps = {
     direction: "up" | "down";
     tone?: "positive" | "negative" | "neutral";
   };
+  /** Accent colour for this metric. */
+  statTone?: StatTone;
   className?: string;
 };
 
@@ -27,6 +53,7 @@ export function StatCard({
   hint,
   icon,
   delta,
+  statTone = "blue",
   className,
 }: StatCardProps) {
   const tone = delta?.tone ?? (delta?.direction === "up" ? "positive" : "negative");
@@ -40,7 +67,8 @@ export function StatCard({
   return (
     <div
       className={cn(
-        "rounded-card border border-line bg-surface p-5 shadow-ui-sm",
+        "accent-top relative rounded-card border border-line bg-surface p-5 shadow-ui-sm",
+        TONE_SURFACE[statTone],
         className,
       )}
     >
@@ -49,13 +77,23 @@ export function StatCard({
           {label}
         </p>
         {icon ? (
-          <span className="grid size-8 shrink-0 place-items-center rounded-control bg-accent/8 text-accent">
+          <span
+            className={cn(
+              "grid size-8 shrink-0 place-items-center rounded-control shadow-ui-sm",
+              TONE_CHIP[statTone],
+            )}
+          >
             <span className="grid size-4 place-items-center">{icon}</span>
           </span>
         ) : null}
       </div>
 
-      <p className="mt-3 font-[family-name:var(--font-syne)] text-3xl font-semibold tracking-tight text-foreground tabular-nums">
+      <p
+        className={cn(
+          "mt-3 font-[family-name:var(--font-syne)] text-3xl font-semibold tracking-tight tabular-nums",
+          TONE_VALUE[statTone],
+        )}
+      >
         {value}
       </p>
 

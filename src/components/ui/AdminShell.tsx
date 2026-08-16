@@ -82,8 +82,8 @@ export function AdminShell({
                       "text-sm transition-colors",
                       "focus-visible:outline-2 focus-visible:outline-offset-2",
                       active
-                        ? "bg-accent/10 font-medium text-accent"
-                        : "text-muted hover:bg-line/50 hover:text-foreground",
+                        ? "font-semibold text-white shadow-[0_2px_8px_rgba(37,99,235,0.25)] [background-image:var(--grad-badge-info)]"
+                        : "text-muted hover:bg-accent/8 hover:text-accent",
                     )}
                   >
                     <span className="truncate">{item.label}</span>
@@ -103,7 +103,9 @@ export function AdminShell({
       <div className="lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-8">
         {/* Desktop rail */}
         <aside className="hidden lg:block">
-          <div className="sticky top-24">{nav}</div>
+          <div className="sticky top-24 rounded-card border border-line bg-surface/80 p-3 shadow-ui-sm backdrop-blur-sm">
+            {nav}
+          </div>
         </aside>
 
         {/* Mobile drawer */}
@@ -152,7 +154,7 @@ export function AdminShell({
                 </span>
               </button>
               <div className="min-w-0">
-                <h1 className="font-[family-name:var(--font-syne)] text-2xl font-semibold tracking-tight text-foreground">
+                <h1 className="heading-gradient font-[family-name:var(--font-syne)] text-2xl font-semibold tracking-tight">
                   {title}
                 </h1>
                 {description ? (

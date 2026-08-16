@@ -22,16 +22,16 @@ export type ButtonSize = "sm" | "md" | "lg";
  * nothing depends on the marketing overrides.
  */
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary:
-    "text-white [background-color:var(--accent-deep)] hover:[background-color:var(--accent)] border border-transparent",
+  // `btn-grad` paints --grad-cta / --grad-hover from globals.css.
+  primary: "btn-grad text-white border border-transparent",
   secondary:
     "text-foreground bg-surface border border-line hover:border-accent/60 hover:bg-background",
   outline:
-    "text-accent bg-transparent border border-accent/40 hover:border-accent hover:bg-accent/5",
+    "text-accent bg-transparent border border-accent/45 hover:border-accent hover:bg-accent/8",
   ghost:
     "text-muted bg-transparent border border-transparent hover:bg-line/50 hover:text-foreground",
   destructive:
-    "text-white [background-color:var(--accent-red)] hover:opacity-90 border border-transparent",
+    "text-white [background-image:var(--grad-badge-promo)] hover:opacity-90 border border-transparent shadow-[0_2px_8px_rgba(220,38,38,0.22)]",
 };
 
 const SIZES: Record<ButtonSize, string> = {

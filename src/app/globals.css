@@ -414,37 +414,117 @@ button,
 
 /* ══════════════════════════════════════════════════════════════
    ADMIN SURFACES
-   The marketing rules above force a blue→red gradient and a large
-   drop shadow onto every `.bg-accent` / `.bg-accent-deep` control,
-   site-wide and with !important. That reads as loud inside a dense
-   operations console, so admin opts out: same accent hex, painted
-   flat, with hover falling back to the existing lighter accent.
-   Scoped to `.admin-ui` so the customer site is untouched.
+   Admin keeps the brand gradients rather than flattening them, but
+   at console scale: tighter shadows and no lift-on-hover, so a dense
+   page of controls still reads as calm. Every colour below is an
+   existing brand token — nothing new is invented here.
    ══════════════════════════════════════════════════════════════ */
+.admin-ui {
+  /* Tinted page ground so white cards read as raised, not as the page. */
+  --grad-admin-page: radial-gradient(
+      ellipse at 8% -4%,
+      rgba(37, 99, 235, 0.1),
+      transparent 46%
+    ),
+    radial-gradient(ellipse at 96% 4%, rgba(220, 38, 38, 0.06), transparent 40%),
+    linear-gradient(180deg, #f6f8fd 0%, #f8fafc 38%, #eef2ff 100%);
+
+  /* Per-metric accents so the hero row is colour-coded, not four greys. */
+  --grad-stat-blue: linear-gradient(135deg, rgba(37, 99, 235, 0.13), rgba(37, 99, 235, 0.02));
+  --grad-stat-red: linear-gradient(135deg, rgba(220, 38, 38, 0.12), rgba(220, 38, 38, 0.02));
+  --grad-stat-green: linear-gradient(135deg, rgba(22, 163, 74, 0.13), rgba(22, 163, 74, 0.02));
+  --grad-stat-indigo: linear-gradient(135deg, rgba(30, 58, 138, 0.13), rgba(30, 58, 138, 0.02));
+}
+
 .admin-ui :is(button, a, label, [role="tab"]).bg-accent-deep,
 .admin-ui .bg-accent-deep.text-white {
-  background-image: none !important;
-  background-color: var(--accent-deep) !important;
-  box-shadow: none !important;
+  background-image: var(--grad-cta) !important;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.22) !important;
 }
 
 .admin-ui :is(button, a, label, [role="tab"]).bg-accent-deep:hover:not(:disabled),
 .admin-ui .bg-accent-deep.text-white:hover {
-  background-image: none !important;
-  background-color: var(--accent) !important;
+  background-image: var(--grad-hover) !important;
+  /* No translate — rows of controls should not jitter under the cursor. */
   transform: none !important;
 }
 
 .admin-ui :is(button, a).bg-accent:not([class*="/"]) {
-  background-image: none !important;
-  background-color: var(--accent) !important;
-  box-shadow: none !important;
+  background-image: var(--grad-badge-info) !important;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.2) !important;
 }
 
 .admin-ui :is(button, a).bg-accent:not([class*="/"]):hover:not(:disabled) {
-  background-image: none !important;
-  background-color: var(--accent-deep) !important;
+  background-image: var(--grad-hover) !important;
   transform: none !important;
+}
+
+/* Gradient-filled primaries built from tokens (the ui/Button primitive). */
+.admin-ui .btn-grad {
+  background-image: var(--grad-cta);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.22);
+}
+
+.admin-ui .btn-grad:hover:not(:disabled) {
+  background-image: var(--grad-hover);
+}
+
+.admin-ui .btn-grad:disabled {
+  background-image: none;
+  background-color: #94a3b8;
+  box-shadow: none;
+}
+
+/* Hairline of brand colour along the top of a panel. */
+.admin-ui .accent-top {
+  position: relative;
+  overflow: hidden;
+}
+
+.admin-ui .accent-top::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: var(--grad-card-accent);
+}
+
+/*
+ * Touch targets. Checkboxes stay visually 16px and inline text buttons keep
+ * their type size, but both get a transparent ::after that extends the
+ * clickable box to ~40px. Nothing moves; the target just gets easier to hit
+ * on a laptop trackpad or a phone.
+ */
+.admin-ui input[type="checkbox"],
+.admin-ui input[type="radio"] {
+  position: relative;
+}
+
+.admin-ui input[type="checkbox"]::after,
+.admin-ui input[type="radio"]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 40px;
+  height: 40px;
+  transform: translate(-50%, -50%);
+}
+
+/* Inline text actions inside dense rows ("Edit details", "Remove", …). */
+.admin-ui .tap-target {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.5rem;
+}
+
+/* Search fields sit inside their own bordered shell — grow the field itself. */
+.admin-ui input[type="search"],
+.admin-ui input[type="text"]:not(.sr-only),
+.admin-ui input[type="email"],
+.admin-ui input[type="number"] {
+  min-height: 1.75rem;
 }
 
 /* Micro-interactions only: 150ms controls, 200ms overlays. */

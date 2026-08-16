@@ -285,8 +285,8 @@ export default async function AdminPage({
   const initialTab = parseTab(params.tab) ?? "analytics";
 
   return (
-    <main className="admin-ui min-h-[calc(100svh-4rem)] bg-background">
-      <div className="border-b border-line bg-surface">
+    <main className="admin-ui min-h-[calc(100svh-4rem)] [background-image:var(--grad-admin-page)]">
+      <div className="accent-top border-b border-line bg-surface/85 backdrop-blur-sm">
         <div className="mx-auto flex w-full max-w-[100rem] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-2.5">
             <img
@@ -296,9 +296,11 @@ export default async function AdminPage({
               height={28}
               className="size-7 shrink-0 object-contain"
             />
-            <p className="truncate text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-              {process.env.NEXT_PUBLIC_BRAND_SHORT_NAME || "L&B Global"}
-              <span className="text-muted/60"> · Operations</span>
+            <p className="truncate text-xs font-semibold uppercase tracking-[0.14em]">
+              <span className="heading-gradient">
+                {process.env.NEXT_PUBLIC_BRAND_SHORT_NAME || "L&B Global"}
+              </span>
+              <span className="text-muted/70"> · Operations</span>
             </p>
           </div>
           <form action={logout}>

@@ -64,6 +64,18 @@ import {
 import { formatAud } from "@/lib/pricing";
 import { AdminShell, type NavGroup } from "@/components/ui/AdminShell";
 import { Button } from "@/components/ui/Button";
+import { DateTimePicker } from "@/components/ui/DateTimePicker";
+import { Badge } from "@/components/ui/Badge";
+import { Menu, MenuDivider, MenuItem } from "@/components/ui/Menu";
+import {
+  Table,
+  TableWrap,
+  TBody,
+  Td,
+  Th,
+  THead,
+  Tr,
+} from "@/components/ui/Table";
 import { Alert } from "@/components/ui/Feedback";
 
 const CUSTOM_FLIGHT_VALUE = "__custom__";
@@ -242,6 +254,35 @@ const CABIN_SEGMENTS = [
   { value: "economy", label: "Economy" },
 ];
 
+/**
+ * Titled block inside a long admin form. Purely a container — the fields keep
+ * their names, values and validation; this only groups them so the form reads
+ * as three short steps instead of one wall.
+ */
+function FormSection({
+  title,
+  description,
+  children,
+  className,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <section
+      className={`rounded-card border border-line bg-surface p-5 shadow-ui-sm sm:col-span-2 ${className ?? ""}`}
+    >
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      {description ? (
+        <p className="mt-1 max-w-xl text-sm text-muted">{description}</p>
+      ) : null}
+      <div className="mt-4 grid gap-5 sm:grid-cols-2">{children}</div>
+    </section>
+  );
+}
+
 function cabinLabel(cabin: CabinClass) {
   return cabin === "business" ? "Business" : "Economy";
 }
@@ -391,28 +432,18 @@ function CustomFlightFields({ prefix }: { prefix: "outbound" | "return" }) {
             className={`${fieldClass} uppercase`}
           />
         </label>
-        <label className="space-y-1 text-sm">
-          <span className="text-xs uppercase tracking-[0.12em] text-muted">
-            Departs at
-          </span>
-          <input
-            name={`${prefix}CustomDepartureAt`}
-            type="datetime-local"
-            required
-            className={fieldClass}
-          />
-        </label>
-        <label className="space-y-1 text-sm">
-          <span className="text-xs uppercase tracking-[0.12em] text-muted">
-            Arrives at
-          </span>
-          <input
-            name={`${prefix}CustomArrivalAt`}
-            type="datetime-local"
-            required
-            className={fieldClass}
-          />
-        </label>
+        <DateTimePicker
+          name={`${prefix}CustomDepartureAt`}
+          label="Departs at"
+          required
+          placeholder="Pick date and time"
+        />
+        <DateTimePicker
+          name={`${prefix}CustomArrivalAt`}
+          label="Arrives at"
+          required
+          placeholder="Pick date and time"
+        />
         <SegmentedField
           name={`${prefix}CustomCabinClass`}
           label="Cabin"
@@ -479,6 +510,13 @@ export function AdminDashboard({
   const [bookingFilter, setBookingFilter] = useState("all");
   const [walkInOutboundChoice, setWalkInOutboundChoice] = useState("");
   const [walkInReturnChoice, setWalkInReturnChoice] = useState("");
+  /**
+   * True when the admin has chosen to pick the return leg themselves instead
+   * of taking the flight's fixed pairing. The server never required the paired
+   * leg — it only checks the return departs later, runs the reverse route and
+   * sells the same cabin — so any valid flight is accepted here too.
+   */
+  const [walkInManualReturn, setWalkInManualReturn] = useState(false);
   const [walkInFareProductId, setWalkInFareProductId] = useState("");
   const [walkInCabin, setWalkInCabin] = useState<CabinClass>("economy");
   const [walkInTripType, setWalkInTripType] = useState<TripType>("one_way");
@@ -538,6 +576,7 @@ export function AdminDashboard({
       setWalkInFormKey((k) => k + 1);
       setWalkInOutboundChoice("");
       setWalkInReturnChoice("");
+      setWalkInManualReturn(false);
       setWalkInFareProductId("");
       setWalkInCabin("economy");
       setWalkInTripType("one_way");
@@ -584,11 +623,51 @@ export function AdminDashboard({
       walkInPairedReturn.active &&
       walkInPairedReturn.remainingSeats > 0,
   );
-  // Manual return picker only appears when there's no fixed pairing to fall
-  // back on (custom flights or flights that were never paired).
+  /*
+   * The picker shows when there is no pairing to fall back on, or when the
+   * admin has explicitly asked to choose the return themselves. Exactly one of
+   * the picker and the auto-attached hidden input is ever rendered, so only one
+   * `returnFlightId` is submitted.
+   */
   const walkInNeedsManualReturn =
     walkInTripType === "round_trip" &&
-    (!walkInCanAutoRoundTrip || walkInOutboundChoice === CUSTOM_FLIGHT_VALUE);
+    (!walkInCanAutoRoundTrip ||
+      walkInOutboundChoice === CUSTOM_FLIGHT_VALUE ||
+      walkInManualReturn);
+
+  const walkInUsesPairedReturn =
+    walkInTripType === "round_trip" &&
+    walkInCanAutoRoundTrip &&
+    walkInOutboundChoice !== CUSTOM_FLIGHT_VALUE &&
+    !walkInManualReturn;
+
+  /**
+   * Return legs the server will actually accept: reverse route, departing
+   * after the outbound, still on sale. Anything else would come back as a
+   * validation error, so it is not offered. "Custom flight" stays available
+   * for legs that are not in the system at all.
+   */
+  const walkInReturnOptions = useMemo<ComboboxOption[]>(() => {
+    const out = walkInOutboundFlight;
+    const candidates = flights.filter((f) => {
+      if (!f.active || f.remainingSeats <= 0) return false;
+      if (!out) return true;
+      if (f.id === out.id) return false;
+      if (f.origin !== out.destination || f.destination !== out.origin) {
+        return false;
+      }
+      return new Date(f.departureAt) > new Date(out.departureAt);
+    });
+    return [
+      {
+        value: CUSTOM_FLIGHT_VALUE,
+        label: "+ Custom flight (not in system)",
+        description: "Type the airline, route and times by hand",
+        keywords: "custom manual new other adhoc",
+      },
+      ...candidates.map((f) => flightOption(f, { showSeats: true })),
+    ];
+  }, [flights, walkInOutboundFlight]);
 
   const editing = useMemo(
     () => flights.find((f) => f.id === editingId) ?? null,
@@ -953,7 +1032,7 @@ export function AdminDashboard({
               <button
                 type="button"
                 onClick={() => setFareTripMode("one_way")}
-                className={`rounded-full px-4 py-2 transition ${
+                className={`!rounded-full px-4 py-2 transition ${
                   fareTripMode === "one_way"
                     ? "bg-accent-deep text-white"
                     : "text-muted hover:text-foreground"
@@ -964,7 +1043,7 @@ export function AdminDashboard({
               <button
                 type="button"
                 onClick={() => setFareTripMode("round_trip")}
-                className={`rounded-full px-4 py-2 transition ${
+                className={`!rounded-full px-4 py-2 transition ${
                   fareTripMode === "round_trip"
                     ? "bg-accent-deep text-white"
                     : "text-muted hover:text-foreground"
@@ -1183,7 +1262,7 @@ export function AdminDashboard({
                       <button
                         type="button"
                         onClick={() => openEdit(f.id)}
-                        className="font-medium text-accent transition hover:text-accent-deep"
+                        className="tap-target font-medium text-accent transition hover:text-accent-deep"
                       >
                         Edit details
                       </button>
@@ -1229,60 +1308,104 @@ export function AdminDashboard({
                     </div>
                   </div>
 
-                  <div className="mt-4 space-y-3 border-t border-line/70 pt-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                      Fare releases ·{" "}
+                  {/*
+                    Grouped by cabin. Both cabins ship tiers called "Early Bird"
+                    and "Final Release", so a flat list showed each name twice
+                    with nothing to tell them apart — the price boxes looked
+                    duplicated. Each row now sits under a cabin heading and
+                    names itself "Business · Early Bird".
+                  */}
+                  {/*
+                    Collapsed by default: six priced tiers per flight across
+                    thirty flights meant ~180 open input boxes on one page.
+                    The list is now scannable and prices are one click away.
+                  */}
+                  <details className="group mt-4 border-t border-line/70 pt-3">
+                    <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 text-xs font-semibold uppercase tracking-[0.1em] text-muted [&::-webkit-details-marker]:hidden">
+                      <span
+                        aria-hidden
+                        className="transition-transform group-open:rotate-180"
+                      >
+                        ▾
+                      </span>
+                      Ticket prices ·{" "}
                       {fareTripMode === "round_trip"
                         ? "Round-trip package"
-                        : "One-way price"}
-                    </p>
-                    {f.fareReleases.map((release) => {
-                      const activeCents =
-                        fareTripMode === "round_trip"
-                          ? (release.roundTripPriceCents ?? 0)
-                          : (release.priceCents ?? 0);
-                      return (
-                      <form
-                        key={`${release.id}-${fareTripMode}-${activeCents}`}
-                        action={updateFarePriceAction}
-                        className="flex flex-wrap items-end gap-3"
-                      >
-                        <input type="hidden" name="id" value={release.id} />
-                        <input
-                          type="hidden"
-                          name="priceKind"
-                          value={fareTripMode}
-                        />
-                        <div className="min-w-[10rem] flex-1">
-                          <p className="text-sm font-medium">{release.name}</p>
+                        : "One way"}
+                    </summary>
+                    <div className="mt-3 space-y-4">
+                    {cabinSeatsOf(f).map(({ cabin, total, remaining }) => (
+                      <div key={cabin} className="space-y-2">
+                        <div className="flex flex-wrap items-baseline gap-x-2">
+                          <p className="text-sm font-semibold text-foreground">
+                            {cabinLabel(cabin)}
+                          </p>
                           <p className="text-xs text-muted">
-                            {release.remainingSeats}/{release.totalSeats} seats
-                            · saved {formatAud(activeCents)}
+                            {remaining}/{total} seats left
                           </p>
                         </div>
-                        <label className="space-y-1 text-sm">
-                          <span className="text-xs uppercase tracking-[0.14em] text-muted">
-                            {fareTripMode === "round_trip"
-                              ? "RT price (AUD)"
-                              : "Price (AUD)"}
-                          </span>
-                          <MoneyInput
-                            name="priceAud"
-                            required
-                            defaultValue={(activeCents / 100).toFixed(2)}
-                            className="w-44 border border-line bg-white py-2 pr-3 outline-none focus:border-accent"
-                          />
-                        </label>
-                        <SubmitButton
-                          pendingLabel="Saving…"
-                          className="bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-deep disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Update price
-                        </SubmitButton>
-                      </form>
-                      );
-                    })}
-                  </div>
+                        {f.fareReleases
+                          .filter((r) => r.cabinClass === cabin)
+                          .map((release) => {
+                            const activeCents =
+                              fareTripMode === "round_trip"
+                                ? (release.roundTripPriceCents ?? 0)
+                                : (release.priceCents ?? 0);
+                            return (
+                              <form
+                                key={`${release.id}-${fareTripMode}-${activeCents}`}
+                                action={updateFarePriceAction}
+                                className="flex flex-wrap items-end gap-3 rounded-card border border-line bg-background/60 px-3 py-2.5"
+                              >
+                                <input
+                                  type="hidden"
+                                  name="id"
+                                  value={release.id}
+                                />
+                                <input
+                                  type="hidden"
+                                  name="priceKind"
+                                  value={fareTripMode}
+                                />
+                                <div className="min-w-[12rem] flex-1">
+                                  <p className="text-sm font-medium text-foreground">
+                                    <span className="text-muted">
+                                      {cabinLabel(cabin)} ·{" "}
+                                    </span>
+                                    {release.name}
+                                  </p>
+                                  <p className="text-xs text-muted">
+                                    {release.remainingSeats}/
+                                    {release.totalSeats} seats · saved{" "}
+                                    {formatAud(activeCents)}
+                                  </p>
+                                </div>
+                                <label className="space-y-1 text-sm">
+                                  <span className="text-xs uppercase tracking-[0.1em] text-muted">
+                                    {fareTripMode === "round_trip"
+                                      ? "Round trip"
+                                      : "One way"}
+                                  </span>
+                                  <MoneyInput
+                                    name="priceAud"
+                                    required
+                                    defaultValue={(activeCents / 100).toFixed(2)}
+                                    className="w-40 rounded-control border border-line bg-surface px-3 py-2 text-sm outline-none transition-colors focus:border-accent"
+                                  />
+                                </label>
+                                <SubmitButton
+                                  pendingLabel="Saving…"
+                                  className="inline-flex min-h-10 items-center rounded-control border border-line bg-surface px-4 text-sm font-medium text-foreground transition-colors hover:border-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  Update
+                                </SubmitButton>
+                              </form>
+                            );
+                          })}
+                      </div>
+                    ))}
+                    </div>
+                  </details>
                 </li>
               ))}
             </ul>
@@ -1294,25 +1417,18 @@ export function AdminDashboard({
       )}
 
       {tab === "form" && (
-        <section className="border border-line bg-surface/80 p-6 sm:p-8">
-          <div className="max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">
-              {editing ? "Edit" : "New"}
-            </p>
-            <h2 className="mt-2 font-[family-name:var(--font-syne)] text-3xl font-semibold tracking-tight">
-              {editing ? "Edit flight" : "Add a flight"}
-            </h2>
-            <p className="mt-2 text-sm text-muted">
-              One flight, both cabins. Defaults to a 140-seat aircraft —
-              Business 20 and Economy 120 — but every cabin, ticket type, seat
-              count and price below is yours to change.
-            </p>
-          </div>
+        <section>
+          {/* The shell already renders the page heading for this section. */}
+          <p className="max-w-2xl text-sm text-muted">
+            One flight, both cabins. Defaults to a 140-seat aircraft — Business
+            20 and Economy 120 — but every cabin, ticket type, seat count and
+            price below is yours to change.
+          </p>
 
           <form
             key={editing?.id ?? "new"}
             action={editing ? updateFlightAction : createFlightAction}
-            className="mt-8 grid max-w-3xl gap-6 sm:grid-cols-2"
+            className="mt-8 grid max-w-4xl gap-6 sm:grid-cols-2"
           >
             {editing && <input type="hidden" name="id" value={editing.id} />}
             <input
@@ -1321,6 +1437,10 @@ export function AdminDashboard({
               value={new Date().getTimezoneOffset()}
             />
 
+            <FormSection
+              title="Schedule"
+              description="Which aircraft flies where, and when."
+            >
             <label className="space-y-1 text-sm">
               <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
                 Airline
@@ -1371,41 +1491,35 @@ export function AdminDashboard({
                 className={`${fieldClass} uppercase`}
               />
             </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
-                Leaves at
-              </span>
-              <input
-                name="departureAt"
-                type="datetime-local"
-                required
-                defaultValue={
-                  editing
-                    ? toDateTimeLocalValue(new Date(editing.departureAt))
-                    : ""
-                }
-                className={fieldClass}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
-                Arrives at
-              </span>
-              <input
-                name="arrivalAt"
-                type="datetime-local"
-                required
-                defaultValue={
-                  editing
-                    ? toDateTimeLocalValue(new Date(editing.arrivalAt))
-                    : ""
-                }
-                className={fieldClass}
-              />
-            </label>
+            <DateTimePicker
+              name="departureAt"
+              label="Leaves at"
+              required
+              defaultValue={
+                editing
+                  ? toDateTimeLocalValue(new Date(editing.departureAt))
+                  : ""
+              }
+            />
+            <DateTimePicker
+              name="arrivalAt"
+              label="Arrives at"
+              required
+              defaultValue={
+                editing
+                  ? toDateTimeLocalValue(new Date(editing.arrivalAt))
+                  : ""
+              }
+            />
+            </FormSection>
+
+            <FormSection
+              title="Round-trip pairing"
+              description="Optional. Pair this outbound leg with its return so customers can book both in one go."
+            >
             <label className="space-y-1 text-sm sm:col-span-2">
               <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
-                Round-trip partner flight (optional)
+                Partner flight
               </span>
               <Combobox
                 name="returnLegFlightId"
@@ -1423,7 +1537,9 @@ export function AdminDashboard({
               </span>
             </label>
 
-            <div className="sm:col-span-2 space-y-5 border border-line bg-white/50 p-4">
+            </FormSection>
+
+            <div className="sm:col-span-2 space-y-5 rounded-card border border-line bg-surface p-5 shadow-ui-sm">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <p className="font-[family-name:var(--font-syne)] text-lg font-semibold">
@@ -1489,14 +1605,14 @@ export function AdminDashboard({
                         <button
                           type="button"
                           onClick={() => addFareRow(cabin)}
-                          className="border border-line px-3 py-1.5 text-xs font-medium text-accent transition hover:border-accent"
+                          className="tap-target rounded-control border border-line px-3 text-xs font-medium text-accent transition hover:border-accent"
                         >
                           + Add ticket type
                         </button>
                         <button
                           type="button"
                           onClick={() => removeCabin(cabin)}
-                          className="px-2 py-1.5 text-xs font-medium text-muted/80 transition hover:text-red-700"
+                          className="tap-target rounded-control px-2 text-xs font-medium text-muted/80 transition hover:text-accent-red"
                         >
                           Remove cabin
                         </button>
@@ -1567,7 +1683,7 @@ export function AdminDashboard({
                           </label>
                           <label className="space-y-1 text-sm">
                             <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                              One-way $
+                              One-way
                             </span>
                             <MoneyInput
                               key={"ow-" + entry.row.uid + "-" + entry.row.priceCents}
@@ -1579,7 +1695,7 @@ export function AdminDashboard({
                           </label>
                           <label className="space-y-1 text-sm">
                             <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                              Round trip $
+                              Round trip
                             </span>
                             <MoneyInput
                               key={"rt-" + entry.row.uid + "-" + entry.row.roundTripPriceCents}
@@ -1595,7 +1711,7 @@ export function AdminDashboard({
                             <button
                               type="button"
                               onClick={() => removeFareRow(entry.index)}
-                              className="pb-3 text-xs font-medium text-muted/80 transition hover:text-red-700"
+                              className="tap-target text-xs font-medium text-muted/80 transition hover:text-accent-red"
                             >
                               Remove
                             </button>
@@ -1637,7 +1753,7 @@ export function AdminDashboard({
             <div className="flex flex-wrap gap-3 sm:col-span-2">
               <SubmitButton
                 pendingLabel={editing ? "Saving…" : "Publishing…"}
-                className="bg-accent-deep px-5 py-3 text-sm font-semibold tracking-wide text-white transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+                className="btn-grad inline-flex min-h-10 items-center rounded-control px-5 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {editing ? "Save changes" : "Publish flight"}
               </SubmitButton>
@@ -1647,7 +1763,7 @@ export function AdminDashboard({
                   setEditingId(null);
                   selectTab("flights");
                 }}
-                className="border border-line px-5 py-3 text-sm font-medium text-muted transition hover:border-accent hover:text-foreground"
+                className="inline-flex min-h-10 items-center rounded-control border border-line bg-surface px-5 text-sm font-medium text-muted transition-colors hover:border-accent/60 hover:text-foreground"
               >
                 Back to flights
               </button>
@@ -1661,11 +1777,11 @@ export function AdminDashboard({
       {tab === "bookings" && (
         <section className="space-y-8">
 
-          <div className="border border-line bg-surface/80 p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">
+          <div className="rounded-card border border-line bg-surface p-5 shadow-ui-sm sm:p-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
               Walk-in
             </p>
-            <h3 className="mt-2 font-[family-name:var(--font-syne)] text-xl font-semibold">
+            <h3 className="mt-1.5 text-base font-semibold text-foreground">
               Book for a client
             </h3>
             <p className="mt-1 text-sm text-muted">
@@ -1679,6 +1795,10 @@ export function AdminDashboard({
               action={createWalkInBookingAction}
               className="mt-6 grid gap-4 sm:grid-cols-2"
             >
+              <FormSection
+                title="Flight"
+                description="Pick the departure, then the cabin and fare this booking is sold on."
+              >
               <label className="space-y-1 text-sm sm:col-span-2">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
                   Flight
@@ -1690,6 +1810,7 @@ export function AdminDashboard({
                   onChange={(next) => {
                     setWalkInOutboundChoice(next);
                     setWalkInReturnChoice("");
+                    setWalkInManualReturn(false);
                     setWalkInTripType("one_way");
                   }}
                   placeholder="Select outbound flight"
@@ -1712,6 +1833,7 @@ export function AdminDashboard({
                       onClick={() => {
                         setWalkInTripType("one_way");
                         setWalkInReturnChoice("");
+                        setWalkInManualReturn(false);
                       }}
                       className={`rounded-full px-4 py-2 transition ${
                         walkInTripType === "one_way"
@@ -1733,33 +1855,59 @@ export function AdminDashboard({
                       Round trip
                     </button>
                   </div>
-                  {walkInTripType === "round_trip" &&
-                    walkInCanAutoRoundTrip &&
-                    walkInPairedReturn && (
-                      <>
-                        <input
-                          type="hidden"
-                          name="returnFlightId"
-                          value={walkInPairedReturn.id}
-                        />
+                  {walkInUsesPairedReturn && walkInPairedReturn && (
+                    <>
+                      <input
+                        type="hidden"
+                        name="returnFlightId"
+                        value={walkInPairedReturn.id}
+                      />
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-card border border-line bg-background/60 px-3 py-2.5">
                         <p className="text-xs text-muted">
-                          Fixed return leg auto-attached: {walkInPairedReturn.airline}{" "}
-                          {walkInPairedReturn.flightNumber} ·{" "}
-                          {walkInPairedReturn.origin}→
+                          Paired return attached:{" "}
+                          <span className="font-medium text-foreground">
+                            {walkInPairedReturn.airline}{" "}
+                            {walkInPairedReturn.flightNumber}
+                          </span>{" "}
+                          · {walkInPairedReturn.origin}→
                           {walkInPairedReturn.destination} ·{" "}
-                          {new Date(
-                            walkInPairedReturn.departureAt,
-                          ).toLocaleString("en-AU")}
+                          {formatFlightDateTime(walkInPairedReturn.departureAt)}
                         </p>
-                      </>
-                    )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setWalkInManualReturn(true);
+                            setWalkInReturnChoice("");
+                          }}
+                          className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+                        >
+                          Choose a different return
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
               {walkInNeedsManualReturn && (
                 <label className="space-y-1 text-sm sm:col-span-2">
-                  <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                    Return flight
+                  <span className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                      Return flight
+                    </span>
+                    {walkInCanAutoRoundTrip &&
+                    walkInOutboundChoice !== CUSTOM_FLIGHT_VALUE ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWalkInManualReturn(false);
+                          setWalkInReturnChoice("");
+                        }}
+                        className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+                      >
+                        Use the paired return instead
+                      </button>
+                    ) : null}
                   </span>
                   <Combobox
                     name="returnFlightId"
@@ -1768,8 +1916,12 @@ export function AdminDashboard({
                     onChange={setWalkInReturnChoice}
                     placeholder="Select return flight"
                     searchPlaceholder="Flight number, route, date…"
-                    options={bookableFlightOptions}
+                    options={walkInReturnOptions}
                   />
+                  <span className="block text-xs text-muted">
+                    Showing flights on the reverse route that depart after the
+                    outbound leg and still have seats.
+                  </span>
                 </label>
               )}
               {walkInNeedsManualReturn &&
@@ -1817,28 +1969,42 @@ export function AdminDashboard({
                   the cabin of the flight(s) chosen above.
                 </span>
               </label>
-              <label className="space-y-1 text-sm sm:col-span-2">
-                <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                  Custom total price (AUD, optional)
-                </span>
-                <MoneyInput
-                  name="customPriceAud"
-                  placeholder="Leave blank to use system price"
-                  className={fieldClass}
-                />
-                <span className="block text-xs text-muted">
-                  Overrides everything above — the fare release price and any
-                  fare tier selected — with this exact total for the whole
-                  booking (all seats/legs, before baggage).
-                </span>
-              </label>
+              <details className="group sm:col-span-2">
+                <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 text-sm font-medium text-accent [&::-webkit-details-marker]:hidden">
+                  <span aria-hidden className="transition-transform group-open:rotate-180">
+                    ▾
+                  </span>
+                  Override the price
+                </summary>
+                <label className="mt-3 block space-y-1 text-sm">
+                  <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                    Custom total price (AUD)
+                  </span>
+                  <MoneyInput
+                    name="customPriceAud"
+                    placeholder="Leave blank to use system price"
+                    className={fieldClass}
+                  />
+                  <span className="block text-xs text-muted">
+                    Overrides everything above — the fare release price and any
+                    fare tier selected — with this exact total for the whole
+                    booking (all seats/legs, before baggage).
+                  </span>
+                </label>
+              </details>
               <input
                 type="hidden"
                 name="tzOffsetMinutes"
                 value={new Date().getTimezoneOffset()}
               />
-              <div className="sm:col-span-2 space-y-3 border border-line bg-white/50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              </FormSection>
+
+              <FormSection
+                title="Travellers"
+                description="The lead contact receives the confirmation email; everyone else is listed on the documents."
+              >
+              <div className="sm:col-span-2 space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
                   Primary passenger (contact)
                 </p>
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -1921,6 +2087,12 @@ export function AdminDashboard({
                   ) : null}
                 </p>
               </div>
+              </FormSection>
+
+              <FormSection
+                title="Payment"
+                description="Cash and card are marked paid immediately. Bank transfer holds the seats until the expiry you set."
+              >
               <label className="space-y-1 text-sm">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
                   Extra baggage (kg)
@@ -1983,44 +2155,49 @@ export function AdminDashboard({
                 ]}
               />
               {walkInPaymentMethod === "bank_transfer" ? (
-                <label className="space-y-1 text-sm sm:col-span-2">
-                  <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                    Seat hold expires
-                  </span>
-                  <input
-                    name="holdExpiresAt"
-                    type="datetime-local"
-                    required
-                    defaultValue={toDateTimeLocalValue(
-                      bankHoldExpiresAt(new Date(), 48),
-                    )}
-                    className={fieldClass}
-                  />
-                  <span className="block text-xs text-muted">
-                    Seats stay reserved until this time. This is not shown on
-                    the invoice — set an invoice due date separately if needed.
-                  </span>
-                </label>
-              ) : null}
-              <GstModeFields defaultMode="none" className="sm:col-span-2" />
-              <label className="space-y-1 text-sm sm:col-span-2">
-                <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                  Custom GST (AUD) — optional
-                </span>
-                <MoneyInput
-                  name="customGstAud"
-                  defaultValue=""
-                  className={fieldClass}
+                <DateTimePicker
+                  name="holdExpiresAt"
+                  label="Seat hold expires"
+                  required
+                  wrapperClassName="sm:col-span-2"
+                  defaultValue={toDateTimeLocalValue(
+                    bankHoldExpiresAt(new Date(), 48),
+                  )}
+                  helper="Seats stay reserved until this time. Not shown on the invoice — set an invoice due date separately if needed."
                 />
-                <span className="block text-xs text-muted">
-                  Leave blank to use None / Exclusive / Inclusive above. Enter an
-                  amount to set GST exactly (added on top of the fare).
-                </span>
-              </label>
+              ) : null}
+              <details className="group sm:col-span-2">
+                <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 text-sm font-medium text-accent [&::-webkit-details-marker]:hidden">
+                  <span aria-hidden className="transition-transform group-open:rotate-180">
+                    ▾
+                  </span>
+                  GST options
+                </summary>
+                <div className="mt-3 space-y-4">
+                  <GstModeFields defaultMode="none" />
+                  <label className="block space-y-1 text-sm">
+                    <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                      Custom GST (AUD)
+                    </span>
+                    <MoneyInput
+                      name="customGstAud"
+                      defaultValue=""
+                      className={fieldClass}
+                    />
+                    <span className="block text-xs text-muted">
+                      Leave blank to use None / Exclusive / Inclusive above.
+                      Enter an amount to set GST exactly (added on top of the
+                      fare).
+                    </span>
+                  </label>
+                </div>
+              </details>
+              </FormSection>
+
               <div className="sm:col-span-2">
                 <SubmitButton
                   pendingLabel="Creating booking…"
-                  className="bg-accent-deep px-5 py-3 text-sm font-semibold text-white transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+                  className="btn-grad inline-flex min-h-10 items-center rounded-control px-5 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Create walk-in booking
                 </SubmitButton>
@@ -2090,32 +2267,32 @@ export function AdminDashboard({
                 }}
               />
             ) : (
-            <div className="overflow-x-auto border-y border-line bg-surface/60">
-              <table className="w-full min-w-[1040px] text-left text-sm">
-                <thead>
-                  <tr className="border-b border-line text-xs uppercase tracking-[0.12em] text-muted">
-                    <th className="px-4 py-3 font-medium">
+            <TableWrap>
+              <Table className="min-w-[1040px]">
+                <THead>
+                  <Tr>
+                    <Th>
                       <SelectAllCheckbox
                         allSelected={bookingBulk.allSelected}
                         someSelected={bookingBulk.someSelected}
                         onToggle={bookingBulk.toggleAll}
                       />
-                    </th>
-                    <th className="px-4 py-3 font-medium">Ref</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium">Payment</th>
-                    <th className="px-4 py-3 font-medium">Source</th>
-                    <th className="px-4 py-3 font-medium">Customer</th>
-                    <th className="px-4 py-3 font-medium">Cabin</th>
-                    <th className="px-4 py-3 font-medium">Flights</th>
-                    <th className="px-4 py-3 font-medium">Amount</th>
-                    <th className="px-4 py-3 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
+                    </Th>
+                    <Th>Ref</Th>
+                    <Th>Status</Th>
+                    <Th>Payment</Th>
+                    <Th>Source</Th>
+                    <Th>Customer</Th>
+                    <Th>Cabin</Th>
+                    <Th>Flights</Th>
+                    <Th align="right">Amount</Th>
+                    <Th align="right">Actions</Th>
+                  </Tr>
+                </THead>
+                <TBody>
                   {visibleBookings.map((b) => (
-                    <tr key={b.id} className="border-b border-line/70">
-                      <td className="px-4 py-4 align-top">
+                    <Tr key={b.id}>
+                      <Td>
                         <input
                           type="checkbox"
                           aria-label={`Select ${b.bookingRef}`}
@@ -2123,21 +2300,31 @@ export function AdminDashboard({
                           onChange={() => bookingBulk.toggle(b.id)}
                           className="size-4 accent-accent-deep"
                         />
-                      </td>
-                      <td className="px-4 py-4">
+                      </Td>
+                      <Td>
                         <p className="font-medium">{b.bookingRef}</p>
                         <p className="text-xs text-muted">{b.ticketNumber}</p>
-                      </td>
-                      <td className="px-4 py-4 text-muted">
-                        {b.status.replaceAll("_", " ")}
+                      </Td>
+                      <Td>
+                        <Badge
+                          tone={
+                            b.status === "confirmed"
+                              ? "success"
+                              : b.status === "pending_payment"
+                                ? "info"
+                                : "neutral"
+                          }
+                        >
+                          {b.status.replaceAll("_", " ")}
+                        </Badge>
                         {b.holdExpiresAt && b.status === "pending_payment" ? (
-                          <p className="mt-1 text-xs text-amber-800">
+                          <p className="mt-1 text-xs text-muted">
                             Hold until{" "}
                             {new Date(b.holdExpiresAt).toLocaleString("en-AU")}
                           </p>
                         ) : null}
-                      </td>
-                      <td className="px-4 py-4 text-muted">
+                      </Td>
+                      <Td muted>
                         {b.paymentMethod === "card"
                           ? "Credit card"
                           : b.paymentMethod === "bank_transfer"
@@ -2145,11 +2332,11 @@ export function AdminDashboard({
                             : b.paymentMethod === "cash"
                               ? "Cash"
                               : "—"}
-                      </td>
-                      <td className="px-4 py-4 text-muted">
+                      </Td>
+                      <Td muted>
                         {b.source === "walk_in" ? "Walk-in" : "Online"}
-                      </td>
-                      <td className="px-4 py-4">
+                      </Td>
+                      <Td>
                         <p>{b.passengerName}</p>
                         <p className="text-xs text-muted">{b.email}</p>
                         {(() => {
@@ -2178,13 +2365,13 @@ export function AdminDashboard({
                             </p>
                           ) : null;
                         })()}
-                      </td>
-                      <td className="px-4 py-4 text-muted">
+                      </Td>
+                      <Td muted>
                         {b.flight.cabinClass === "business"
                           ? "Business"
                           : "Economy"}
-                      </td>
-                      <td className="px-4 py-4 text-muted">
+                      </Td>
+                      <Td muted>
                         {b.flight.flightNumber} {b.flight.origin}→
                         {b.flight.destination}
                         {b.returnFlight
@@ -2195,80 +2382,90 @@ export function AdminDashboard({
                             +{b.extraBaggageKg}kg baggage
                           </p>
                         ) : null}
-                      </td>
-                      <td className="px-4 py-4 font-medium">
+                      </Td>
+                      <Td align="right" numeric className="font-medium">
                         {formatAud(b.amountPaidCents)}
-                      </td>
-                      <td className="px-4 py-4">
-                        {b.status !== "cancelled" ? (
-                          <button
-                            type="button"
-                            onClick={() => setEditingBookingId(b.id)}
-                            className="mb-1.5 block border border-line px-3 py-1.5 text-xs font-medium text-muted transition hover:border-accent hover:text-foreground"
-                          >
-                            Edit
-                          </button>
-                        ) : null}
-                        {b.paymentMethod === "bank_transfer" &&
-                        b.status === "pending_payment" ? (
-                          <form action={markBookingPaidAction}>
-                            <input type="hidden" name="id" value={b.id} />
-                            <SubmitButton
-                              pendingLabel="Confirming…"
-                              className="bg-accent-deep px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+                      </Td>
+                      <Td align="right">
+                        {/*
+                          One visible action per row — the rest fold into the
+                          overflow menu. Every form, handler and confirm() is
+                          the same, only its position changed.
+                        */}
+                        <div className="flex items-center justify-end gap-1">
+                          {b.status !== "cancelled" ? (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => setEditingBookingId(b.id)}
                             >
-                              Mark paid
-                            </SubmitButton>
-                          </form>
-                        ) : null}
-                        {b.paymentMethod === "bank_transfer" &&
-                        b.status === "confirmed" ? (
-                          <form action={markBookingUnpaidAction}>
-                            <input type="hidden" name="id" value={b.id} />
-                            <SubmitButton
-                              pendingLabel="Updating…"
-                              className="border border-line px-3 py-1.5 text-xs font-medium text-muted transition hover:border-accent disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              Mark unpaid
-                            </SubmitButton>
-                          </form>
-                        ) : null}
-                        {b.paymentMethod === "card" ||
-                        b.paymentMethod === "cash" ? (
-                          <span className="text-xs text-accent">Auto paid</span>
-                        ) : null}
-                        {b.status === "hold_expired" ? (
-                          <span className="text-xs text-red-700">
-                            Hold expired
-                          </span>
-                        ) : null}
-                        <form
-                          action={deleteBookingAction}
-                          className="mt-1.5 inline"
-                        >
-                          <input type="hidden" name="id" value={b.id} />
-                          <SubmitButton
-                            pendingLabel="Deleting…"
-                            onClick={(e) => {
-                              if (
-                                !confirm(
-                                  `Delete booking ${b.bookingRef} permanently? Its invoice (if any) is deleted too and both are recorded in the Deleted tab.`,
-                                )
-                              ) {
-                                e.preventDefault();
-                              }
-                            }}
-                            className="block text-xs text-muted/70 transition hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            Delete
-                          </SubmitButton>
-                        </form>
-                      </td>
-                    </tr>
+                              Edit
+                            </Button>
+                          ) : null}
+
+                          <Menu label={`Actions for ${b.bookingRef}`}>
+                            {b.paymentMethod === "bank_transfer" &&
+                            b.status === "pending_payment" ? (
+                              <MenuItem>
+                                <form action={markBookingPaidAction}>
+                                  <input type="hidden" name="id" value={b.id} />
+                                  <SubmitButton pendingLabel="Confirming…">
+                                    Mark paid
+                                  </SubmitButton>
+                                </form>
+                              </MenuItem>
+                            ) : null}
+                            {b.paymentMethod === "bank_transfer" &&
+                            b.status === "confirmed" ? (
+                              <MenuItem>
+                                <form action={markBookingUnpaidAction}>
+                                  <input type="hidden" name="id" value={b.id} />
+                                  <SubmitButton pendingLabel="Updating…">
+                                    Mark unpaid
+                                  </SubmitButton>
+                                </form>
+                              </MenuItem>
+                            ) : null}
+                            {b.paymentMethod === "card" ||
+                            b.paymentMethod === "cash" ? (
+                              <p className="px-3 py-2 text-xs text-muted">
+                                Paid automatically at booking.
+                              </p>
+                            ) : null}
+                            {b.status === "hold_expired" ? (
+                              <p className="px-3 py-2 text-xs text-accent-red">
+                                Hold expired — seats returned.
+                              </p>
+                            ) : null}
+
+                            <MenuDivider />
+                            <MenuItem tone="danger">
+                              <form action={deleteBookingAction}>
+                                <input type="hidden" name="id" value={b.id} />
+                                <SubmitButton
+                                  pendingLabel="Deleting…"
+                                  onClick={(e) => {
+                                    if (
+                                      !confirm(
+                                        `Delete booking ${b.bookingRef} permanently? Its invoice (if any) is deleted too and both are recorded in the Deleted tab.`,
+                                      )
+                                    ) {
+                                      e.preventDefault();
+                                    }
+                                  }}
+                                >
+                                  Delete
+                                </SubmitButton>
+                              </form>
+                            </MenuItem>
+                          </Menu>
+                        </div>
+                      </Td>
+                    </Tr>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </TBody>
+              </Table>
+            </TableWrap>
             )}
             </>
           )}

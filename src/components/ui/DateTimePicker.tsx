@@ -311,7 +311,9 @@ export function DateTimePicker({
         className={cn(
           controlShell,
           controlPadding,
-          "flex items-center justify-between gap-2 text-left",
+          // !rounded-full beats the unlayered `button { border-radius: 0 }`
+          // reset in globals.css so this matches the pill SegmentedFields.
+          "!rounded-full flex items-center justify-between gap-2 text-left",
           error && "border-accent-red/70",
         )}
       >
@@ -333,7 +335,7 @@ export function DateTimePicker({
               type="button"
               onClick={() => shiftView(-1)}
               aria-label="Previous month"
-              className="grid size-10 place-items-center rounded-control text-muted transition-colors hover:bg-line/50 hover:text-foreground"
+              className="grid size-10 place-items-center !rounded-full text-muted transition-colors hover:bg-line/50 hover:text-foreground"
             >
               <ChevronLeftIcon className="size-4" />
             </button>
@@ -351,7 +353,7 @@ export function DateTimePicker({
                     return { ...v, month, day: clampDay(v.year, month, v.day) };
                   })
                 }
-                className="rounded-control border border-line bg-surface px-2 py-1.5 text-sm"
+                className="!rounded-full border border-line bg-surface px-2 py-1.5 text-sm"
               >
                 {MONTHS.map((m, i) => (
                   <option key={m} value={i + 1}>
@@ -371,7 +373,7 @@ export function DateTimePicker({
                     return { ...v, year, day: clampDay(year, v.month, v.day) };
                   })
                 }
-                className="rounded-control border border-line bg-surface px-2 py-1.5 text-sm"
+                className="!rounded-full border border-line bg-surface px-2 py-1.5 text-sm"
               >
                 {yearOptions.map((y) => (
                   <option key={y} value={y}>
@@ -385,7 +387,7 @@ export function DateTimePicker({
               type="button"
               onClick={() => shiftView(1)}
               aria-label="Next month"
-              className="grid size-10 place-items-center rounded-control text-muted transition-colors hover:bg-line/50 hover:text-foreground"
+              className="grid size-10 place-items-center !rounded-full text-muted transition-colors hover:bg-line/50 hover:text-foreground"
             >
               <ChevronRightIcon className="size-4" />
             </button>
@@ -435,7 +437,7 @@ export function DateTimePicker({
                   aria-current={isToday ? "date" : undefined}
                   onClick={() => selectDay(day)}
                   className={cn(
-                    "grid h-9 place-items-center rounded-control text-sm transition-colors",
+                    "grid size-9 place-items-center !rounded-full text-sm transition-colors",
                     "disabled:cursor-not-allowed disabled:text-muted/40",
                     isSelected
                       ? "text-white [background-color:var(--accent-deep)]"
@@ -460,7 +462,7 @@ export function DateTimePicker({
                 id={`${fieldId}-hour`}
                 value={parsed?.hour ?? 0}
                 onChange={(e) => commit({ hour: Number(e.target.value) })}
-                className="rounded-control border border-line bg-surface px-2 py-1.5 text-sm"
+                className="!rounded-full border border-line bg-surface px-2 py-1.5 text-sm"
               >
                 {Array.from({ length: 24 }, (_, h) => (
                   <option key={h} value={h}>
@@ -476,7 +478,7 @@ export function DateTimePicker({
                 id={`${fieldId}-minute`}
                 value={parsed?.minute ?? 0}
                 onChange={(e) => commit({ minute: Number(e.target.value) })}
-                className="rounded-control border border-line bg-surface px-2 py-1.5 text-sm"
+                className="!rounded-full border border-line bg-surface px-2 py-1.5 text-sm"
               >
                 {Array.from({ length: 60 }, (_, m) => (
                   <option key={m} value={m}>
@@ -490,7 +492,7 @@ export function DateTimePicker({
                   setOpen(false);
                   triggerRef.current?.focus();
                 }}
-                className="ml-auto rounded-control px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/10"
+                className="ml-auto !rounded-full px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/10"
               >
                 Done
               </button>

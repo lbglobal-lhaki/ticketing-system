@@ -251,7 +251,7 @@ export function DeletedRecordsPanel({
                       <button
                         type="button"
                         onClick={() => toggleDetails(record.id)}
-                        className="border border-line px-3 py-1.5 text-xs font-medium text-muted transition hover:border-accent hover:text-foreground"
+                        className="tap-target rounded-control border border-line px-3 text-xs font-medium text-muted transition hover:border-accent hover:text-foreground"
                       >
                         {expanded ? "Hide details" : "View details"}
                       </button>
@@ -268,7 +268,7 @@ export function DeletedRecordsPanel({
                               e.preventDefault();
                             }
                           }}
-                          className="border border-line px-3 py-1.5 text-xs font-medium text-muted/70 transition hover:border-red-300 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="tap-target rounded-control border border-line px-3 text-xs font-medium text-muted/70 transition hover:border-accent-red/40 hover:text-accent-red disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           Delete forever
                         </SubmitButton>

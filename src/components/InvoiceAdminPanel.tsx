@@ -23,6 +23,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { Spinner } from "@/components/Spinner";
 import { ListFilterBar, NoMatches } from "@/components/admin/ListFilterBar";
 import { Button } from "@/components/ui/Button";
+import { DateTimePicker } from "@/components/ui/DateTimePicker";
 import {
   Menu,
   MenuDivider,
@@ -855,18 +856,13 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                           className={fieldClass}
                         />
                       </label>
-                      <label className="block text-xs text-muted">
-                        Invoice due date
-                        <input
-                          name="dueAt"
-                          type="datetime-local"
-                          defaultValue={dueInputValue(active.dueAt)}
-                          className={fieldClass}
-                        />
-                        <span className="mt-1 block text-xs text-muted">
-                          Optional. Independent of the booking seat hold.
-                        </span>
-                      </label>
+                      <DateTimePicker
+                        name="dueAt"
+                        label="Invoice due date"
+                        defaultValue={dueInputValue(active.dueAt)}
+                        placeholder="No due date"
+                        helper="Optional. Independent of the booking seat hold."
+                      />
                       <GstModeFields
                         defaultMode={resolveGstMode(active)}
                         className="sm:col-span-2"
