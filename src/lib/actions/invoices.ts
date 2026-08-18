@@ -29,6 +29,13 @@ function moneyAud(value: FormDataEntryValue | null) {
   return Math.round(n * 100);
 }
 
+function warningQuery(result: object) {
+  const raw = (result as { warning?: unknown }).warning;
+  return typeof raw === "string" && raw
+    ? `&error=${encodeURIComponent(raw)}`
+    : "";
+}
+
 export async function markInvoicePaidAction(formData: FormData) {
   await requireAdmin();
   const id = String(formData.get("id") ?? "");
@@ -140,13 +147,7 @@ export async function markInvoiceSentAction(formData: FormData) {
     );
   }
   revalidatePath("/admin");
-  redirect(
-    `/admin?tab=invoices&saved=invoice-sent${
-      "warning" in result && result.warning
-        ? `&error=${encodeURIComponent(result.warning)}`
-        : ""
-    }`,
-  );
+  redirect(`/admin?tab=invoices&saved=invoice-sent${warningQuery(result)}`);
 }
 
 /** List-row send — travel document only, then back to the Invoices tab. */
@@ -162,13 +163,7 @@ export async function sendTravelDocumentEmailAction(formData: FormData) {
     );
   }
   revalidatePath("/admin");
-  redirect(
-    `/admin?tab=invoices&saved=travel-doc-sent${
-      "warning" in result && result.warning
-        ? `&error=${encodeURIComponent(result.warning)}`
-        : ""
-    }`,
-  );
+  redirect(`/admin?tab=invoices&saved=travel-doc-sent${warningQuery(result)}`);
 }
 
 /** List-row send — airfare invoice only, then back to the Invoices tab. */
@@ -185,11 +180,7 @@ export async function sendAirfareInvoiceEmailAction(formData: FormData) {
   }
   revalidatePath("/admin");
   redirect(
-    `/admin?tab=invoices&saved=airfare-invoice-sent${
-      "warning" in result && result.warning
-        ? `&error=${encodeURIComponent(result.warning)}`
-        : ""
-    }`,
+    `/admin?tab=invoices&saved=airfare-invoice-sent${warningQuery(result)}`,
   );
 }
 
