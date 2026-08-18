@@ -88,6 +88,7 @@ export type BookingDocumentData = {
     bankAccountNumber: string | null;
     bankReference: string | null;
     customerPhone?: string | null;
+    customerEmail?: string | null;
     stripePaymentIntentId?: string | null;
     notes?: string | null;
   } | null;

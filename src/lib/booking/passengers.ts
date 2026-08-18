@@ -135,7 +135,7 @@ function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
 
-/** Calendar date as YYYY-MM-DD (UTC), for <input type="date" />. */
+/** Calendar date as YYYY-MM-DD (UTC), for date-only pickers. */
 export function formatDateOfBirth(
   date: Date | string | null | undefined,
 ): string {

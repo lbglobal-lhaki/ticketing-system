@@ -106,12 +106,16 @@ export function Menu({
           role="menu"
           onKeyDown={onPanelKeyDown}
           onClick={(e) => {
-            const target = e.target as HTMLElement | null;
+            const node = e.target as Node | null;
+            const el =
+              node instanceof Element
+                ? node
+                : node?.parentElement ?? null;
             // Submit buttons post a server action from a <form> inside this
             // panel. Closing here unmounts that form during the same click,
-            // so Mark paid / Delete never run. Leave the menu up; the
-            // action's redirect tears the page down. Links still close it.
-            if (target?.closest('button[type="submit"]')) return;
+            // so Mark paid / Delete / Send never run. Leave the menu up;
+            // the action's redirect tears the page down. Links still close it.
+            if (el?.closest?.("form, button[type='submit']")) return;
             setOpen(false);
           }}
           className={cn(

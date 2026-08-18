@@ -3,6 +3,7 @@ import { releaseQuoteHold, restoreFareAndFlight } from "@/lib/booking/inventory"
 import { formatAud } from "@/lib/pricing";
 import type { BookingDocumentData } from "@/lib/documents/templates";
 import { sendEmail } from "@/lib/email/send";
+import { emailLogoImgHtml } from "@/lib/email/inlineLogo";
 import { prisma } from "@/lib/db";
 import { loadBookingDocumentData } from "@/lib/email/bookingMail";
 
@@ -14,7 +15,7 @@ export function holdExpiredEmail(data: BookingDocumentData) {
   const html = `
   <div style="font-family:Georgia,serif;color:#0F172A;line-height:1.55;max-width:640px">
     <p style="margin:0 0 12px">
-      <img src="${brand.logoUrl}" alt="${brand.shortName}" width="56" height="56" style="display:block;width:56px;height:56px;object-fit:contain" />
+      ${emailLogoImgHtml(brand.shortName)}
     </p>
     <p style="color:#2563EB;letter-spacing:0.12em;text-transform:uppercase;font-size:12px">${brand.airlineName}</p>
     <h1 style="font-size:24px;margin:8px 0 16px">Seat hold has ended</h1>

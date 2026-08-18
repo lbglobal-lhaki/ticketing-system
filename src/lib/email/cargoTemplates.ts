@@ -1,5 +1,6 @@
 import { getBrand } from "@/lib/branding";
 import type { CargoShipmentSummary } from "@/lib/cargo/parties";
+import { emailLogoImgHtml } from "@/lib/email/inlineLogo";
 
 function esc(value: string) {
   return value
@@ -51,7 +52,7 @@ export function cargoNotificationEmail(input: CargoNoticeTemplateInput) {
     const html = `
   <div style="font-family:Georgia,serif;color:#0F172A;line-height:1.55;max-width:640px">
     <p style="margin:0 0 12px">
-      <img src="${esc(brand.logoUrl)}" alt="${esc(brand.shortName)}" width="56" height="56" style="display:block;width:56px;height:56px;object-fit:contain" />
+      ${emailLogoImgHtml(brand.shortName)}
     </p>
     <p style="color:#0b2c5a;letter-spacing:0.12em;text-transform:uppercase;font-size:12px">${esc(brand.issuingAgent)} · Cargo</p>
     <h1 style="font-size:22px;margin:8px 0 16px">Your cargo shipment update</h1>
@@ -111,7 +112,7 @@ ${brand.agentEmail}`;
   const html = `
   <div style="font-family:Georgia,serif;color:#0F172A;line-height:1.55;max-width:640px">
     <p style="margin:0 0 12px">
-      <img src="${esc(brand.logoUrl)}" alt="${esc(brand.shortName)}" width="56" height="56" style="display:block;width:56px;height:56px;object-fit:contain" />
+      ${emailLogoImgHtml(brand.shortName)}
     </p>
     <p style="color:#0b2c5a;letter-spacing:0.12em;text-transform:uppercase;font-size:12px">${esc(brand.issuingAgent)} · Cargo</p>
     <h1 style="font-size:22px;margin:8px 0 16px">Incoming cargo notification</h1>

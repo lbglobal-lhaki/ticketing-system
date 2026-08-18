@@ -610,26 +610,35 @@ export async function generateInvoiceDocumentsAction(formData: FormData) {
   );
 }
 
-/** Modal-friendly send — travel document only (ticketing@). */
+/** Modal-friendly send — travel document only (accounts@, same as the invoice). */
 export async function sendTravelDocumentEmailModalAction(invoiceId: string) {
   await requireAdmin();
-  const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
-  if (!invoice) return { ok: false as const, error: "Invoice not found" };
+  try {
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+    });
+    if (!invoice) return { ok: false as const, error: "Invoice not found" };
 
-  const result = await sendTravelDocumentEmail(invoice.bookingId);
-  if (!result.ok && !("skipped" in result && result.skipped)) {
-    return { ok: false as const, error: result.error };
-  }
-  if (!result.ok && "skipped" in result && result.skipped) {
-    return {
-      ok: true as const,
-      warning:
-        "Marked sent locally — configure TICKETING_SMTP_USER/PASS to actually email customers.",
-    };
-  }
+    const result = await sendTravelDocumentEmail(invoice.bookingId);
+    if (!result.ok && !("skipped" in result && result.skipped)) {
+      return { ok: false as const, error: result.error };
+    }
+    if (!result.ok && "skipped" in result && result.skipped) {
+      return {
+        ok: false as const,
+        error:
+          result.error ||
+          "Travel document was not emailed — configure TICKETING_SMTP_USER/PASS (or ACCOUNTS_SMTP_USER/PASS) and try again.",
+      };
+    }
 
-  // Travel email doesn't touch invoice.sentAt (that's the airfare receipt flag).
-  return { ok: true as const };
+    return { ok: true as const };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to send travel document";
+    console.error("[invoice:send-travel]", message);
+    return { ok: false as const, error: message };
+  }
 }
 
 /** Modal-friendly send — airfare invoice only (accounts@). */

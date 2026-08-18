@@ -247,8 +247,7 @@ export default async function AdminPage({
     "invoice-unpaid": "Invoice marked unpaid.",
     "invoice-sent":
       "Invoice email sent (or marked sent if email is not configured).",
-    "travel-doc-sent":
-      "Travel document emailed (or marked sent if ticketing email is not configured).",
+    "travel-doc-sent": "Travel document emailed to the customer.",
     "airfare-invoice-sent":
       "Airfare invoice emailed (or marked sent if accounts email is not configured).",
     "invoice-updated": "Invoice document fields saved.",

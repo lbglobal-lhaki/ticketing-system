@@ -15,6 +15,7 @@ import {
 } from "@/lib/booking/passengers";
 import { formatAud } from "@/lib/pricing";
 import { SubmitButton } from "@/components/SubmitButton";
+import { DateTimePicker } from "@/components/ui/DateTimePicker";
 
 const fieldClass =
   "mt-1.5 w-full rounded-lg border border-line bg-white px-3.5 py-3 text-sm text-foreground outline-none transition focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/35";
@@ -492,9 +493,13 @@ function TravellerCard({
   const i = index;
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-line bg-white shadow-[0_8px_28px_rgba(15,23,42,0.06)]">
+    <section className="rounded-2xl border border-line bg-white shadow-[0_8px_28px_rgba(15,23,42,0.06)]">
       <input type="hidden" name={`travellerType_${i}`} value={row.passengerType} />
-      <div className="theme-banner flex w-full items-center justify-between gap-3 px-4 py-3.5 text-white sm:px-5">
+      <div
+        className={`theme-banner flex w-full items-center justify-between gap-3 px-4 py-3.5 text-white sm:px-5 ${
+          open ? "rounded-t-2xl" : "rounded-2xl"
+        }`}
+      >
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -636,25 +641,22 @@ function TravellerCard({
             <div className="grid gap-4 sm:grid-cols-2">
               {(row.passengerType === "child" ||
                 row.passengerType === "infant") && (
-                <label className="block text-sm sm:col-span-2">
-                  <span className="font-medium text-foreground">
-                    Date of birth
-                  </span>
-                  <input
-                    name={`dateOfBirth_${i}`}
-                    type="date"
-                    required
-                    value={row.dateOfBirth || ""}
-                    max={maxDob}
-                    onChange={(e) => onChange({ dateOfBirth: e.target.value })}
-                    className={fieldClass}
-                  />
-                  <span className="mt-1 block text-xs text-muted">
-                    {row.passengerType === "infant"
+                <DateTimePicker
+                  name={`dateOfBirth_${i}`}
+                  label="Date of birth"
+                  required
+                  showTime={false}
+                  value={row.dateOfBirth || ""}
+                  max={maxDob}
+                  onChange={(next) => onChange({ dateOfBirth: next })}
+                  placeholder="Select date of birth"
+                  wrapperClassName="sm:col-span-2"
+                  helper={
+                    row.passengerType === "infant"
                       ? "Must be under 1 year old on the departure date."
-                      : "Must be 1–10 years old on the departure date."}
-                  </span>
-                </label>
+                      : "Must be 1–10 years old on the departure date."
+                  }
+                />
               )}
               <label className="block text-sm">
                 <span className="font-medium text-foreground">

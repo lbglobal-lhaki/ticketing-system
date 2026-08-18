@@ -1,6 +1,7 @@
 "use client";
 
 import { MoneyInput } from "@/components/MoneyInput";
+import { DateTimePicker } from "@/components/ui/DateTimePicker";
 import {
   CHILD_FARE_RATE,
   INFANT_FARE_RATE,
@@ -190,25 +191,21 @@ export function PassengerGroupFields({
             />
           </label>
           {needsDob ? (
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Date of birth
-              </span>
-              <input
-                name={`${namePrefix}DateOfBirth`}
-                type="date"
-                required
-                value={pax.dateOfBirth || ""}
-                max={new Date().toLocaleDateString("en-CA")}
-                onChange={(e) => update(i, { dateOfBirth: e.target.value })}
-                className={fieldClass}
-              />
-              <span className="block text-xs text-muted">
-                {type === "infant"
+            <DateTimePicker
+              name={`${namePrefix}DateOfBirth`}
+              label="Date of birth"
+              required
+              showTime={false}
+              value={pax.dateOfBirth || ""}
+              max={new Date().toLocaleDateString("en-CA")}
+              onChange={(next) => update(i, { dateOfBirth: next })}
+              placeholder="Select date of birth"
+              helper={
+                type === "infant"
                   ? "Under 1 year on the departure date."
-                  : "1–10 years old on the departure date."}
-              </span>
-            </label>
+                  : "1–10 years old on the departure date."
+              }
+            />
           ) : null}
           {needsPrice && priceMode === "auto" ? (
             <div className="space-y-1 text-sm">

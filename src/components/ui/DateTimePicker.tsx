@@ -18,19 +18,18 @@ import {
 import { FormField, controlPadding, controlShell } from "@/components/ui/Input";
 
 /*
- * Drop-in replacement for `<input type="datetime-local">` on admin forms.
+ * Drop-in replacement for `<input type="datetime-local">` and `<input type="date">`.
  *
- * VALUE FORMAT — this is the whole ballgame. Every admin date field is a
- * datetime-local paired with a hidden `tzOffsetMinutes`, and the server parses
- * it with `parseDateTimeLocal()`, whose regex is:
+ * VALUE FORMAT — this is the whole ballgame.
  *
- *     ^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$
+ *   showTime (default) — `YYYY-MM-DDTHH:mm`, paired with a hidden
+ *     `tzOffsetMinutes` and parsed server-side by `parseDateTimeLocal()`.
+ *   showTime={false}  — `YYYY-MM-DD`, what `<input type="date">` submitted
+ *     and what `parseDateOfBirth()` expects.
  *
- * So the submitted string must be local wall-clock `YYYY-MM-DDTHH:mm` with no
- * timezone suffix — identical to what the native control produced. Anything
- * else (ISO with `Z`, a Date, a timestamp) throws "Invalid date/time" server
- * side. `formatValue`/`parseValue` below are the only places that format, and
- * they are deliberately string-based so no Date/UTC conversion can creep in.
+ * Anything else (ISO with `Z`, a Date, a timestamp) throws server side.
+ * `formatValue`/`parseValue` below are the only places that format, and they
+ * are deliberately string-based so no Date/UTC conversion can creep in.
  *
  * The submitted field is a real focusable input carrying `name` and `required`
  * — the same pattern `admin/Combobox` uses for its hidden `<select>` — so the
@@ -55,25 +54,38 @@ type Parts = {
   minute: number;
 };
 
-/** `YYYY-MM-DDTHH:mm` → parts, or null when empty/unparseable. */
+/** `YYYY-MM-DDTHH:mm` or `YYYY-MM-DD` → parts, or null when empty/unparseable. */
 export function parseValue(value: string | undefined | null): Parts | null {
   if (!value) return null;
-  const m = value
-    .trim()
-    .match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2})?$/);
-  if (!m) return null;
+  const raw = value.trim();
+  const dt = raw.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2})?$/,
+  );
+  if (dt) {
+    return {
+      year: Number(dt[1]),
+      month: Number(dt[2]),
+      day: Number(dt[3]),
+      hour: Number(dt[4]),
+      minute: Number(dt[5]),
+    };
+  }
+  const d = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!d) return null;
   return {
-    year: Number(m[1]),
-    month: Number(m[2]),
-    day: Number(m[3]),
-    hour: Number(m[4]),
-    minute: Number(m[5]),
+    year: Number(d[1]),
+    month: Number(d[2]),
+    day: Number(d[3]),
+    hour: 0,
+    minute: 0,
   };
 }
 
-/** parts → `YYYY-MM-DDTHH:mm`, exactly what the native input submitted. */
-export function formatValue(p: Parts): string {
-  return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`;
+/** parts → `YYYY-MM-DDTHH:mm` or `YYYY-MM-DD`. */
+export function formatValue(p: Parts, withTime = true): string {
+  const date = `${p.year}-${pad(p.month)}-${pad(p.day)}`;
+  if (!withTime) return date;
+  return `${date}T${pad(p.hour)}:${pad(p.minute)}`;
 }
 
 function daysInMonth(year: number, month: number) {
@@ -102,17 +114,24 @@ function humanLabel(p: Parts, showTime: boolean) {
 export type DateTimePickerProps = {
   name: string;
   label?: React.ReactNode;
-  /** Initial `YYYY-MM-DDTHH:mm`, same as the native `defaultValue`. */
+  /**
+   * Initial value. Datetime: `YYYY-MM-DDTHH:mm`. Date-only: `YYYY-MM-DD`.
+   * Ignored when `value` is set (controlled).
+   */
   defaultValue?: string;
+  /** Controlled value. Same formats as `defaultValue`. */
+  value?: string;
+  onChange?: (value: string) => void;
   required?: boolean;
   helper?: React.ReactNode;
   error?: React.ReactNode;
+  /** False = calendar date only (date of birth). Default includes time. */
   showTime?: boolean;
   placeholder?: string;
   className?: string;
   wrapperClassName?: string;
   id?: string;
-  /** Inclusive bounds as `YYYY-MM-DDTHH:mm`; days outside are unselectable. */
+  /** Inclusive bounds as `YYYY-MM-DD` or `YYYY-MM-DDTHH:mm`. */
   min?: string;
   max?: string;
 };
@@ -121,11 +140,13 @@ export function DateTimePicker({
   name,
   label,
   defaultValue = "",
+  value: valueProp,
+  onChange,
   required,
   helper,
   error,
   showTime = true,
-  placeholder = "Select date and time",
+  placeholder,
   className,
   wrapperClassName,
   id,
@@ -136,8 +157,18 @@ export function DateTimePicker({
   const fieldId = id ?? generatedId;
   const messageId = helper || error ? `${fieldId}-msg` : undefined;
   const gridId = `${fieldId}-grid`;
+  const resolvedPlaceholder =
+    placeholder ?? (showTime ? "Select date and time" : "Select date");
 
-  const [value, setValue] = useState(defaultValue);
+  const isControlled = valueProp !== undefined;
+  const [uncontrolled, setUncontrolled] = useState(defaultValue);
+  const value = isControlled ? valueProp : uncontrolled;
+
+  function setValue(next: string) {
+    if (!isControlled) setUncontrolled(next);
+    onChange?.(next);
+  }
+
   const [open, setOpen] = useState(false);
 
   const parsed = useMemo(() => parseValue(value), [value]);
@@ -145,7 +176,7 @@ export function DateTimePicker({
 
   // Cursor = the day keyboard focus sits on; starts at the value or today.
   const [view, setView] = useState(() => {
-    const p = parseValue(defaultValue);
+    const p = parseValue(valueProp ?? defaultValue);
     return {
       year: p?.year ?? today.getFullYear(),
       month: p?.month ?? today.getMonth() + 1,
@@ -187,6 +218,17 @@ export function DateTimePicker({
     if (open) gridRef.current?.focus();
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const p = parseValue(value);
+    if (p) {
+      setView({ year: p.year, month: p.month, day: p.day });
+    }
+    // Snap the calendar to the current value only when the popover opens —
+    // including `value` here would yank the month back while browsing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   function commit(next: Partial<Parts>) {
     const base: Parts = parsed ?? {
       year: view.year,
@@ -197,13 +239,17 @@ export function DateTimePicker({
     };
     const merged = { ...base, ...next };
     merged.day = clampDay(merged.year, merged.month, merged.day);
-    setValue(formatValue(merged));
+    setValue(formatValue(merged, showTime));
   }
 
   function selectDay(day: number) {
     if (outOfRange(view.year, view.month, day)) return;
     setView((v) => ({ ...v, day }));
     commit({ year: view.year, month: view.month, day });
+    if (!showTime) {
+      setOpen(false);
+      triggerRef.current?.focus();
+    }
   }
 
   function shiftView(deltaMonths: number) {
@@ -276,9 +322,22 @@ export function DateTimePicker({
   while (cells.length % 7 !== 0) cells.push(null);
 
   const yearOptions = useMemo(() => {
-    const base = view.year;
-    return Array.from({ length: 11 }, (_, i) => base - 5 + i);
-  }, [view.year]);
+    const nowYear = today.getFullYear();
+    if (!showTime) {
+      const lo = minParts?.year ?? nowYear - 120;
+      const hi = maxParts?.year ?? nowYear;
+      const start = Math.min(lo, view.year);
+      const end = Math.max(hi, view.year);
+      const years: number[] = [];
+      for (let y = end; y >= start; y -= 1) years.push(y);
+      return years;
+    }
+    const lo = minParts?.year ?? view.year - 5;
+    const hi = maxParts?.year ?? view.year + 5;
+    const start = Math.min(lo, view.year);
+    const end = Math.max(hi, view.year);
+    return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+  }, [showTime, minParts, maxParts, view.year, today]);
 
   const control = (
     <div ref={rootRef} className={cn("relative", className)}>
@@ -318,7 +377,7 @@ export function DateTimePicker({
         )}
       >
         <span className={cn(!parsed && "text-muted/70")}>
-          {parsed ? humanLabel(parsed, showTime) : placeholder}
+          {parsed ? humanLabel(parsed, showTime) : resolvedPlaceholder}
         </span>
         <CalendarIcon className="size-4 shrink-0 text-muted" />
       </button>

@@ -316,28 +316,37 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
     setPendingAction("send");
     const isTravel = docTab === "travel";
     startTransition(async () => {
-      const result = isTravel
-        ? await sendTravelDocumentEmailModalAction(active.id)
-        : await sendAirfareInvoiceEmailModalAction(active.id);
-      setPendingAction(null);
-      if (!result.ok) {
-        setErrorMsg(result.error);
-        return;
+      try {
+        const result = isTravel
+          ? await sendTravelDocumentEmailModalAction(active.id)
+          : await sendAirfareInvoiceEmailModalAction(active.id);
+        setPendingAction(null);
+        if (!result.ok) {
+          setErrorMsg(result.error);
+          return;
+        }
+        if (
+          "sentAt" in result &&
+          typeof result.sentAt === "string" &&
+          result.sentAt
+        ) {
+          mergeInvoicePatch({ id: active.id, sentAt: result.sentAt });
+        }
+        setStatusMsg(
+          result.warning
+            ? result.warning
+            : isTravel
+              ? `Travel document emailed to ${active.customerEmail}.`
+              : `Airfare invoice emailed to ${active.customerEmail}.`,
+        );
+      } catch (error) {
+        setPendingAction(null);
+        setErrorMsg(
+          error instanceof Error
+            ? error.message
+            : "Failed to send email. Try again.",
+        );
       }
-      if (
-        "sentAt" in result &&
-        typeof result.sentAt === "string" &&
-        result.sentAt
-      ) {
-        mergeInvoicePatch({ id: active.id, sentAt: result.sentAt });
-      }
-      setStatusMsg(
-        result.warning
-          ? result.warning
-          : isTravel
-            ? "Travel document emailed to the customer."
-            : "Airfare invoice emailed to the customer.",
-      );
     });
   }
 

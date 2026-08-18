@@ -21,14 +21,14 @@ async function travelDocAttachment(
   const html = renderTravelDocumentHtml(data);
   try {
     return {
-      filename: `E-Ticket-Itinerary-${data.bookingRef}.pdf`,
+      filename: `Travel-Document-${data.bookingRef}.pdf`,
       content: await htmlToPdf(html, travelDocumentPdfOptions(data)),
       contentType: "application/pdf",
     };
   } catch (error) {
     console.error("[email] travel doc PDF failed; attaching HTML", error);
     return {
-      filename: `E-Ticket-Itinerary-${data.bookingRef}.html`,
+      filename: `Travel-Document-${data.bookingRef}.html`,
       content: html,
       contentType: "text/html",
     };
@@ -172,6 +172,7 @@ export async function loadBookingDocumentData(
           bankAccountNumber: booking.invoice.bankAccountNumber,
           bankReference: booking.invoice.bankReference,
           customerPhone: booking.invoice.customerPhone,
+          customerEmail: booking.invoice.customerEmail,
           stripePaymentIntentId: booking.invoice.stripePaymentIntentId,
           notes: booking.invoice.notes,
         }
@@ -180,9 +181,8 @@ export async function loadBookingDocumentData(
 }
 
 /**
- * Sends TWO separate emails from two separate mailboxes:
- *  - e-ticket / itinerary from ticketing@
- *  - tax invoice / receipt from accounts@ (only if an invoice exists)
+ * Sends TWO separate emails from the accounts mailbox (same sender Gmail
+ * already delivers): travel document, then tax invoice / receipt.
  */
 export async function sendBookingConfirmationBundle(bookingId: string) {
   const data = await loadBookingDocumentData(bookingId);
@@ -209,7 +209,7 @@ export async function sendBookingConfirmationBundle(bookingId: string) {
       subject: ticketEmail.subject,
       html: ticketEmail.html,
       text: ticketEmail.text,
-      mailbox: "ticketing",
+      mailbox: "accounts",
       attachments: [ticketAttachment],
     }),
     invoiceFile && receiptEmail && data.invoice
@@ -271,26 +271,30 @@ export async function sendBankTransferBundle(bookingId: string) {
   return result;
 }
 
-/** Sends only the e-ticket / itinerary email (ticketing@) — independent of the invoice. */
+/** Sends the travel document using the same accounts@ mailbox as the
+ *  airfare invoice — Gmail already delivers that sender to the inbox.
+ *  "E-ticket" wording is avoided; it is a well-known phishing pattern. */
 export async function sendTravelDocumentEmail(bookingId: string) {
   const data = await loadBookingDocumentData(bookingId);
   if (!data) return { ok: false as const, error: "Booking not found" };
-  if (data.status !== "confirmed") {
+
+  const to =
+    data.email?.trim() || data.invoice?.customerEmail?.trim() || "";
+  if (!to) {
     return {
       ok: false as const,
-      error:
-        "Booking isn't confirmed yet — the travel document emails once payment is confirmed",
+      error: "No customer email on this booking — add one and save, then send again",
     };
   }
 
   const ticketEmail = eTicketEmail(data);
   const ticketAttachment = await travelDocAttachment(data);
   return sendEmail({
-    to: data.email,
+    to,
     subject: ticketEmail.subject,
     html: ticketEmail.html,
     text: ticketEmail.text,
-    mailbox: "ticketing",
+    mailbox: "accounts",
     attachments: [ticketAttachment],
   });
 }
@@ -306,8 +310,16 @@ export async function sendAirfareInvoiceEmail(bookingId: string) {
       ? invoiceReceiptEmail(data)
       : bankTransferEmail(data);
   const invoiceFile = await invoiceAttachment(data);
+  const to =
+    data.email?.trim() || data.invoice.customerEmail?.trim() || "";
+  if (!to) {
+    return {
+      ok: false as const,
+      error: "No customer email on this booking — add one and save, then send again",
+    };
+  }
   const result = await sendEmail({
-    to: data.email,
+    to,
     subject: email.subject,
     html: email.html,
     text: email.text,
