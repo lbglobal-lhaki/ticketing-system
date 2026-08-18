@@ -105,7 +105,15 @@ export function Menu({
           id={panelId}
           role="menu"
           onKeyDown={onPanelKeyDown}
-          onClick={() => setOpen(false)}
+          onClick={(e) => {
+            const target = e.target as HTMLElement | null;
+            // Submit buttons post a server action from a <form> inside this
+            // panel. Closing here unmounts that form during the same click,
+            // so Mark paid / Delete never run. Leave the menu up; the
+            // action's redirect tears the page down. Links still close it.
+            if (target?.closest('button[type="submit"]')) return;
+            setOpen(false);
+          }}
           className={cn(
             "absolute top-[calc(100%+4px)] z-40 min-w-52 overflow-hidden",
             "rounded-card border border-line bg-surface py-1 shadow-ui-md",

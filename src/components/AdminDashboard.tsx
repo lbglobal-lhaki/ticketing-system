@@ -65,7 +65,12 @@ import { formatAud } from "@/lib/pricing";
 import { AdminShell, type NavGroup } from "@/components/ui/AdminShell";
 import { Button } from "@/components/ui/Button";
 import { DateTimePicker } from "@/components/ui/DateTimePicker";
-import { Badge } from "@/components/ui/Badge";
+import { Badge, type BadgeTone } from "@/components/ui/Badge";
+import {
+  buildPricingCoverage,
+  type CoverageRow,
+  type CoverageStatus,
+} from "@/lib/fares/coverage";
 import { Menu, MenuDivider, MenuItem } from "@/components/ui/Menu";
 import {
   Table,
@@ -287,6 +292,14 @@ function cabinLabel(cabin: CabinClass) {
   return cabin === "business" ? "Business" : "Economy";
 }
 
+const COVERAGE_BADGE: Record<CoverageStatus, { tone: BadgeTone; label: string }> = {
+  complete: { tone: "success", label: "Complete" },
+  partial: { tone: "warning", label: "Partial" },
+  unpriced: { tone: "danger", label: "Unpriced" },
+  mixed: { tone: "info", label: "Mixed" },
+  empty: { tone: "neutral", label: "None" },
+};
+
 /** Cabins a flight sells, derived from its fare releases. */
 function cabinsOf(flight: { fareReleases: SavedFareRow[] }): CabinClass[] {
   const seen = new Set(flight.fareReleases.map((r) => r.cabinClass));
@@ -462,6 +475,79 @@ function CustomFlightFields({ prefix }: { prefix: "outbound" | "return" }) {
         </label>
       </div>
     </div>
+  );
+}
+
+/**
+ * One cabin + tier bucket. Rows built from a template are clickable and point
+ * the bulk form at that bucket; custom tier names are not, because the form's
+ * tier control only offers template names.
+ */
+function CoverageBoardRow({
+  row,
+  selected,
+  onSelect,
+}: {
+  row: CoverageRow;
+  selected?: boolean;
+  onSelect?: () => void;
+}) {
+  const badge = COVERAGE_BADGE[row.status];
+  const amount =
+    row.total === 0
+      ? "No releases"
+      : row.distinctAmounts > 1
+        ? `Mixed · ${row.distinctAmounts} amounts`
+        : row.amountCents !== null
+          ? formatAud(row.amountCents)
+          // "$0" rather than repeating the word already on the badge, and it
+          // matches the help line above the board.
+          : "$0";
+
+  const body = (
+    <>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm text-foreground">
+          <span className="text-muted">{cabinLabel(row.cabinClass)} · </span>
+          {row.name}
+        </span>
+        <span className="mt-0.5 block text-xs text-muted">
+          {row.total === 0
+            ? "Not on any flight"
+            : `${row.priced}/${row.total} priced`}
+          {row.unpriced > 0 ? ` · ${row.unpriced} unpriced` : ""}
+        </span>
+      </span>
+      <span className="shrink-0 text-right">
+        <span className="block text-sm tabular-nums text-foreground">
+          {amount}
+        </span>
+      </span>
+      <Badge tone={badge.tone} className="shrink-0">
+        {badge.label}
+      </Badge>
+    </>
+  );
+
+  const shell =
+    "flex w-full min-h-10 items-center gap-3 px-3 py-2.5 text-left transition-colors";
+
+  return (
+    <li className={selected ? "bg-accent/5" : undefined}>
+      {onSelect ? (
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-pressed={selected}
+          title="Point the bulk form at this bucket"
+          className={`${shell} hover:bg-accent/8 focus-visible:outline-2 focus-visible:outline-offset-[-2px]`}
+        >
+          {body}
+        </button>
+      ) : (
+        <div className={shell}>{body}</div>
+      )}
+    </li>
   );
 }
 
@@ -675,6 +761,16 @@ export function AdminDashboard({
   );
 
   const activeCount = flights.filter((f) => f.active).length;
+
+  /*
+   * The admin page loads every flight (no `take`), so these counts cover the
+   * same releases a bulk apply would hit — not just a visible page of them.
+   * Recomputed only when the flight data or the price-type toggle changes.
+   */
+  const pricingCoverage = useMemo(
+    () => buildPricingCoverage(flights, fareTripMode),
+    [flights, fareTripMode],
+  );
   const unpaidInvoiceCount = invoices.filter((i) => i.status === "unpaid").length;
 
   const navGroups = useMemo<NavGroup[]>(() => {
@@ -1078,6 +1174,60 @@ export function AdminDashboard({
               </span>
             </summary>
             <div className="border-t border-line px-5 pb-5 pt-4">
+            {/*
+              Coverage board. The bulk flash only says how many releases were
+              touched, which stops answering "what is left" after the second
+              run — this reads the releases already on the page instead.
+            */}
+            {flights.length === 0 ? (
+              <p className="text-sm text-muted">
+                No flights yet, so there is nothing to price.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+                    Coverage ·{" "}
+                    {fareTripMode === "round_trip" ? "Round trip" : "One way"}
+                  </p>
+                  <p className="text-xs text-muted">
+                    $0 means not priced yet. Mixed means flights in that tier
+                    don&apos;t all share one amount.
+                  </p>
+                </div>
+
+                <ul className="divide-y divide-line/70 rounded-card border border-line bg-background/40">
+                  {pricingCoverage.standard.map((row) => (
+                    <CoverageBoardRow
+                      key={row.key}
+                      row={row}
+                      selected={
+                        row.cabinClass === bulkPriceCabin &&
+                        row.name === bulkTierName
+                      }
+                      onSelect={() => {
+                        setBulkPriceCabin(row.cabinClass as CabinClass);
+                        setBulkTierName(row.name);
+                      }}
+                    />
+                  ))}
+                </ul>
+
+                {pricingCoverage.other.length > 0 ? (
+                  <>
+                    <p className="pt-1 text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+                      Other tier names
+                    </p>
+                    <ul className="divide-y divide-line/70 rounded-card border border-line bg-background/40">
+                      {pricingCoverage.other.map((row) => (
+                        <CoverageBoardRow key={row.key} row={row} />
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+              </div>
+            )}
+
             <form
               key={`bulk-${fareTripMode}-${searchParams.get("saved")}-${searchParams.get("count")}`}
               action={bulkUpdateFareTierPriceAction}
