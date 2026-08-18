@@ -142,7 +142,7 @@ export async function markInvoiceSentAction(formData: FormData) {
   revalidatePath("/admin");
   redirect(
     `/admin?tab=invoices&saved=invoice-sent${
-      result.warning
+      "warning" in result && result.warning
         ? `&error=${encodeURIComponent(result.warning)}`
         : ""
     }`,
@@ -164,7 +164,7 @@ export async function sendTravelDocumentEmailAction(formData: FormData) {
   revalidatePath("/admin");
   redirect(
     `/admin?tab=invoices&saved=travel-doc-sent${
-      result.warning
+      "warning" in result && result.warning
         ? `&error=${encodeURIComponent(result.warning)}`
         : ""
     }`,
@@ -186,7 +186,7 @@ export async function sendAirfareInvoiceEmailAction(formData: FormData) {
   revalidatePath("/admin");
   redirect(
     `/admin?tab=invoices&saved=airfare-invoice-sent${
-      result.warning
+      "warning" in result && result.warning
         ? `&error=${encodeURIComponent(result.warning)}`
         : ""
     }`,

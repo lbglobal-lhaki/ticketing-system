@@ -333,7 +333,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
           mergeInvoicePatch({ id: active.id, sentAt: result.sentAt });
         }
         setStatusMsg(
-          result.warning
+          "warning" in result && typeof result.warning === "string"
             ? result.warning
             : isTravel
               ? `Travel document emailed to ${active.customerEmail}.`
