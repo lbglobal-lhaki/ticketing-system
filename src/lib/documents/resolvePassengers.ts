@@ -48,6 +48,7 @@ export function resolveDocumentPassengers(input: {
             nationality: booking.nationality || "",
             ticketNumber: booking.ticketNumber,
             passengerType: "adult" as const,
+            dateOfBirth: null,
             priceCents: 0,
             allocatesSeat: true,
           },
@@ -92,6 +93,7 @@ export function resolveDocumentPassengers(input: {
           (i === 0 ? booking.nationality || "" : ""),
         ticketNumber: existing?.ticketNumber || booking.ticketNumber,
         passengerType: existing?.passengerType || d?.passengerType || type,
+        dateOfBirth: existing?.dateOfBirth ?? d?.dateOfBirth ?? null,
         priceCents:
           existing?.priceCents && existing.priceCents > 0
             ? existing.priceCents
@@ -124,6 +126,7 @@ export function resolveDocumentPassengers(input: {
         nationality: i === 0 ? booking.nationality || "" : "",
         ticketNumber: booking.ticketNumber,
         passengerType: "adult",
+        dateOfBirth: null,
         priceCents: 0,
         allocatesSeat: true,
       });

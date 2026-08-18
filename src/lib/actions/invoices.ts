@@ -149,6 +149,50 @@ export async function markInvoiceSentAction(formData: FormData) {
   );
 }
 
+/** List-row send — travel document only, then back to the Invoices tab. */
+export async function sendTravelDocumentEmailAction(formData: FormData) {
+  await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/admin?tab=invoices&error=Missing+invoice");
+
+  const result = await sendTravelDocumentEmailModalAction(id);
+  if (!result.ok) {
+    redirect(
+      `/admin?tab=invoices&error=${encodeURIComponent(result.error)}`,
+    );
+  }
+  revalidatePath("/admin");
+  redirect(
+    `/admin?tab=invoices&saved=travel-doc-sent${
+      result.warning
+        ? `&error=${encodeURIComponent(result.warning)}`
+        : ""
+    }`,
+  );
+}
+
+/** List-row send — airfare invoice only, then back to the Invoices tab. */
+export async function sendAirfareInvoiceEmailAction(formData: FormData) {
+  await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/admin?tab=invoices&error=Missing+invoice");
+
+  const result = await sendAirfareInvoiceEmailModalAction(id);
+  if (!result.ok) {
+    redirect(
+      `/admin?tab=invoices&error=${encodeURIComponent(result.error)}`,
+    );
+  }
+  revalidatePath("/admin");
+  redirect(
+    `/admin?tab=invoices&saved=airfare-invoice-sent${
+      result.warning
+        ? `&error=${encodeURIComponent(result.warning)}`
+        : ""
+    }`,
+  );
+}
+
 const updateSchema = z.object({
   id: z.string().min(1),
   customerName: z.string().trim().min(1).max(120),

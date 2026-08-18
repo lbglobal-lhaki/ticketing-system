@@ -17,6 +17,24 @@ export function infantFareCents(adultUnitFareCents: number): number {
   return Math.round(Math.max(0, adultUnitFareCents) * INFANT_FARE_RATE);
 }
 
+/** Stamp child 75% / infant 10% of the adult unit onto companion rows. */
+export function applyCatalogueCompanionFares(
+  travellers: TravellerDetail[],
+  adultUnitCents: number,
+): TravellerDetail[] {
+  const unit = Math.max(0, adultUnitCents);
+  if (unit <= 0) return travellers;
+  return travellers.map((t) => {
+    if (t.passengerType === "child") {
+      return { ...t, priceCents: childFareCents(unit) };
+    }
+    if (t.passengerType === "infant") {
+      return { ...t, priceCents: infantFareCents(unit) };
+    }
+    return t;
+  });
+}
+
 /** Total party fare for online checkout (infants included, no seat). */
 export function partyFareCents(input: {
   adultUnitFareCents: number;
@@ -64,6 +82,8 @@ export type TravellerDraft = {
   lastName: string;
   passportNumber: string;
   nationality: string;
+  /** YYYY-MM-DD. Required for child/infant. */
+  dateOfBirth?: string;
   /** Contact only required / used on the primary adult. */
   email?: string;
   phone?: string;
@@ -87,6 +107,8 @@ export type TravellerDetail = {
   passportNumber: string;
   nationality: string;
   passengerType: PassengerType;
+  /** Required for child/infant. Adults leave this null. */
+  dateOfBirth: Date | null;
   /** Admin-set fare for child/infant (cents). Adults use 0 (system fare). */
   priceCents: number;
 };
@@ -99,6 +121,144 @@ export function passengerTypeLabel(type: PassengerType | string): string {
   if (type === "child") return "Child";
   if (type === "infant") return "Infant";
   return "Adult";
+}
+
+/** Infant: younger than 1 on the flight date. Child: 1 through 10. Adult: 11+. */
+export const INFANT_MAX_AGE_YEARS = 1;
+export const CHILD_MAX_AGE_YEARS = 11;
+
+export const ADULT_AGE_HINT = "11+ years · full fare";
+export const CHILD_AGE_HINT = "1–10 years · 75% of adult fare · seat";
+export const INFANT_AGE_HINT = "Under 1 year · 10% of adult fare · no seat";
+
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+/** Calendar date as YYYY-MM-DD (UTC), for <input type="date" />. */
+export function formatDateOfBirth(
+  date: Date | string | null | undefined,
+): string {
+  if (!date) return "";
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+}
+
+export function formatDateOfBirthDisplay(
+  date: Date | string | null | undefined,
+): string {
+  const iso = formatDateOfBirth(date);
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y!, (m ?? 1) - 1, d ?? 1)).toLocaleDateString(
+    "en-AU",
+    {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    },
+  );
+}
+
+/** Parse YYYY-MM-DD into a UTC-noon Date so the calendar day never shifts TZ. */
+export function parseDateOfBirth(raw: string): Date {
+  const match = String(raw ?? "")
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    throw new Error("Date of birth is required");
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    throw new Error("Invalid date of birth");
+  }
+  return date;
+}
+
+function utcYmd(date: Date) {
+  return {
+    y: date.getUTCFullYear(),
+    m: date.getUTCMonth(),
+    d: date.getUTCDate(),
+  };
+}
+
+/** Completed years of age on `onDate` (typically the outbound departure). */
+export function completedAgeYears(dateOfBirth: Date, onDate: Date): number {
+  const born = utcYmd(dateOfBirth);
+  const on = utcYmd(onDate);
+  let age = on.y - born.y;
+  if (on.m < born.m || (on.m === born.m && on.d < born.d)) age -= 1;
+  return age;
+}
+
+export function passengerTypeFromAge(ageYears: number): PassengerType {
+  if (ageYears < INFANT_MAX_AGE_YEARS) return "infant";
+  if (ageYears < CHILD_MAX_AGE_YEARS) return "child";
+  return "adult";
+}
+
+export function assertDobMatchesType(
+  dateOfBirth: Date,
+  type: PassengerType,
+  onDate: Date,
+  who = passengerTypeLabel(type),
+): void {
+  const on = utcYmd(onDate);
+  const born = utcYmd(dateOfBirth);
+  if (
+    born.y > on.y ||
+    (born.y === on.y && born.m > on.m) ||
+    (born.y === on.y && born.m === on.m && born.d > on.d)
+  ) {
+    throw new Error(`${who}: date of birth cannot be after the flight date`);
+  }
+  const age = completedAgeYears(dateOfBirth, onDate);
+  const expected = passengerTypeFromAge(age);
+  if (type === "infant" && expected !== "infant") {
+    throw new Error(
+      `${who}: must be under 1 year old on the departure date. Book them as a ${expected} instead.`,
+    );
+  }
+  if (type === "child" && expected !== "child") {
+    throw new Error(
+      expected === "infant"
+        ? `${who}: must be 1–10 years old on the departure date. Book them as an infant instead.`
+        : `${who}: must be 1–10 years old on the departure date. Book them as an adult instead.`,
+    );
+  }
+}
+
+export function assertChildInfantAges(
+  travellers: Array<{
+    passengerType: PassengerType;
+    dateOfBirth: Date | null;
+    fullName?: string;
+  }>,
+  ageOn: Date,
+): void {
+  let childN = 0;
+  let infantN = 0;
+  for (const t of travellers) {
+    if (t.passengerType !== "child" && t.passengerType !== "infant") continue;
+    const n = t.passengerType === "child" ? ++childN : ++infantN;
+    const who = t.fullName?.trim()
+      ? t.fullName.trim()
+      : `${passengerTypeLabel(t.passengerType)} ${n}`;
+    if (!t.dateOfBirth) {
+      throw new Error(`${who}: date of birth is required`);
+    }
+    assertDobMatchesType(t.dateOfBirth, t.passengerType, ageOn, who);
+  }
 }
 
 const baseFields = {
@@ -118,12 +278,14 @@ const baseFields = {
 const adultSchema = z.object({
   ...baseFields,
   passengerType: z.literal("adult"),
+  dateOfBirth: z.date().nullable(),
   priceCents: z.literal(0).default(0),
 });
 
 const pricedSchema = z.object({
   ...baseFields,
   passengerType: z.enum(["child", "infant"]),
+  dateOfBirth: z.date(),
   priceCents: z.number().int().min(0).max(10_000_000),
 });
 
@@ -151,16 +313,33 @@ function parseNamedGroup(
     .getAll(`${prefix}PassengerNationality`)
     .map(String);
   const prices = formData.getAll(`${prefix}PassengerPriceAud`).map(String);
+  const dobs = formData.getAll(`${prefix}PassengerDateOfBirth`).map(String);
 
   return names.map((fullName, i) => {
     let priceCents = 0;
     if (type === "child" || type === "infant") {
+      const rawPrice = (prices[i] ?? "").trim();
+      if (rawPrice) {
+        try {
+          priceCents = moneyAudToCents(rawPrice);
+        } catch (e) {
+          throw new Error(
+            `${passengerTypeLabel(type)} ${i + 1}: ${
+              e instanceof Error ? e.message : "invalid price"
+            }`,
+          );
+        }
+      }
+    }
+
+    let dateOfBirth: Date | null = null;
+    if (type === "child" || type === "infant") {
       try {
-        priceCents = moneyAudToCents(prices[i] ?? "0");
+        dateOfBirth = parseDateOfBirth(dobs[i] ?? "");
       } catch (e) {
         throw new Error(
           `${passengerTypeLabel(type)} ${i + 1}: ${
-            e instanceof Error ? e.message : "invalid price"
+            e instanceof Error ? e.message : "invalid date of birth"
           }`,
         );
       }
@@ -174,6 +353,7 @@ function parseNamedGroup(
       passportNumber: passports[i] ?? "",
       nationality: nationalities[i] ?? "",
       passengerType: type,
+      dateOfBirth,
       priceCents,
     };
 
@@ -230,6 +410,7 @@ const draftTravellerSchema = z.object({
   lastName: z.string().trim().min(1, "Last name is required").max(80),
   passportNumber: z.string().trim().max(40).optional().or(z.literal("")),
   nationality: z.string().trim().max(60).optional().or(z.literal("")),
+  dateOfBirth: z.string().trim().optional().or(z.literal("")),
   email: z
     .string()
     .trim()
@@ -250,6 +431,7 @@ const draftTravellerSchema = z.object({
 export function parseOnlineTravellersDraft(
   formData: FormData,
   expected: { adults: number; children: number; infants: number },
+  ageOn: Date,
 ): TravellerDraft[] {
   const adults = Math.max(1, Math.floor(expected.adults));
   const children = Math.max(0, Math.floor(expected.children));
@@ -269,6 +451,7 @@ export function parseOnlineTravellersDraft(
       lastName: String(formData.get(`lastName_${i}`) ?? ""),
       passportNumber: String(formData.get(`passportNumber_${i}`) ?? ""),
       nationality: String(formData.get(`nationality_${i}`) ?? ""),
+      dateOfBirth: String(formData.get(`dateOfBirth_${i}`) ?? ""),
       email: String(formData.get(`email_${i}`) ?? ""),
       phone: String(formData.get(`phone_${i}`) ?? ""),
     };
@@ -284,6 +467,33 @@ export function parseOnlineTravellersDraft(
     if (parsed.data.passengerType !== expectedType) {
       throw new Error(`Traveller ${i + 1} type mismatch`);
     }
+
+    let dateOfBirth = "";
+    if (expectedType === "child" || expectedType === "infant") {
+      try {
+        const dob = parseDateOfBirth(parsed.data.dateOfBirth || "");
+        assertDobMatchesType(
+          dob,
+          expectedType,
+          ageOn,
+          `${passengerTypeLabel(expectedType)} ${i + 1}`,
+        );
+        dateOfBirth = formatDateOfBirth(dob);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "invalid date of birth";
+        if (
+          msg.startsWith("Child ") ||
+          msg.startsWith("Infant ") ||
+          msg.startsWith("Adult ")
+        ) {
+          throw e instanceof Error ? e : new Error(msg);
+        }
+        throw new Error(
+          `${passengerTypeLabel(expectedType)} ${i + 1}: ${msg}`,
+        );
+      }
+    }
+
     out.push({
       passengerType: parsed.data.passengerType,
       title: parsed.data.title,
@@ -291,6 +501,7 @@ export function parseOnlineTravellersDraft(
       lastName: parsed.data.lastName,
       passportNumber: parsed.data.passportNumber || "",
       nationality: parsed.data.nationality || "",
+      dateOfBirth,
       email: parsed.data.email || "",
       phone: parsed.data.phone || "",
     });

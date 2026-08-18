@@ -94,6 +94,7 @@ export async function loadBookingDocumentData(
       nationality: p.nationality,
       ticketNumber: p.ticketNumber,
       passengerType: p.passengerType,
+      dateOfBirth: p.dateOfBirth,
       priceCents: p.priceCents,
       allocatesSeat: p.allocatesSeat,
     })),

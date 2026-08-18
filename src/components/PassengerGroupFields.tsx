@@ -1,8 +1,13 @@
 "use client";
 
 import { MoneyInput } from "@/components/MoneyInput";
-import type { PassengerType } from "@/lib/booking/passengers";
-import { passengerTypeLabel } from "@/lib/booking/passengers";
+import {
+  CHILD_FARE_RATE,
+  INFANT_FARE_RATE,
+  passengerTypeLabel,
+  type PassengerType,
+} from "@/lib/booking/passengers";
+import { formatAud } from "@/lib/pricing";
 
 /**
  * Companions carry no contact details — email/phone are collected once on the
@@ -14,6 +19,8 @@ export type CompanionDraft = {
   nationality: string;
   priceAud: string;
   ticketNumber?: string;
+  /** YYYY-MM-DD. Required for child/infant. */
+  dateOfBirth?: string;
 };
 
 const fieldClass =
@@ -25,6 +32,7 @@ export function emptyCompanion(priceAud = "0.00"): CompanionDraft {
     passportNumber: "",
     nationality: "",
     priceAud,
+    dateOfBirth: "",
   };
 }
 
@@ -37,6 +45,13 @@ type Props = {
   canChangeCount: boolean;
   max?: number;
   description: string;
+  /**
+   * "edit" — admin types a price (legacy / custom bookings).
+   * "auto" — child 75% / infant 10% of the adult fare; shown read-only.
+   */
+  priceMode?: "edit" | "auto";
+  /** AUD string used when priceMode is "auto". */
+  autoPriceAud?: string;
 };
 
 export function PassengerGroupFields({
@@ -47,11 +62,14 @@ export function PassengerGroupFields({
   canChangeCount,
   max = 8,
   description,
+  priceMode = "edit",
+  autoPriceAud,
 }: Props) {
   const label = passengerTypeLabel(type);
   // "Child" does not pluralise by adding an s — the group heading read "CHILDS".
   const pluralLabel = type === "child" ? "Children" : `${label}s`;
   const needsPrice = type === "child" || type === "infant";
+  const needsDob = type === "child" || type === "infant";
   const namePrefix = `${prefix}Passenger`;
 
   function update(index: number, patch: Partial<CompanionDraft>) {
@@ -171,7 +189,49 @@ export function PassengerGroupFields({
               className={fieldClass}
             />
           </label>
-          {needsPrice ? (
+          {needsDob ? (
+            <label className="space-y-1 text-sm">
+              <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                Date of birth
+              </span>
+              <input
+                name={`${namePrefix}DateOfBirth`}
+                type="date"
+                required
+                value={pax.dateOfBirth || ""}
+                max={new Date().toLocaleDateString("en-CA")}
+                onChange={(e) => update(i, { dateOfBirth: e.target.value })}
+                className={fieldClass}
+              />
+              <span className="block text-xs text-muted">
+                {type === "infant"
+                  ? "Under 1 year on the departure date."
+                  : "1–10 years old on the departure date."}
+              </span>
+            </label>
+          ) : null}
+          {needsPrice && priceMode === "auto" ? (
+            <div className="space-y-1 text-sm">
+              <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                {label} price (AUD)
+              </span>
+              <input
+                type="hidden"
+                name={`${namePrefix}PriceAud`}
+                value={autoPriceAud || "0.00"}
+              />
+              <p className="py-2 font-medium text-foreground">
+                {autoPriceAud && Number(autoPriceAud) > 0
+                  ? formatAud(Math.round(Number(autoPriceAud) * 100))
+                  : "—"}
+              </p>
+              <span className="block text-xs text-muted">
+                {type === "infant"
+                  ? `${Math.round(INFANT_FARE_RATE * 100)}% of the adult fare · automatic`
+                  : `${Math.round(CHILD_FARE_RATE * 100)}% of the adult fare · automatic`}
+              </span>
+            </div>
+          ) : needsPrice ? (
             <label className="space-y-1 text-sm">
               <span className="text-xs uppercase tracking-[0.12em] text-muted">
                 {label} price (AUD)

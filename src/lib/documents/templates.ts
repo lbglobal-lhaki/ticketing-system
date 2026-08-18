@@ -15,6 +15,7 @@ export type BookingDocumentPassenger = {
   nationality?: string | null;
   ticketNumber: string;
   passengerType?: "adult" | "child" | "infant" | string;
+  dateOfBirth?: Date | string | null;
   priceCents?: number;
   allocatesSeat?: boolean;
 };

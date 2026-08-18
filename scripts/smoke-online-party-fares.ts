@@ -126,12 +126,26 @@ async function main() {
       fd.set(`nationality_${i}`, "AU");
       fd.set(`email_${i}`, r.email);
       fd.set(`phone_${i}`, r.phone);
+      if (r.type === "child") {
+        const d = new Date();
+        d.setUTCFullYear(d.getUTCFullYear() - 5);
+        fd.set(`dateOfBirth_${i}`, d.toISOString().slice(0, 10));
+      }
+      if (r.type === "infant") {
+        const d = new Date();
+        d.setUTCDate(d.getUTCDate() - 120);
+        fd.set(`dateOfBirth_${i}`, d.toISOString().slice(0, 10));
+      }
     });
-    const draft = parseOnlineTravellersDraft(fd, {
-      adults: 1,
-      children: 1,
-      infants: 1,
-    });
+    const draft = parseOnlineTravellersDraft(
+      fd,
+      {
+        adults: 1,
+        children: 1,
+        infants: 1,
+      },
+      new Date(),
+    );
     assert(draft.length === 3, "three travellers parsed");
     assert(draft[0]?.email === "ada@example.com", "primary email");
     assert(draft[1]?.passengerType === "child", "child slot");

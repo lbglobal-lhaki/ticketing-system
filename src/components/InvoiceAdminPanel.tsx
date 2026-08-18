@@ -10,7 +10,9 @@ import {
   markInvoicePaidAction,
   markInvoiceUnpaidAction,
   saveInvoiceDocumentModalAction,
+  sendAirfareInvoiceEmailAction,
   sendAirfareInvoiceEmailModalAction,
+  sendTravelDocumentEmailAction,
   sendTravelDocumentEmailModalAction,
 } from "@/lib/actions/invoices";
 import { formatAud } from "@/lib/pricing";
@@ -514,6 +516,25 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                       <a href={downloadUrl(invoice, "airfare")} download>
                         Airfare invoice PDF
                       </a>
+                    </MenuItem>
+
+                    <MenuDivider />
+                    <MenuLabel>Send</MenuLabel>
+                    <MenuItem>
+                      <form action={sendTravelDocumentEmailAction}>
+                        <input type="hidden" name="id" value={invoice.id} />
+                        <SubmitButton pendingLabel="Sending…">
+                          Send travel document
+                        </SubmitButton>
+                      </form>
+                    </MenuItem>
+                    <MenuItem>
+                      <form action={sendAirfareInvoiceEmailAction}>
+                        <input type="hidden" name="id" value={invoice.id} />
+                        <SubmitButton pendingLabel="Sending…">
+                          Send airfare invoice
+                        </SubmitButton>
+                      </form>
                     </MenuItem>
 
                     <MenuDivider />

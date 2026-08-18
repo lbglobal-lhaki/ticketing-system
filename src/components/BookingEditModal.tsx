@@ -11,6 +11,7 @@ import { updateBookingAction } from "@/lib/actions/walkIn";
 import { toDateTimeLocalValue } from "@/lib/datetime";
 import { DateTimePicker } from "@/components/ui/DateTimePicker";
 import { formatAud } from "@/lib/pricing";
+import { childFareCents, infantFareCents, formatDateOfBirth } from "@/lib/booking/passengers";
 
 export type EditablePassenger = {
   fullName: string;
@@ -20,6 +21,7 @@ export type EditablePassenger = {
   nationality: string;
   ticketNumber: string;
   passengerType: "adult" | "child" | "infant";
+  dateOfBirth: string | null;
   priceCents: number;
   allocatesSeat: boolean;
 };
@@ -54,6 +56,7 @@ function toDraft(p: EditablePassenger): CompanionDraft {
     nationality: p.nationality,
     priceAud: ((p.priceCents || 0) / 100).toFixed(2),
     ticketNumber: p.ticketNumber,
+    dateOfBirth: formatDateOfBirth(p.dateOfBirth),
   };
 }
 
@@ -98,6 +101,11 @@ export function BookingEditModal({
   }, [onClose]);
 
   const seated = 1 + adults.length + children.length;
+  const adultUnitCents =
+    booking.passengers.find(
+      (p) => p.passengerType === "adult" && p.priceCents > 0,
+    )?.priceCents ?? 0;
+  const autoCompanionFares = adultUnitCents > 0;
 
   return (
     <div
@@ -228,7 +236,9 @@ export function BookingEditModal({
             items={children}
             onChange={setChildren}
             canChangeCount={canEditSeats}
-            description="Children get a seat and their own price."
+            priceMode={autoCompanionFares ? "auto" : "edit"}
+            autoPriceAud={(childFareCents(adultUnitCents) / 100).toFixed(2)}
+            description="Children get a seat at 75% of the adult fare. Date of birth is required — 1–10 years old on the departure date."
           />
           <PassengerGroupFields
             type="infant"
@@ -236,7 +246,9 @@ export function BookingEditModal({
             items={infants}
             onChange={setInfants}
             canChangeCount={canEditSeats}
-            description="Infants get a ticket and price but no seat."
+            priceMode={autoCompanionFares ? "auto" : "edit"}
+            autoPriceAud={(infantFareCents(adultUnitCents) / 100).toFixed(2)}
+            description="Infants get a ticket at 10% of the adult fare but no seat. Date of birth is required — under 1 year on the departure date."
           />
 
           <p className="text-sm text-muted">
@@ -305,8 +317,9 @@ export function BookingEditModal({
                 className={fieldClass}
               />
               <span className="block text-xs text-muted">
-                Update the total to include child/infant prices. Travel docs and
-                invoices list every traveller after save.
+                Update the total if you add or remove travellers. Child (75%)
+                and infant (10%) fares are applied from the adult fare
+                automatically.
               </span>
             </label>
           </div>

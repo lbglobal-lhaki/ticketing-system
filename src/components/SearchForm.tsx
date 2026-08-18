@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DatePicker } from "@/components/DatePicker";
 import type { AirportOption } from "@/lib/format";
+import {
+  ADULT_AGE_HINT,
+  CHILD_AGE_HINT,
+  INFANT_AGE_HINT,
+} from "@/lib/booking/passengers";
 
 function defaultDate(offsetDays: number): string {
   const d = new Date();
@@ -347,7 +352,7 @@ export function SearchForm({
                   </p>
                   <PaxStepper
                     label="Adult"
-                    hint="12+ years · full fare"
+                    hint={ADULT_AGE_HINT}
                     value={adults}
                     min={1}
                     max={Math.max(1, 9 - children)}
@@ -355,7 +360,7 @@ export function SearchForm({
                   />
                   <PaxStepper
                     label="Child"
-                    hint="2–11 years · 75% of adult fare · seat"
+                    hint={CHILD_AGE_HINT}
                     value={children}
                     min={0}
                     max={Math.max(0, 9 - adults)}
@@ -363,7 +368,7 @@ export function SearchForm({
                   />
                   <PaxStepper
                     label="Infant"
-                    hint="Under 2 · 10% of adult fare · no seat"
+                    hint={INFANT_AGE_HINT}
                     value={infants}
                     min={0}
                     max={9}

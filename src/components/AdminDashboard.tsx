@@ -61,6 +61,11 @@ import {
   defaultFlightFareTemplate,
   fareTemplateForCabin,
 } from "@/lib/fares/templates";
+import {
+  childFareCents,
+  infantFareCents,
+  partyFareCents,
+} from "@/lib/booking/passengers";
 import { formatAud } from "@/lib/pricing";
 import { AdminShell, type NavGroup } from "@/components/ui/AdminShell";
 import { Button } from "@/components/ui/Button";
@@ -131,6 +136,7 @@ type BookingPassengerRow = {
   nationality: string;
   ticketNumber: string;
   passengerType: "adult" | "child" | "infant";
+  dateOfBirth: string | null;
   priceCents: number;
   allocatesSeat: boolean;
 };
@@ -901,6 +907,44 @@ export function AdminDashboard({
     ],
     [charterFares, walkInTripType, walkInCabin],
   );
+
+  const walkInAdultUnitCents = useMemo(() => {
+    const product = charterFares.find(
+      (f) => f.id === walkInFareProductId && f.active,
+    );
+    if (product) {
+      return walkInTripType === "round_trip"
+        ? product.roundTripPriceCents
+        : product.priceCents;
+    }
+    const flight = walkInOutboundFlight;
+    if (!flight) return 0;
+    const priceOf = (r: SavedFareRow) =>
+      walkInTripType === "round_trip" ? r.roundTripPriceCents : r.priceCents;
+    const sorted = flight.fareReleases
+      .filter((r) => r.cabinClass === walkInCabin)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+    const hit =
+      sorted.find((r) => r.remainingSeats > 0 && priceOf(r) > 0) ??
+      sorted.find((r) => r.remainingSeats > 0);
+    return hit ? priceOf(hit) : 0;
+  }, [
+    charterFares,
+    walkInFareProductId,
+    walkInTripType,
+    walkInOutboundFlight,
+    walkInCabin,
+  ]);
+  const walkInChildPriceAud = (childFareCents(walkInAdultUnitCents) / 100).toFixed(2);
+  const walkInInfantPriceAud = (
+    infantFareCents(walkInAdultUnitCents) / 100
+  ).toFixed(2);
+  const walkInPartyTotalCents = partyFareCents({
+    adultUnitFareCents: walkInAdultUnitCents,
+    adults: 1 + walkInAdults.length,
+    children: walkInChildren.length,
+    infants: walkInInfants.length,
+  });
 
   function bulkDeleteFlights() {
     const ids = [...flightBulk.selected];
@@ -2211,7 +2255,9 @@ export function AdminDashboard({
                   items={walkInChildren}
                   onChange={setWalkInChildren}
                   canChangeCount
-                  description="Children get a seat and their own admin-set price (not the adult fare)."
+                  priceMode="auto"
+                  autoPriceAud={walkInChildPriceAud}
+                  description="Children get a seat at 75% of the adult fare. Date of birth is required — 1–10 years old on the departure date."
                 />
                 <PassengerGroupFields
                   type="infant"
@@ -2219,7 +2265,9 @@ export function AdminDashboard({
                   items={walkInInfants}
                   onChange={setWalkInInfants}
                   canChangeCount
-                  description="Infants get a ticket and admin-set price but do not take a seat."
+                  priceMode="auto"
+                  autoPriceAud={walkInInfantPriceAud}
+                  description="Infants get a ticket at 10% of the adult fare but no seat. Date of birth is required — under 1 year on the departure date."
                 />
                 <p className="text-sm text-muted">
                   Seats (adults + children):{" "}
@@ -2232,6 +2280,22 @@ export function AdminDashboard({
                       · Infants (no seat):{" "}
                       <span className="font-medium text-foreground">
                         {walkInInfants.length}
+                      </span>
+                    </>
+                  ) : null}
+                  {walkInAdultUnitCents > 0 ? (
+                    <>
+                      {" "}
+                      · Party fare:{" "}
+                      <span className="font-medium text-foreground">
+                        {formatAud(walkInPartyTotalCents)}
+                      </span>
+                      <span className="text-xs">
+                        {" "}
+                        ({formatAud(walkInAdultUnitCents)} adult ·{" "}
+                        {formatAud(childFareCents(walkInAdultUnitCents))} child ·{" "}
+                        {formatAud(infantFareCents(walkInAdultUnitCents))}{" "}
+                        infant)
                       </span>
                     </>
                   ) : null}

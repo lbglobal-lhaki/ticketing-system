@@ -3,8 +3,9 @@
 import { useMemo, useState } from "react";
 import { savePassengerDetailsAction } from "@/lib/actions/passengers";
 import {
-  CHILD_FARE_RATE,
-  INFANT_FARE_RATE,
+  ADULT_AGE_HINT,
+  CHILD_AGE_HINT,
+  INFANT_AGE_HINT,
   childFareCents,
   infantFareCents,
   partyFareCents,
@@ -38,6 +39,8 @@ type PassengerDetailsFormProps = {
     seatsBooked?: number;
   };
   initialTravellers?: TravellerDraft[];
+  /** Outbound departure — child/infant age is calculated on this date. */
+  ageOnIso?: string;
   error?: string | null;
 };
 
@@ -58,6 +61,7 @@ function emptyDraft(type: PassengerType): DraftRow {
     nationality: "",
     email: "",
     phone: "",
+    dateOfBirth: "",
   };
 }
 
@@ -96,6 +100,7 @@ function seedRows(
             nationality: src.nationality || "",
             email: src.email || "",
             phone: src.phone || "",
+            dateOfBirth: src.dateOfBirth || "",
           }
         : emptyDraft(type),
     );
@@ -122,6 +127,7 @@ export function PassengerDetailsForm({
   unitAdultFareCents,
   initial,
   initialTravellers,
+  ageOnIso,
   error,
 }: PassengerDetailsFormProps) {
   const seatCap = Math.min(9, Math.max(1, maxSeats));
@@ -244,7 +250,7 @@ export function PassengerDetailsForm({
         <div className="grid gap-0 divide-y divide-line sm:grid-cols-3 sm:divide-x sm:divide-y-0">
           <PartyStepper
             label="Adult"
-            hint="12+ years · full fare"
+            hint={ADULT_AGE_HINT}
             priceLabel={formatAud(unit)}
             value={adults}
             min={1}
@@ -253,7 +259,7 @@ export function PassengerDetailsForm({
           />
           <PartyStepper
             label="Child"
-            hint={`2–11 years · ${Math.round(CHILD_FARE_RATE * 100)}% · seat`}
+            hint={CHILD_AGE_HINT}
             priceLabel={formatAud(childUnit)}
             value={childrenN}
             min={0}
@@ -263,7 +269,7 @@ export function PassengerDetailsForm({
           />
           <PartyStepper
             label="Infant"
-            hint={`Under 2 · ${Math.round(INFANT_FARE_RATE * 100)}% · no seat`}
+            hint={INFANT_AGE_HINT}
             priceLabel={formatAud(infantUnit)}
             value={infantsN}
             min={0}
@@ -334,6 +340,7 @@ export function PassengerDetailsForm({
           }
           onChange={(patch) => updateRow(row.passengerType, row.key, patch)}
           onRemove={() => removeRow(row.passengerType, row.key)}
+          ageOnIso={ageOnIso}
         />
       ))}
 
@@ -464,6 +471,7 @@ function TravellerCard({
   canRemove,
   onChange,
   onRemove,
+  ageOnIso,
 }: {
   index: number;
   row: DraftRow;
@@ -472,10 +480,15 @@ function TravellerCard({
   canRemove: boolean;
   onChange: (patch: Partial<TravellerDraft>) => void;
   onRemove: () => void;
+  ageOnIso?: string;
 }) {
   const [open, setOpen] = useState(true);
   const [noSplitName, setNoSplitName] = useState(row.lastName === "—");
   const label = passengerTypeLabel(row.passengerType);
+  const todayIso = new Date().toLocaleDateString("en-CA");
+  const maxDob = [ageOnIso?.slice(0, 10), todayIso]
+    .filter(Boolean)
+    .sort()[0];
   const i = index;
 
   return (
@@ -527,8 +540,10 @@ function TravellerCard({
           <p className="mt-1.5 text-sm text-muted">
             Name must match the passport
             {row.passengerType === "infant"
-              ? ". Infants travel without a seat."
-              : "."}
+              ? ". Infants travel without a seat. Date of birth is required — under 1 year on the departure date."
+              : row.passengerType === "child"
+                ? ". Date of birth is required — must be 1–10 years old on the departure date."
+                : "."}
           </p>
 
           <div className="mt-5 grid gap-4">
@@ -619,6 +634,28 @@ function TravellerCard({
             </label>
 
             <div className="grid gap-4 sm:grid-cols-2">
+              {(row.passengerType === "child" ||
+                row.passengerType === "infant") && (
+                <label className="block text-sm sm:col-span-2">
+                  <span className="font-medium text-foreground">
+                    Date of birth
+                  </span>
+                  <input
+                    name={`dateOfBirth_${i}`}
+                    type="date"
+                    required
+                    value={row.dateOfBirth || ""}
+                    max={maxDob}
+                    onChange={(e) => onChange({ dateOfBirth: e.target.value })}
+                    className={fieldClass}
+                  />
+                  <span className="mt-1 block text-xs text-muted">
+                    {row.passengerType === "infant"
+                      ? "Must be under 1 year old on the departure date."
+                      : "Must be 1–10 years old on the departure date."}
+                  </span>
+                </label>
+              )}
               <label className="block text-sm">
                 <span className="font-medium text-foreground">
                   Passport number

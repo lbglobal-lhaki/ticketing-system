@@ -3,7 +3,10 @@ import { notFound } from "next/navigation";
 import { FlightSummarySidebar } from "@/components/checkout/FlightSummarySidebar";
 import { PassengerDetailsForm } from "@/components/checkout/PassengerDetailsForm";
 import { QuoteBlockedMessage } from "@/components/checkout/CheckoutShell";
-import type { TravellerDraft } from "@/lib/booking/passengers";
+import {
+  formatDateOfBirth,
+  type TravellerDraft,
+} from "@/lib/booking/passengers";
 import { getCheckoutQuoteState } from "@/lib/checkout/loadQuote";
 
 export default async function PassengerDetailsPage({
@@ -62,6 +65,7 @@ export default async function PassengerDetailsPage({
                 unitAdultFareCents={unitAdult}
                 error={error ? decodeURIComponent(error) : null}
                 initialTravellers={draftList}
+                ageOnIso={formatDateOfBirth(q.flight.departureAt)}
                 initial={{
                   title: q.passengerTitle || undefined,
                   firstName: q.passengerFirstName || undefined,

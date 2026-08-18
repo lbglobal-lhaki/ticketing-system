@@ -16,7 +16,7 @@ import type {
   BookingDocumentData,
   BookingDocumentPassenger,
 } from "@/lib/documents/templates";
-import { passengerTypeLabel } from "@/lib/booking/passengers";
+import { formatDateOfBirthDisplay, passengerTypeLabel } from "@/lib/booking/passengers";
 
 /**
  * E-ticket / itinerary / receipt, laid out to match the approved reference
@@ -494,7 +494,11 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
                 noSeat
                   ? "Infant (no seat) — travels with an adult"
                   : esc(passengerTypeLabel(type))
-              }</b>`
+              }</b>${
+                pax.dateOfBirth
+                  ? `<span>Date of Birth:</span><b>${esc(formatDateOfBirthDisplay(pax.dateOfBirth))}</b>`
+                  : ""
+              }`
             : ""
         }
       </div>

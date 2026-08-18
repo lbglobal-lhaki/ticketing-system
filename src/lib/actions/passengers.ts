@@ -36,6 +36,7 @@ export async function savePassengerDetailsAction(formData: FormData) {
   const sessionId = await getSessionId();
   const quote = await prisma.priceQuote.findUnique({
     where: { id: quoteId },
+    include: { flight: { select: { departureAt: true } } },
   });
 
   if (!quote || quote.sessionId !== sessionId) {
@@ -68,11 +69,15 @@ export async function savePassengerDetailsAction(formData: FormData) {
       fail(quoteId, "This fare is not priced yet — please select fares again");
     }
 
-    const travellers = parseOnlineTravellersDraft(formData, {
-      adults,
-      children,
-      infants,
-    });
+    const travellers = parseOnlineTravellersDraft(
+      formData,
+      {
+        adults,
+        children,
+        infants,
+      },
+      quote.flight?.departureAt ?? new Date(),
+    );
     const primary = travellers[0]!;
 
     const quotedPriceCents = partyFareCents({

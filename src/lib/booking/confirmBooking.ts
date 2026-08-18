@@ -33,6 +33,7 @@ import {
   allocatesSeat,
   childFareCents,
   infantFareCents,
+  parseDateOfBirth,
   partyFareCents,
   quotePartyFareCents,
   seatedCountFromMix,
@@ -452,6 +453,7 @@ export async function confirmBooking(input: {
           passportNumber: string;
           nationality: string;
           passengerType: "adult" | "child" | "infant";
+          dateOfBirth: Date | null;
           priceCents: number;
         }> = [];
         const expected =
@@ -474,6 +476,20 @@ export async function confirmBooking(input: {
                 ? infantFareCents(unit)
                 : 0;
           if (d) {
+            let dateOfBirth: Date | null = null;
+            if (
+              (d.passengerType === "child" ||
+                d.passengerType === "infant" ||
+                type === "child" ||
+                type === "infant") &&
+              d.dateOfBirth
+            ) {
+              try {
+                dateOfBirth = parseDateOfBirth(d.dateOfBirth);
+              } catch {
+                dateOfBirth = null;
+              }
+            }
             travellers.push({
               fullName: travellerDisplayName(d) || input.passengerName,
               email: i === 0 ? input.email : d.email || "",
@@ -481,6 +497,7 @@ export async function confirmBooking(input: {
               passportNumber: d.passportNumber || "",
               nationality: d.nationality || "",
               passengerType: d.passengerType || type,
+              dateOfBirth,
               priceCents,
             });
           } else if (i === 0) {
@@ -491,6 +508,7 @@ export async function confirmBooking(input: {
               passportNumber: input.passportNumber || "",
               nationality: input.nationality || "",
               passengerType: "adult",
+              dateOfBirth: null,
               priceCents: 0,
             });
           } else {
@@ -501,6 +519,7 @@ export async function confirmBooking(input: {
               passportNumber: "",
               nationality: "",
               passengerType: type,
+              dateOfBirth: null,
               priceCents,
             });
           }
@@ -545,6 +564,7 @@ export async function confirmBooking(input: {
                 passportNumber: pax.passportNumber,
                 nationality: pax.nationality,
                 passengerType: pax.passengerType,
+                dateOfBirth: pax.dateOfBirth,
                 priceCents: pax.priceCents,
                 allocatesSeat: allocatesSeat(pax.passengerType),
                 ticketNumber: passengerTickets[index]!,

@@ -15,7 +15,11 @@ import {
 import { restoreFareAndFlight } from "../src/lib/booking/inventory";
 import {
   allocatesSeat,
+  assertChildInfantAges,
+  completedAgeYears,
   parseCompanionTravellers,
+  parseDateOfBirth,
+  passengerTypeFromAge,
   passengerTypeLabel,
 } from "../src/lib/booking/passengers";
 import { loadBookingDocumentData } from "../src/lib/email/bookingMail";
@@ -35,6 +39,21 @@ function assert(cond: unknown, msg: string) {
   }
 }
 
+function yearsAgoIso(years: number, extraDays = 20): string {
+  const d = new Date();
+  d.setUTCFullYear(d.getUTCFullYear() - years);
+  d.setUTCDate(d.getUTCDate() - extraDays);
+  return d.toISOString().slice(0, 10);
+}
+
+function childDob() {
+  return yearsAgoIso(5);
+}
+
+function infantDob() {
+  return yearsAgoIso(0, 120);
+}
+
 function formFromTravellers(groups: {
   extra?: Array<Record<string, string>>;
   child?: Array<Record<string, string>>;
@@ -50,6 +69,10 @@ function formFromTravellers(groups: {
       fd.append(`${prefix}PassengerNationality`, row.nationality || "");
       if (prefix === "child" || prefix === "infant") {
         fd.append(`${prefix}PassengerPriceAud`, row.price || "0");
+        fd.append(
+          `${prefix}PassengerDateOfBirth`,
+          row.dob || (prefix === "infant" ? infantDob() : childDob()),
+        );
       }
     }
   }
@@ -98,6 +121,52 @@ async function main() {
     assert(allocatesSeat("child"), "child allocates seat");
     assert(!allocatesSeat("infant"), "infant does not allocate seat");
     assert(passengerTypeLabel("infant") === "Infant", "label Infant");
+    assert(parsed.children[0]?.dateOfBirth instanceof Date, "child dob parsed");
+    assert(parsed.infants[0]?.dateOfBirth instanceof Date, "infant dob parsed");
+
+    const ageOn = new Date("2026-08-18T12:00:00Z");
+    assert(
+      passengerTypeFromAge(
+        completedAgeYears(parseDateOfBirth("2026-02-01"), ageOn),
+      ) === "infant",
+      "under 1 → infant",
+    );
+    assert(
+      passengerTypeFromAge(
+        completedAgeYears(parseDateOfBirth("2025-08-18"), ageOn),
+      ) === "child",
+      "exactly 1 → child",
+    );
+    assert(
+      passengerTypeFromAge(
+        completedAgeYears(parseDateOfBirth("2015-08-19"), ageOn),
+      ) === "child",
+      "10 years 364 days → child",
+    );
+    assert(
+      passengerTypeFromAge(
+        completedAgeYears(parseDateOfBirth("2015-08-18"), ageOn),
+      ) === "adult",
+      "exactly 11 → adult",
+    );
+
+    // Wrong type: 5-year-old cannot be an infant
+    let wrongType = false;
+    try {
+      assertChildInfantAges(
+        [
+          {
+            passengerType: "infant",
+            dateOfBirth: parseDateOfBirth(childDob()),
+            fullName: "Too Old Baby",
+          },
+        ],
+        new Date(),
+      );
+    } catch {
+      wrongType = true;
+    }
+    assert(wrongType, "5-year-old rejected as infant");
 
     // Reject bad child price
     let threw = false;

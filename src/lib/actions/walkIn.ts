@@ -27,7 +27,10 @@ import {
 } from "@/lib/booking/inventory";
 import {
   allocatesSeat,
+  applyCatalogueCompanionFares,
+  assertChildInfantAges,
   parseCompanionTravellers,
+  partyFareCents,
   type TravellerDetail,
 } from "@/lib/booking/passengers";
 import { parseDateTimeLocal } from "@/lib/datetime";
@@ -329,6 +332,7 @@ export async function createWalkInBookingAction(formData: FormData) {
       include: { fareReleases: { orderBy: { sortOrder: "asc" } } },
     });
     if (!flight) throw new Error("Flight not found");
+    assertChildInfantAges(companions.all, flight.departureAt);
 
     // A fare-tier override charges its own catalogue price, and a custom
     // admin price replaces the total outright — in either case the flight's
@@ -469,13 +473,17 @@ export async function createWalkInBookingAction(formData: FormData) {
     }
 
     // Adults (primary + extras) use one adult package each (OW or full RT).
-    // Children and infants use their admin-entered prices (infants = no seat).
+    // Children are 75% of that unit; infants 10% (no seat) — same as online.
     const adultSeatCount = 1 + companions.adults.length;
+    const catalogueFareCents = partyFareCents({
+      adultUnitFareCents: unitAdultFareCents,
+      adults: adultSeatCount,
+      children: companions.children.length,
+      infants: companions.infants.length,
+    });
     const flightFareCents = usingCustomPrice
       ? (customTotalCents as number)
-      : unitAdultFareCents * adultSeatCount +
-        companions.childFareCents +
-        companions.infantFareCents;
+      : catalogueFareCents;
     const baggageCents = Math.round(data.extraBaggageAud * 100);
     const chargeableSubtotalCents = flightFareCents + baggageCents;
 
@@ -567,6 +575,10 @@ export async function createWalkInBookingAction(formData: FormData) {
       const adultUnitForPassengers = usingCustomPrice
         ? 0
         : unitAdultFareCents;
+      const pricedCompanions = applyCatalogueCompanionFares(
+        companions.all,
+        unitAdultFareCents,
+      );
       const allPassengers: TravellerDetail[] = [
         {
           fullName: data.passengerName,
@@ -575,9 +587,10 @@ export async function createWalkInBookingAction(formData: FormData) {
           passportNumber: data.passportNumber || "",
           nationality: data.nationality || "",
           passengerType: "adult",
+          dateOfBirth: null,
           priceCents: adultUnitForPassengers,
         },
-        ...companions.all.map((pax) =>
+        ...pricedCompanions.map((pax) =>
           pax.passengerType === "adult" && adultUnitForPassengers > 0
             ? { ...pax, priceCents: adultUnitForPassengers }
             : pax,
@@ -621,6 +634,7 @@ export async function createWalkInBookingAction(formData: FormData) {
               passportNumber: pax.passportNumber || "",
               nationality: pax.nationality || "",
               passengerType: pax.passengerType,
+              dateOfBirth: pax.dateOfBirth,
               priceCents: pax.priceCents,
               allocatesSeat: allocatesSeat(pax.passengerType),
               ticketNumber: passengerTickets[index]!,
@@ -1002,6 +1016,7 @@ async function syncAllBookingPassengers(
           nationality: pax.nationality || "",
           passengerType: pax.passengerType,
           priceCents: keepsAdultFare ? row.priceCents : pax.priceCents,
+          dateOfBirth: pax.dateOfBirth,
           allocatesSeat: seat,
         },
       });
@@ -1016,6 +1031,7 @@ async function syncAllBookingPassengers(
           passportNumber: pax.passportNumber || "",
           nationality: pax.nationality || "",
           passengerType: pax.passengerType,
+          dateOfBirth: pax.dateOfBirth,
           priceCents: pax.priceCents,
           allocatesSeat: seat,
           ticketNumber: i === 0 ? primaryTicketNumber : makeTicketNumber(),
@@ -1084,6 +1100,7 @@ export async function updateBookingAction(formData: FormData) {
       passportNumber: data.passportNumber || "",
       nationality: data.nationality || "",
       passengerType: "adult",
+      dateOfBirth: null,
       priceCents: 0,
     },
     ...companions.all,
@@ -1093,9 +1110,22 @@ export async function updateBookingAction(formData: FormData) {
     await prisma.$transaction(async (tx) => {
       const booking = await tx.booking.findUnique({
         where: { id: data.id },
-        include: { invoice: true },
+        include: {
+          invoice: true,
+          flight: { select: { departureAt: true } },
+          passengers: { select: { passengerType: true, priceCents: true } },
+        },
       });
       if (!booking) throw new Error("Booking not found");
+      assertChildInfantAges(companions.all, booking.flight.departureAt);
+      const adultUnitCents =
+        booking.passengers.find(
+          (p) => p.passengerType === "adult" && p.priceCents > 0,
+        )?.priceCents ?? 0;
+      const pricedPassengers =
+        adultUnitCents > 0
+          ? applyCatalogueCompanionFares(allPassengers, adultUnitCents)
+          : allPassengers;
       if (booking.status === "cancelled") {
         throw new Error("Cancelled bookings cannot be edited");
       }
@@ -1173,7 +1203,7 @@ export async function updateBookingAction(formData: FormData) {
       await syncAllBookingPassengers(
         tx,
         booking.id,
-        allPassengers,
+        pricedPassengers,
         booking.ticketNumber,
       );
 
