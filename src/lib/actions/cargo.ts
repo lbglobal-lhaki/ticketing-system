@@ -9,6 +9,11 @@ import { allocateCargoParcelNumber } from "@/lib/cargo/parcelNumber";
 import { extractCargoContacts } from "@/lib/cargo/submit";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
+import {
+  failFromUnknown,
+  formFail,
+  type FormActionResult,
+} from "@/lib/forms/formAction";
 
 const statusSchema = z.enum(["new", "reviewed", "closed"]);
 
@@ -45,16 +50,21 @@ function parsePaid(formData: FormData) {
   return raw === "on" || raw === "true" || raw === "1" || raw === "yes";
 }
 
-export async function createCargoSubmissionAction(formData: FormData) {
+export async function createCargoSubmissionAction(
+  _prev: FormActionResult | null,
+  formData: FormData,
+): Promise<FormActionResult> {
   await requireAdmin();
 
   const statusRaw = String(formData.get("status") || "new").trim();
   const statusParsed = statusSchema.safeParse(statusRaw);
-  if (!statusParsed.success) cargoFail("Invalid status");
+  if (!statusParsed.success) {
+    return formFail("Invalid status", { status: "Invalid status" });
+  }
 
   const answers = parseAnswersFromForm(formData);
   if (Object.keys(answers).length === 0) {
-    cargoFail("Add at least one form field (question + answer)");
+    return formFail("Add at least one form field (question + answer)");
   }
 
   const contacts = parseContacts(formData, answers);
@@ -79,28 +89,31 @@ export async function createCargoSubmissionAction(formData: FormData) {
     });
   } catch (error) {
     console.error("createCargoSubmissionAction", error);
-    cargoFail(
-      error instanceof Error ? error.message : "Could not create cargo entry",
-    );
+    return failFromUnknown(error, "Could not create cargo entry");
   }
 
   revalidatePath("/admin");
   redirect("/admin?tab=cargo&saved=cargo-created");
 }
 
-export async function updateCargoSubmissionAction(formData: FormData) {
+export async function updateCargoSubmissionAction(
+  _prev: FormActionResult | null,
+  formData: FormData,
+): Promise<FormActionResult> {
   await requireAdmin();
 
   const id = String(formData.get("id") || "").trim();
-  if (!id) cargoFail("Missing cargo id");
+  if (!id) return formFail("Missing cargo id");
 
   const statusRaw = String(formData.get("status") || "").trim();
   const statusParsed = statusSchema.safeParse(statusRaw);
-  if (!statusParsed.success) cargoFail("Invalid status");
+  if (!statusParsed.success) {
+    return formFail("Invalid status", { status: "Invalid status" });
+  }
 
   const answers = parseAnswersFromForm(formData);
   if (Object.keys(answers).length === 0) {
-    cargoFail("Keep at least one form field (question + answer)");
+    return formFail("Keep at least one form field (question + answer)");
   }
 
   const contacts = parseContacts(formData, answers);
@@ -112,7 +125,7 @@ export async function updateCargoSubmissionAction(formData: FormData) {
       where: { id },
       select: { paid: true, paidAt: true },
     });
-    if (!existing) cargoFail("Cargo enquiry not found");
+    if (!existing) return formFail("Cargo enquiry not found");
 
     await prisma.cargoSubmission.update({
       where: { id },
@@ -129,9 +142,7 @@ export async function updateCargoSubmissionAction(formData: FormData) {
     });
   } catch (error) {
     console.error("updateCargoSubmissionAction", error);
-    cargoFail(
-      error instanceof Error ? error.message : "Could not update cargo",
-    );
+    return failFromUnknown(error, "Could not update cargo");
   }
 
   revalidatePath("/admin");

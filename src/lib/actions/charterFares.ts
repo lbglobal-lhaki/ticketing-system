@@ -7,6 +7,11 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { invalidateCharterFareCache } from "@/lib/fares/charter";
 import { z } from "zod";
+import {
+  formFail,
+  zodFieldErrors,
+  type FormActionResult,
+} from "@/lib/forms/formAction";
 
 
 const updateSchema = z.object({
@@ -44,7 +49,10 @@ function linesToJson(text: string) {
     .filter(Boolean);
 }
 
-export async function updateCharterFareAction(formData: FormData) {
+export async function updateCharterFareAction(
+  _prev: FormActionResult | null,
+  formData: FormData,
+): Promise<FormActionResult> {
   await requireAdmin();
 
   const parsed = updateSchema.safeParse({
@@ -76,8 +84,9 @@ export async function updateCharterFareAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    redirect(
-      `/admin?tab=fares&error=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid fare")}`,
+    return formFail(
+      parsed.error.issues[0]?.message ?? "Please fix the highlighted fields",
+      zodFieldErrors(parsed.error),
     );
   }
 

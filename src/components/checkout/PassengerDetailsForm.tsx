@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { savePassengerDetailsAction } from "@/lib/actions/passengers";
+import { FieldError, labeledControlClass } from "@/components/forms/FieldError";
+import { useStickyAction } from "@/components/forms/useStickyAction";
 import {
   ADULT_AGE_HINT,
   CHILD_AGE_HINT,
@@ -129,8 +131,11 @@ export function PassengerDetailsForm({
   initial,
   initialTravellers,
   ageOnIso,
-  error,
+  error: errorProp,
 }: PassengerDetailsFormProps) {
+  const sticky = useStickyAction(savePassengerDetailsAction);
+  const fieldErrors = sticky.fieldErrors;
+  const error = sticky.formError ?? errorProp;
   const seatCap = Math.min(9, Math.max(1, maxSeats));
   const unit = Math.max(0, unitAdultFareCents);
   const childUnit = childFareCents(unit);
@@ -221,7 +226,7 @@ export function PassengerDetailsForm({
   }
 
   return (
-    <form action={savePassengerDetailsAction} className="space-y-5">
+    <form onSubmit={sticky.onSubmit} className="space-y-5">
       <input type="hidden" name="quoteId" value={quoteId} />
       <input type="hidden" name="adults" value={String(adults)} />
       <input type="hidden" name="children" value={String(childrenN)} />
@@ -342,6 +347,7 @@ export function PassengerDetailsForm({
           onChange={(patch) => updateRow(row.passengerType, row.key, patch)}
           onRemove={() => removeRow(row.passengerType, row.key)}
           ageOnIso={ageOnIso}
+          fieldErrors={fieldErrors}
         />
       ))}
 
@@ -350,6 +356,8 @@ export function PassengerDetailsForm({
           type="checkbox"
           name="privacyAccepted"
           required
+          data-field-key="privacyAccepted"
+          aria-invalid={fieldErrors.privacyAccepted ? true : undefined}
           className="mt-1 size-4 accent-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
         />
         <span>
@@ -364,6 +372,7 @@ export function PassengerDetailsForm({
             Privacy Policy
           </a>
           .
+          <FieldError error={fieldErrors.privacyAccepted} />
         </span>
       </label>
 
@@ -376,6 +385,7 @@ export function PassengerDetailsForm({
           </span>
         </p>
         <SubmitButton
+          pending={sticky.pending}
           pendingLabel="Saving…"
           className="btn-cta min-h-12 px-10 text-sm disabled:cursor-not-allowed disabled:opacity-70"
         >
@@ -473,6 +483,7 @@ function TravellerCard({
   onChange,
   onRemove,
   ageOnIso,
+  fieldErrors = {},
 }: {
   index: number;
   row: DraftRow;
@@ -482,6 +493,7 @@ function TravellerCard({
   onChange: (patch: Partial<TravellerDraft>) => void;
   onRemove: () => void;
   ageOnIso?: string;
+  fieldErrors?: Record<string, string>;
 }) {
   const [open, setOpen] = useState(true);
   const [noSplitName, setNoSplitName] = useState(row.lastName === "—");
@@ -491,13 +503,16 @@ function TravellerCard({
     .filter(Boolean)
     .sort()[0];
   const i = index;
+  const err = (name: string) => fieldErrors[`${name}_${i}`];
+  const hasCardError = Object.keys(fieldErrors).some((k) => k.endsWith(`_${i}`));
+  const expanded = open || hasCardError;
 
   return (
     <section className="rounded-2xl border border-line bg-white shadow-[0_8px_28px_rgba(15,23,42,0.06)]">
       <input type="hidden" name={`travellerType_${i}`} value={row.passengerType} />
       <div
         className={`theme-banner flex w-full items-center justify-between gap-3 px-4 py-3.5 text-white sm:px-5 ${
-          open ? "rounded-t-2xl" : "rounded-2xl"
+          expanded ? "rounded-t-2xl" : "rounded-2xl"
         }`}
       >
         <button
@@ -518,7 +533,7 @@ function TravellerCard({
             </span>
           </span>
           <span
-            className={`text-lg transition ${open ? "" : "rotate-180"}`}
+            className={`text-lg transition ${expanded ? "" : "rotate-180"}`}
             aria-hidden
           >
             ▴
@@ -536,7 +551,7 @@ function TravellerCard({
       </div>
 
       <div
-        className={`space-y-6 px-4 py-5 sm:px-5 sm:py-6 ${open ? "" : "hidden"}`}
+        className={`space-y-6 px-4 py-5 sm:px-5 sm:py-6 ${expanded ? "" : "hidden"}`}
       >
         <div>
           <h2 className="font-[family-name:var(--font-syne)] text-lg font-bold text-accent-deep">
@@ -558,8 +573,10 @@ function TravellerCard({
                 name={`title_${i}`}
                 required
                 value={row.title}
+                data-field-key={`title_${i}`}
+                aria-invalid={err("title") ? true : undefined}
                 onChange={(e) => onChange({ title: e.target.value })}
-                className={fieldClass}
+                className={labeledControlClass(fieldClass, err("title"))}
               >
                 <option value="" disabled>
                   Select
@@ -574,6 +591,7 @@ function TravellerCard({
                   <option value="Master">Master</option>
                 ) : null}
               </select>
+              <FieldError error={err("title")} />
             </label>
 
             {noSplitName ? (
@@ -585,10 +603,13 @@ function TravellerCard({
                   name={`firstName_${i}`}
                   required
                   value={row.firstName}
+                  data-field-key={`firstName_${i}`}
+                  aria-invalid={err("firstName") ? true : undefined}
                   onChange={(e) => onChange({ firstName: e.target.value })}
-                  className={fieldClass}
+                  className={labeledControlClass(fieldClass, err("firstName"))}
                 />
                 <input type="hidden" name={`lastName_${i}`} value="—" />
+                <FieldError error={err("firstName")} />
               </label>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
@@ -600,10 +621,13 @@ function TravellerCard({
                     name={`firstName_${i}`}
                     required
                     value={row.firstName}
+                    data-field-key={`firstName_${i}`}
+                    aria-invalid={err("firstName") ? true : undefined}
                     onChange={(e) => onChange({ firstName: e.target.value })}
-                    className={fieldClass}
+                    className={labeledControlClass(fieldClass, err("firstName"))}
                     autoComplete={isPrimary ? "given-name" : "off"}
                   />
+                  <FieldError error={err("firstName")} />
                 </label>
                 <label className="block text-sm">
                   <span className="font-medium text-foreground">
@@ -613,10 +637,13 @@ function TravellerCard({
                     name={`lastName_${i}`}
                     required
                     value={row.lastName === "—" ? "" : row.lastName}
+                    data-field-key={`lastName_${i}`}
+                    aria-invalid={err("lastName") ? true : undefined}
                     onChange={(e) => onChange({ lastName: e.target.value })}
-                    className={fieldClass}
+                    className={labeledControlClass(fieldClass, err("lastName"))}
                     autoComplete={isPrimary ? "family-name" : "off"}
                   />
+                  <FieldError error={err("lastName")} />
                 </label>
               </div>
             )}
@@ -648,13 +675,16 @@ function TravellerCard({
                   showTime={false}
                   value={row.dateOfBirth || ""}
                   max={maxDob}
+                  error={err("dateOfBirth")}
                   onChange={(next) => onChange({ dateOfBirth: next })}
                   placeholder="Select date of birth"
                   wrapperClassName="sm:col-span-2"
                   helper={
-                    row.passengerType === "infant"
-                      ? "Must be under 1 year old on the departure date."
-                      : "Must be 1–10 years old on the departure date."
+                    err("dateOfBirth")
+                      ? undefined
+                      : row.passengerType === "infant"
+                        ? "Must be under 1 year old on the departure date."
+                        : "Must be 1–10 years old on the departure date."
                   }
                 />
               )}
@@ -665,21 +695,27 @@ function TravellerCard({
                 <input
                   name={`passportNumber_${i}`}
                   value={row.passportNumber}
+                  data-field-key={`passportNumber_${i}`}
+                  aria-invalid={err("passportNumber") ? true : undefined}
                   onChange={(e) =>
                     onChange({ passportNumber: e.target.value })
                   }
-                  className={fieldClass}
+                  className={labeledControlClass(fieldClass, err("passportNumber"))}
                 />
+                <FieldError error={err("passportNumber")} />
               </label>
               <label className="block text-sm">
                 <span className="font-medium text-foreground">Nationality</span>
                 <input
                   name={`nationality_${i}`}
                   value={row.nationality}
+                  data-field-key={`nationality_${i}`}
+                  aria-invalid={err("nationality") ? true : undefined}
                   onChange={(e) => onChange({ nationality: e.target.value })}
-                  className={fieldClass}
+                  className={labeledControlClass(fieldClass, err("nationality"))}
                   placeholder="e.g. Australian"
                 />
+                <FieldError error={err("nationality")} />
               </label>
             </div>
           </div>
@@ -701,11 +737,14 @@ function TravellerCard({
                   type="tel"
                   required
                   value={row.phone || ""}
+                  data-field-key={`phone_${i}`}
+                  aria-invalid={err("phone") ? true : undefined}
                   onChange={(e) => onChange({ phone: e.target.value })}
-                  className={fieldClass}
+                  className={labeledControlClass(fieldClass, err("phone"))}
                   placeholder="+61 …"
                   autoComplete="tel"
                 />
+                <FieldError error={err("phone")} />
               </label>
               <label className="block text-sm">
                 <span className="font-medium text-foreground">Email</span>
@@ -714,11 +753,14 @@ function TravellerCard({
                   type="email"
                   required
                   value={row.email || ""}
+                  data-field-key={`email_${i}`}
+                  aria-invalid={err("email") ? true : undefined}
                   onChange={(e) => onChange({ email: e.target.value })}
-                  className={fieldClass}
+                  className={labeledControlClass(fieldClass, err("email"))}
                   placeholder="you@example.com"
                   autoComplete="email"
                 />
+                <FieldError error={err("email")} />
               </label>
             </div>
           </div>

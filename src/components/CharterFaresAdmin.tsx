@@ -5,6 +5,7 @@ import { MoneyInput } from "@/components/MoneyInput";
 import { SubmitButton } from "@/components/SubmitButton";
 import { updateCharterFareAction } from "@/lib/actions/charterFares";
 import { formatAud } from "@/lib/pricing";
+import { useStickyAction } from "@/components/forms/useStickyAction";
 
 export type AdminCharterFare = {
   id: string;
@@ -144,10 +145,11 @@ function FareForm({
   const oneWayCents = Math.round(Number(oneWayAud || "0") * 100);
   const roundTripCents = Math.round(Number(roundTripAud || "0") * 100);
   const activeCents = isRoundTrip ? roundTripCents : oneWayCents;
+  const sticky = useStickyAction(updateCharterFareAction);
 
   return (
     <form
-      action={updateCharterFareAction}
+      onSubmit={sticky.onSubmit}
       className="space-y-4 rounded-2xl border border-line bg-white/80 p-4 sm:p-5"
     >
       <input type="hidden" name="id" value={fare.id} />
@@ -415,7 +417,13 @@ function FareForm({
         </label>
       </div>
 
+      {sticky.formError ? (
+        <p className="text-sm font-medium text-accent-red" role="alert">
+          {sticky.formError}
+        </p>
+      ) : null}
       <SubmitButton
+        pending={sticky.pending}
         pendingLabel="Saving…"
         className="rounded-full bg-accent-deep px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
       >

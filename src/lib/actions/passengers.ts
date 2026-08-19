@@ -6,18 +6,17 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
 import { syncQuoteSeatHold } from "@/lib/booking/inventory";
 import {
-  parseOnlineTravellersDraft,
+  parseOnlineTravellersDraftResult,
   partyFareCents,
   seatedCountFromMix,
 } from "@/lib/booking/passengers";
 import { prisma } from "@/lib/db";
+import {
+  failFromUnknown,
+  formFail,
+  type FormActionResult,
+} from "@/lib/forms/formAction";
 import { getSessionId } from "@/lib/session";
-
-function fail(quoteId: string, message: string): never {
-  redirect(
-    `/checkout/${quoteId}/passengers?error=${encodeURIComponent(message)}`,
-  );
-}
 
 function parseCount(raw: FormDataEntryValue | null, fallback: number, max: number) {
   const n = Number(raw);
@@ -25,12 +24,17 @@ function parseCount(raw: FormDataEntryValue | null, fallback: number, max: numbe
   return Math.min(max, Math.max(0, Math.floor(n)));
 }
 
-export async function savePassengerDetailsAction(formData: FormData) {
+export async function savePassengerDetailsAction(
+  _prev: FormActionResult | null,
+  formData: FormData,
+): Promise<FormActionResult> {
   const quoteId = String(formData.get("quoteId") ?? "").trim();
   if (!quoteId) redirect("/?error=Quote+not+found");
 
   if (formData.get("privacyAccepted")?.toString() !== "on") {
-    fail(quoteId, "Please accept the privacy policy to continue");
+    return formFail("Please accept the privacy policy to continue", {
+      privacyAccepted: "Please accept the privacy policy to continue",
+    });
   }
 
   const sessionId = await getSessionId();
@@ -43,7 +47,7 @@ export async function savePassengerDetailsAction(formData: FormData) {
     redirect("/?error=Quote+not+found");
   }
   if (quote.status !== "active" || quote.expiresAt <= new Date()) {
-    fail(quoteId, "This fare lock has expired — please select fares again");
+    return formFail("This fare lock has expired — please select fares again");
   }
 
   try {
@@ -56,7 +60,9 @@ export async function savePassengerDetailsAction(formData: FormData) {
 
     const seatsBooked = seatedCountFromMix(adults, children);
     if (seatsBooked < 1 || seatsBooked > 9) {
-      fail(quoteId, "Seated travellers (adults + children) must be between 1 and 9");
+      return formFail(
+        "Seated travellers (adults + children) must be between 1 and 9",
+      );
     }
 
     // Adult package unit: prefer stored unit; legacy quotes used per-seat quotedPrice.
@@ -66,10 +72,10 @@ export async function savePassengerDetailsAction(formData: FormData) {
         : quote.quotedPriceCents;
 
     if (unitAdultFareCents <= 0) {
-      fail(quoteId, "This fare is not priced yet — please select fares again");
+      return formFail("This fare is not priced yet — please select fares again");
     }
 
-    const travellers = parseOnlineTravellersDraft(
+    const parsedTravellers = parseOnlineTravellersDraftResult(
       formData,
       {
         adults,
@@ -78,6 +84,10 @@ export async function savePassengerDetailsAction(formData: FormData) {
       },
       quote.flight?.departureAt ?? new Date(),
     );
+    if (!parsedTravellers.ok) {
+      return formFail(parsedTravellers.error, parsedTravellers.fieldErrors);
+    }
+    const travellers = parsedTravellers.travellers;
     const primary = travellers[0]!;
 
     const quotedPriceCents = partyFareCents({
@@ -88,7 +98,7 @@ export async function savePassengerDetailsAction(formData: FormData) {
     });
 
     const hold = await syncQuoteSeatHold(quoteId, sessionId, seatsBooked);
-    if (!hold.ok) fail(quoteId, hold.error);
+    if (!hold.ok) return formFail(hold.error);
 
     await prisma.priceQuote.update({
       where: { id: quoteId },
@@ -113,10 +123,7 @@ export async function savePassengerDetailsAction(formData: FormData) {
   } catch (error) {
     // redirect() throws a special error — must not be swallowed as a form error.
     if (isRedirectError(error)) throw error;
-    fail(
-      quoteId,
-      error instanceof Error ? error.message : "Invalid passenger details",
-    );
+    return failFromUnknown(error, "Invalid passenger details");
   }
 
   revalidatePath(`/checkout/${quoteId}`);

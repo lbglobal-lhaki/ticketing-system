@@ -14,14 +14,22 @@ import { restoreFareAndFlight } from "@/lib/booking/inventory";
 import { parseDateTimeLocal } from "@/lib/datetime";
 import { flightFormSchema, parseFareReleasesFromForm } from "@/lib/validation";
 import { z } from "zod";
+import {
+  formFail,
+  zodFieldErrors,
+  type FormActionResult,
+} from "@/lib/forms/formAction";
 
 function parseTzOffsetMinutes(formData: FormData): number {
   const raw = Number(formData.get("tzOffsetMinutes"));
   return Number.isFinite(raw) ? raw : 0;
 }
 
-function redirectFormError(message: string): never {
-  redirect(`/admin?tab=form&error=${encodeURIComponent(message)}`);
+function formError(
+  message: string,
+  fieldErrors?: FormActionResult["fieldErrors"],
+): FormActionResult {
+  return formFail(message, fieldErrors);
 }
 
 /** "" / self-id / missing => no pairing. */
@@ -34,7 +42,10 @@ function parseReturnLegFlightId(
   return raw;
 }
 
-export async function createFlightAction(formData: FormData) {
+export async function createFlightAction(
+  _prev: FormActionResult | null,
+  formData: FormData,
+): Promise<FormActionResult> {
   await requireAdmin();
 
   const parsed = flightFormSchema.safeParse({
@@ -48,12 +59,18 @@ export async function createFlightAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    redirectFormError(parsed.error.issues[0]?.message ?? "Invalid flight");
+    return formError(
+      parsed.error.issues[0]?.message ?? "Invalid flight",
+      zodFieldErrors(parsed.error),
+    );
   }
 
   const data = parsed.data;
   if (data.origin === data.destination) {
-    redirectFormError("From and To must be different");
+    return formError("From and To must be different", {
+      origin: "From and To must be different",
+      destination: "From and To must be different",
+    });
   }
 
   const tzOffsetMinutes = parseTzOffsetMinutes(formData);
@@ -63,18 +80,23 @@ export async function createFlightAction(formData: FormData) {
     departureAt = parseDateTimeLocal(data.departureAt, tzOffsetMinutes);
     arrivalAt = parseDateTimeLocal(data.arrivalAt, tzOffsetMinutes);
   } catch {
-    redirectFormError("Invalid departure or arrival time");
+    return formError("Invalid departure or arrival time", {
+      departureAt: "Invalid departure or arrival time",
+      arrivalAt: "Invalid departure or arrival time",
+    });
   }
 
   if (arrivalAt <= departureAt) {
-    redirectFormError("Arrival must be after departure");
+    return formError("Arrival must be after departure", {
+      arrivalAt: "Arrival must be after departure",
+    });
   }
 
   let releases;
   try {
     releases = parseFareReleasesFromForm(formData);
   } catch (e) {
-    redirectFormError(e instanceof Error ? e.message : "Invalid fare releases");
+    return formError(e instanceof Error ? e.message : "Invalid fare releases");
   }
 
   const totals = {
@@ -117,11 +139,14 @@ export async function createFlightAction(formData: FormData) {
   redirect("/admin?tab=flights&saved=added");
 }
 
-export async function updateFlightAction(formData: FormData) {
+export async function updateFlightAction(
+  _prev: FormActionResult | null,
+  formData: FormData,
+): Promise<FormActionResult> {
   await requireAdmin();
 
   const id = String(formData.get("id") ?? "");
-  if (!id) redirect("/admin?tab=form&error=Missing+flight");
+  if (!id) return formError("Missing flight");
 
   const parsed = flightFormSchema.safeParse({
     airline: formData.get("airline"),
@@ -134,13 +159,19 @@ export async function updateFlightAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    redirectFormError(parsed.error.issues[0]?.message ?? "Invalid flight");
+    return formError(
+      parsed.error.issues[0]?.message ?? "Invalid flight",
+      zodFieldErrors(parsed.error),
+    );
   }
 
   const data = parsed.data;
   // Same guard as create — editing must not be able to produce PER → PER.
   if (data.origin === data.destination) {
-    redirectFormError("From and To must be different");
+    return formError("From and To must be different", {
+      origin: "From and To must be different",
+      destination: "From and To must be different",
+    });
   }
 
   const tzOffsetMinutes = parseTzOffsetMinutes(formData);
@@ -150,18 +181,23 @@ export async function updateFlightAction(formData: FormData) {
     departureAt = parseDateTimeLocal(data.departureAt, tzOffsetMinutes);
     arrivalAt = parseDateTimeLocal(data.arrivalAt, tzOffsetMinutes);
   } catch {
-    redirectFormError("Invalid departure or arrival time");
+    return formError("Invalid departure or arrival time", {
+      departureAt: "Invalid departure or arrival time",
+      arrivalAt: "Invalid departure or arrival time",
+    });
   }
 
   if (arrivalAt <= departureAt) {
-    redirectFormError("Arrival must be after departure");
+    return formError("Arrival must be after departure", {
+      arrivalAt: "Arrival must be after departure",
+    });
   }
 
   let releases;
   try {
     releases = parseFareReleasesFromForm(formData);
   } catch (e) {
-    redirectFormError(e instanceof Error ? e.message : "Invalid fare releases");
+    return formError(e instanceof Error ? e.message : "Invalid fare releases");
   }
 
   const totals = {
@@ -179,7 +215,7 @@ export async function updateFlightAction(formData: FormData) {
     },
   });
   if (!existingFlight) {
-    redirectFormError("Flight not found");
+    return formError("Flight not found");
   }
 
   await prisma.$transaction(async (tx) => {

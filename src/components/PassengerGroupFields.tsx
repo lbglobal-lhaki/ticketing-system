@@ -2,6 +2,7 @@
 
 import { MoneyInput } from "@/components/MoneyInput";
 import { DateTimePicker } from "@/components/ui/DateTimePicker";
+import { FieldError, labeledControlClass } from "@/components/forms/FieldError";
 import {
   CHILD_FARE_RATE,
   INFANT_FARE_RATE,
@@ -53,6 +54,7 @@ type Props = {
   priceMode?: "edit" | "auto";
   /** AUD string used when priceMode is "auto". */
   autoPriceAud?: string;
+  fieldErrors?: Record<string, string>;
 };
 
 export function PassengerGroupFields({
@@ -65,6 +67,7 @@ export function PassengerGroupFields({
   description,
   priceMode = "edit",
   autoPriceAud,
+  fieldErrors = {},
 }: Props) {
   const label = passengerTypeLabel(type);
   // "Child" does not pluralise by adding an s — the group heading read "CHILDS".
@@ -160,13 +163,19 @@ export function PassengerGroupFields({
             <span className="text-xs uppercase tracking-[0.12em] text-muted">
               Full name
             </span>
-            <input
+          <input
               name={`${namePrefix}Name`}
               required
               value={pax.fullName}
+              data-field-key={`${namePrefix}Name.${i}`}
+              aria-invalid={fieldErrors[`${namePrefix}Name.${i}`] ? true : undefined}
               onChange={(e) => update(i, { fullName: e.target.value })}
-              className={fieldClass}
+              className={labeledControlClass(
+                fieldClass,
+                fieldErrors[`${namePrefix}Name.${i}`],
+              )}
             />
+            <FieldError error={fieldErrors[`${namePrefix}Name.${i}`]} />
           </label>
           <label className="space-y-1 text-sm">
             <span className="text-xs uppercase tracking-[0.12em] text-muted">
@@ -175,9 +184,17 @@ export function PassengerGroupFields({
             <input
               name={`${namePrefix}Passport`}
               value={pax.passportNumber}
+              data-field-key={`${namePrefix}Passport.${i}`}
+              aria-invalid={
+                fieldErrors[`${namePrefix}Passport.${i}`] ? true : undefined
+              }
               onChange={(e) => update(i, { passportNumber: e.target.value })}
-              className={fieldClass}
+              className={labeledControlClass(
+                fieldClass,
+                fieldErrors[`${namePrefix}Passport.${i}`],
+              )}
             />
+            <FieldError error={fieldErrors[`${namePrefix}Passport.${i}`]} />
           </label>
           <label className="space-y-1 text-sm">
             <span className="text-xs uppercase tracking-[0.12em] text-muted">
@@ -186,9 +203,17 @@ export function PassengerGroupFields({
             <input
               name={`${namePrefix}Nationality`}
               value={pax.nationality}
+              data-field-key={`${namePrefix}Nationality.${i}`}
+              aria-invalid={
+                fieldErrors[`${namePrefix}Nationality.${i}`] ? true : undefined
+              }
               onChange={(e) => update(i, { nationality: e.target.value })}
-              className={fieldClass}
+              className={labeledControlClass(
+                fieldClass,
+                fieldErrors[`${namePrefix}Nationality.${i}`],
+              )}
             />
+            <FieldError error={fieldErrors[`${namePrefix}Nationality.${i}`]} />
           </label>
           {needsDob ? (
             <DateTimePicker
@@ -198,12 +223,15 @@ export function PassengerGroupFields({
               showTime={false}
               value={pax.dateOfBirth || ""}
               max={new Date().toLocaleDateString("en-CA")}
+              error={fieldErrors[`${namePrefix}DateOfBirth.${i}`]}
               onChange={(next) => update(i, { dateOfBirth: next })}
               placeholder="Select date of birth"
               helper={
-                type === "infant"
-                  ? "Under 1 year on the departure date."
-                  : "1–10 years old on the departure date."
+                fieldErrors[`${namePrefix}DateOfBirth.${i}`]
+                  ? undefined
+                  : type === "infant"
+                    ? "Under 1 year on the departure date."
+                    : "1–10 years old on the departure date."
               }
             />
           ) : null}

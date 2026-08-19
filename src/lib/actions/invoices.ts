@@ -237,7 +237,13 @@ async function persistInvoiceDocument(formData: FormData) {
   if (!parsed.success) {
     return {
       ok: false as const,
-      error: parsed.error.issues[0]?.message ?? "Invalid invoice",
+      error: parsed.error.issues[0]?.message ?? "Please fix the highlighted fields",
+      fieldErrors: Object.fromEntries(
+        parsed.error.issues.map((issue) => [
+          issue.path.map(String).join(".") || "_form",
+          issue.message,
+        ]),
+      ),
     };
   }
 

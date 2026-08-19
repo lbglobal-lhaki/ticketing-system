@@ -16,6 +16,7 @@ import {
   sendTravelDocumentEmailModalAction,
 } from "@/lib/actions/invoices";
 import { formatAud } from "@/lib/pricing";
+import { FieldError, labeledControlClass } from "@/components/forms/FieldError";
 import {
   BulkSelectBar,
   SelectAllCheckbox,
@@ -131,6 +132,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
   const [previewBust, setPreviewBust] = useState(0);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
   // Which specific action is in flight — lets the modal disable every button
   // (no cross-action races) while only the one actually running shows a
@@ -203,12 +205,14 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
     setFormRevision(0);
     setStatusMsg(null);
     setErrorMsg(null);
+    setFieldErrors({});
   }
 
   function closeEditor() {
     setActiveId(null);
     setStatusMsg(null);
     setErrorMsg(null);
+    setFieldErrors({});
   }
 
   function refreshPreviewOnly() {
@@ -227,12 +231,18 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
   function onSave(formData: FormData) {
     setStatusMsg(null);
     setErrorMsg(null);
+    setFieldErrors({});
     setPendingAction("save");
     startTransition(async () => {
       const result = await saveInvoiceDocumentModalAction(formData);
       setPendingAction(null);
       if (!result.ok) {
         setErrorMsg(result.error);
+        setFieldErrors(
+          "fieldErrors" in result && result.fieldErrors
+            ? result.fieldErrors
+            : {},
+        );
         return;
       }
       if (result.invoice) mergeInvoicePatch(result.invoice);
@@ -700,7 +710,10 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
             <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-2 lg:overflow-hidden">
               <form
                 key={`${active.id}-form-${formRevision}`}
-                action={onSave}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  onSave(new FormData(e.currentTarget));
+                }}
                 data-skip-busy
                 className="space-y-4 border-b border-line px-4 py-4 sm:px-6 lg:min-h-0 lg:overflow-y-auto lg:border-b-0 lg:border-r"
               >
@@ -723,8 +736,14 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                       name="customerName"
                       required
                       defaultValue={active.customerName}
-                      className={fieldClass}
+                      data-field-key="customerName"
+                      aria-invalid={fieldErrors.customerName ? true : undefined}
+                      className={labeledControlClass(
+                        fieldClass,
+                        fieldErrors.customerName,
+                      )}
                     />
+                    <FieldError error={fieldErrors.customerName} />
                   </label>
                   <label className="block text-xs text-muted">
                     Email
@@ -733,8 +752,14 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                       type="email"
                       required
                       defaultValue={active.customerEmail}
-                      className={fieldClass}
+                      data-field-key="customerEmail"
+                      aria-invalid={fieldErrors.customerEmail ? true : undefined}
+                      className={labeledControlClass(
+                        fieldClass,
+                        fieldErrors.customerEmail,
+                      )}
                     />
+                    <FieldError error={fieldErrors.customerEmail} />
                   </label>
                   <label className="block text-xs text-muted">
                     Phone

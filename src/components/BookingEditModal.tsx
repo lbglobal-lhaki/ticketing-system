@@ -8,6 +8,8 @@ import {
 } from "@/components/PassengerGroupFields";
 import { SubmitButton } from "@/components/SubmitButton";
 import { updateBookingAction } from "@/lib/actions/walkIn";
+import { FieldError, labeledControlClass } from "@/components/forms/FieldError";
+import { useStickyAction } from "@/components/forms/useStickyAction";
 import { toDateTimeLocalValue } from "@/lib/datetime";
 import { DateTimePicker } from "@/components/ui/DateTimePicker";
 import { formatAud } from "@/lib/pricing";
@@ -86,6 +88,7 @@ export function BookingEditModal({
   const [adults, setAdults] = useState<CompanionDraft[]>(initial.adults);
   const [children, setChildren] = useState<CompanionDraft[]>(initial.children);
   const [infants, setInfants] = useState<CompanionDraft[]>(initial.infants);
+  const sticky = useStickyAction(updateBookingAction);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -144,7 +147,7 @@ export function BookingEditModal({
 
         <form
           key={booking.id}
-          action={updateBookingAction}
+          onSubmit={sticky.onSubmit}
           className="space-y-4 overflow-y-auto px-4 py-4 sm:px-6"
         >
           <input type="hidden" name="id" value={booking.id} />
@@ -167,8 +170,14 @@ export function BookingEditModal({
                   name="passengerName"
                   required
                   defaultValue={booking.passengerName}
-                  className={fieldClass}
+                  data-field-key="passengerName"
+                  aria-invalid={sticky.fieldErrors.passengerName ? true : undefined}
+                  className={labeledControlClass(
+                    fieldClass,
+                    sticky.fieldErrors.passengerName,
+                  )}
                 />
+                <FieldError error={sticky.fieldErrors.passengerName} />
               </label>
               <label className="space-y-1 text-sm">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
@@ -179,8 +188,14 @@ export function BookingEditModal({
                   type="email"
                   required
                   defaultValue={booking.email}
-                  className={fieldClass}
+                  data-field-key="email"
+                  aria-invalid={sticky.fieldErrors.email ? true : undefined}
+                  className={labeledControlClass(
+                    fieldClass,
+                    sticky.fieldErrors.email,
+                  )}
                 />
+                <FieldError error={sticky.fieldErrors.email} />
               </label>
               <label className="space-y-1 text-sm">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
@@ -228,6 +243,7 @@ export function BookingEditModal({
             items={adults}
             onChange={setAdults}
             canChangeCount={canEditSeats}
+            fieldErrors={sticky.fieldErrors}
             description="Extra adults each get a seat."
           />
           <PassengerGroupFields
@@ -238,6 +254,7 @@ export function BookingEditModal({
             canChangeCount={canEditSeats}
             priceMode={autoCompanionFares ? "auto" : "edit"}
             autoPriceAud={(childFareCents(adultUnitCents) / 100).toFixed(2)}
+            fieldErrors={sticky.fieldErrors}
             description="Children get a seat at 75% of the adult fare. Date of birth is required — 1–10 years old on the departure date."
           />
           <PassengerGroupFields
@@ -248,6 +265,7 @@ export function BookingEditModal({
             canChangeCount={canEditSeats}
             priceMode={autoCompanionFares ? "auto" : "edit"}
             autoPriceAud={(infantFareCents(adultUnitCents) / 100).toFixed(2)}
+            fieldErrors={sticky.fieldErrors}
             description="Infants get a ticket at 10% of the adult fare but no seat. Date of birth is required — under 1 year on the departure date."
           />
 
@@ -325,7 +343,13 @@ export function BookingEditModal({
           </div>
 
           <div className="flex flex-wrap gap-2 border-t border-line pt-4">
+            {sticky.formError ? (
+              <p className="w-full text-sm font-medium text-accent-red" role="alert">
+                {sticky.formError}
+              </p>
+            ) : null}
             <SubmitButton
+              pending={sticky.pending}
               pendingLabel="Saving…"
               className="bg-accent-deep px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
             >

@@ -11,6 +11,11 @@ type SubmitButtonProps = Omit<
   children: ReactNode;
   /** Shown next to the spinner while submitting; defaults to the normal label. */
   pendingLabel?: ReactNode;
+  /**
+   * Override `useFormStatus`. Pass this when the form uses `onSubmit` +
+   * `useActionState` (sticky forms) instead of `action={...}`.
+   */
+  pending?: boolean;
 };
 
 /**
@@ -26,11 +31,13 @@ type SubmitButtonProps = Omit<
 export function SubmitButton({
   children,
   pendingLabel,
+  pending: pendingOverride,
   disabled,
   className,
   ...rest
 }: SubmitButtonProps) {
-  const { pending } = useFormStatus();
+  const status = useFormStatus();
+  const pending = pendingOverride ?? status.pending;
   return (
     <button
       type="submit"

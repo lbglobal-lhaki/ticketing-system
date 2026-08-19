@@ -354,6 +354,7 @@ export function DateTimePicker({
         readOnly
         tabIndex={-1}
         aria-hidden
+        data-field-key={name}
         aria-invalid={error ? true : undefined}
         className="sr-only"
         onChange={() => {}}

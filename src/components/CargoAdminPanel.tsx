@@ -18,6 +18,8 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { Spinner } from "@/components/Spinner";
 import { ListFilterBar, NoMatches } from "@/components/admin/ListFilterBar";
 import { SegmentedField } from "@/components/admin/SegmentedField";
+import { FieldError, labeledControlClass } from "@/components/forms/FieldError";
+import { useStickyAction } from "@/components/forms/useStickyAction";
 
 export type AdminCargoRow = {
   id: string;
@@ -152,6 +154,9 @@ export function CargoAdminPanel({
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   const [query, setQuery] = useState("");
+  const createSticky = useStickyAction(createCargoSubmissionAction);
+  const updateSticky = useStickyAction(updateCargoSubmissionAction);
+  const cargoSticky = mode === "create" ? createSticky : updateSticky;
 
   const filtered = useMemo(() => {
     const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -704,11 +709,7 @@ export function CargoAdminPanel({
 
             {(mode === "edit" || mode === "create") && (
               <form
-                action={
-                  mode === "create"
-                    ? createCargoSubmissionAction
-                    : updateCargoSubmissionAction
-                }
+                onSubmit={cargoSticky.onSubmit}
                 className="mt-5 space-y-4 border-t border-line pt-4"
               >
                 {mode === "edit" && active && (
@@ -744,9 +745,17 @@ export function CargoAdminPanel({
                       defaultValue={
                         mode === "edit" ? active?.submitterName || "" : ""
                       }
-                      className={fieldClass}
+                      data-field-key="submitterName"
+                      aria-invalid={
+                        cargoSticky.fieldErrors.submitterName ? true : undefined
+                      }
+                      className={labeledControlClass(
+                        fieldClass,
+                        cargoSticky.fieldErrors.submitterName,
+                      )}
                       placeholder="Shipper / contact name"
                     />
+                    <FieldError error={cargoSticky.fieldErrors.submitterName} />
                   </label>
                   <label className="block space-y-1 text-sm">
                     <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
@@ -756,9 +765,15 @@ export function CargoAdminPanel({
                       type="email"
                       name="email"
                       defaultValue={mode === "edit" ? active?.email || "" : ""}
-                      className={fieldClass}
-                      placeholder="email@example.com"
+                      data-field-key="email"
+                      aria-invalid={cargoSticky.fieldErrors.email ? true : undefined}
+                      className={labeledControlClass(
+                        fieldClass,
+                        cargoSticky.fieldErrors.email,
+                      )}
+                      placeholder="name@example.com"
                     />
+                    <FieldError error={cargoSticky.fieldErrors.email} />
                   </label>
                   <label className="block space-y-1 text-sm">
                     <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
@@ -813,7 +828,13 @@ export function CargoAdminPanel({
                 </label>
 
                 <div className="flex flex-wrap gap-3">
+                  {cargoSticky.formError ? (
+                    <p className="w-full text-sm font-medium text-accent-red" role="alert">
+                      {cargoSticky.formError}
+                    </p>
+                  ) : null}
                   <SubmitButton
+                    pending={cargoSticky.pending}
                     pendingLabel={mode === "create" ? "Creating…" : "Saving…"}
                     className="btn-cta rounded-xl px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                   >

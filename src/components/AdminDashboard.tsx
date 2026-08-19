@@ -87,6 +87,8 @@ import {
   Tr,
 } from "@/components/ui/Table";
 import { Alert } from "@/components/ui/Feedback";
+import { FieldError, labeledControlClass } from "@/components/forms/FieldError";
+import { useStickyAction } from "@/components/forms/useStickyAction";
 
 const CUSTOM_FLIGHT_VALUE = "__custom__";
 
@@ -398,7 +400,14 @@ function seatTotals(rows: SavedFareRow[]) {
 }
 
 /** Inline fields for a walk-in leg that isn't in the Flight table at all. */
-function CustomFlightFields({ prefix }: { prefix: "outbound" | "return" }) {
+function CustomFlightFields({
+  prefix,
+  fieldErrors = {},
+}: {
+  prefix: "outbound" | "return";
+  fieldErrors?: Record<string, string>;
+}) {
+  const err = (suffix: string) => fieldErrors[`${prefix}Custom${suffix}`];
   return (
     <div className="space-y-3 border-t border-line pt-4 sm:col-span-2">
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
@@ -413,8 +422,11 @@ function CustomFlightFields({ prefix }: { prefix: "outbound" | "return" }) {
             name={`${prefix}CustomAirline`}
             required
             placeholder="Qantas"
-            className={fieldClass}
+            data-field-key={`${prefix}CustomAirline`}
+            aria-invalid={err("Airline") ? true : undefined}
+            className={labeledControlClass(fieldClass, err("Airline"))}
           />
+          <FieldError error={err("Airline")} />
         </label>
         <label className="space-y-1 text-sm">
           <span className="text-xs uppercase tracking-[0.12em] text-muted">
@@ -424,8 +436,11 @@ function CustomFlightFields({ prefix }: { prefix: "outbound" | "return" }) {
             name={`${prefix}CustomFlightNumber`}
             required
             placeholder="QF401"
-            className={fieldClass}
+            data-field-key={`${prefix}CustomFlightNumber`}
+            aria-invalid={err("FlightNumber") ? true : undefined}
+            className={labeledControlClass(fieldClass, err("FlightNumber"))}
           />
+          <FieldError error={err("FlightNumber")} />
         </label>
         <label className="space-y-1 text-sm">
           <span className="text-xs uppercase tracking-[0.12em] text-muted">
@@ -436,8 +451,11 @@ function CustomFlightFields({ prefix }: { prefix: "outbound" | "return" }) {
             required
             maxLength={3}
             placeholder="PER"
-            className={`${fieldClass} uppercase`}
+            data-field-key={`${prefix}CustomOrigin`}
+            aria-invalid={err("Origin") ? true : undefined}
+            className={labeledControlClass(`${fieldClass} uppercase`, err("Origin"))}
           />
+          <FieldError error={err("Origin")} />
         </label>
         <label className="space-y-1 text-sm">
           <span className="text-xs uppercase tracking-[0.12em] text-muted">
@@ -448,19 +466,27 @@ function CustomFlightFields({ prefix }: { prefix: "outbound" | "return" }) {
             required
             maxLength={3}
             placeholder="PBH"
-            className={`${fieldClass} uppercase`}
+            data-field-key={`${prefix}CustomDestination`}
+            aria-invalid={err("Destination") ? true : undefined}
+            className={labeledControlClass(
+              `${fieldClass} uppercase`,
+              err("Destination"),
+            )}
           />
+          <FieldError error={err("Destination")} />
         </label>
         <DateTimePicker
           name={`${prefix}CustomDepartureAt`}
           label="Departs at"
           required
+          error={err("DepartureAt")}
           placeholder="Pick date and time"
         />
         <DateTimePicker
           name={`${prefix}CustomArrivalAt`}
           label="Arrives at"
           required
+          error={err("ArrivalAt")}
           placeholder="Pick date and time"
         />
         <SegmentedField
@@ -476,8 +502,9 @@ function CustomFlightFields({ prefix }: { prefix: "outbound" | "return" }) {
           <MoneyInput
             name={`${prefix}CustomPriceAud`}
             defaultValue="0.00"
-            className={fieldClass}
+            className={labeledControlClass(fieldClass, err("PriceAud"))}
           />
+          <FieldError error={err("PriceAud")} />
         </label>
       </div>
     </div>
@@ -589,6 +616,9 @@ export function AdminDashboard({
     parseClientTab(searchParams.get("tab")) ?? initialTab ?? "analytics";
 
   const [editingId, setEditingId] = useState<string | null>(null);
+  const walkInSticky = useStickyAction(createWalkInBookingAction);
+  const createFlightSticky = useStickyAction(createFlightAction);
+  const updateFlightSticky = useStickyAction(updateFlightAction);
   const [partnerFlightId, setPartnerFlightId] = useState("");
   const [bulkPriceCabin, setBulkPriceCabin] = useState<CabinClass>("business");
   const [bulkTierName, setBulkTierName] = useState(
@@ -765,6 +795,7 @@ export function AdminDashboard({
     () => flights.find((f) => f.id === editingId) ?? null,
     [flights, editingId],
   );
+  const flightSticky = editing ? updateFlightSticky : createFlightSticky;
 
   const activeCount = flights.filter((f) => f.active).length;
 
@@ -1621,7 +1652,7 @@ export function AdminDashboard({
 
           <form
             key={editing?.id ?? "new"}
-            action={editing ? updateFlightAction : createFlightAction}
+            onSubmit={flightSticky.onSubmit}
             className="mt-8 grid max-w-4xl gap-6 sm:grid-cols-2"
           >
             {editing && <input type="hidden" name="id" value={editing.id} />}
@@ -1644,8 +1675,14 @@ export function AdminDashboard({
                 required
                 defaultValue={editing?.airline ?? ""}
                 placeholder="Qantas"
-                className={fieldClass}
+                data-field-key="airline"
+                aria-invalid={flightSticky.fieldErrors.airline ? true : undefined}
+                className={labeledControlClass(
+                  fieldClass,
+                  flightSticky.fieldErrors.airline,
+                )}
               />
+              <FieldError error={flightSticky.fieldErrors.airline} />
             </label>
             <label className="space-y-1 text-sm">
               <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
@@ -1656,8 +1693,16 @@ export function AdminDashboard({
                 required
                 defaultValue={editing?.flightNumber ?? ""}
                 placeholder="QF401"
-                className={fieldClass}
+                data-field-key="flightNumber"
+                aria-invalid={
+                  flightSticky.fieldErrors.flightNumber ? true : undefined
+                }
+                className={labeledControlClass(
+                  fieldClass,
+                  flightSticky.fieldErrors.flightNumber,
+                )}
               />
+              <FieldError error={flightSticky.fieldErrors.flightNumber} />
             </label>
             <label className="space-y-1 text-sm">
               <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
@@ -1669,8 +1714,14 @@ export function AdminDashboard({
                 maxLength={3}
                 defaultValue={editing?.origin ?? ""}
                 placeholder="PER"
-                className={`${fieldClass} uppercase`}
+                data-field-key="origin"
+                aria-invalid={flightSticky.fieldErrors.origin ? true : undefined}
+                className={labeledControlClass(
+                  `${fieldClass} uppercase`,
+                  flightSticky.fieldErrors.origin,
+                )}
               />
+              <FieldError error={flightSticky.fieldErrors.origin} />
             </label>
             <label className="space-y-1 text-sm">
               <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
@@ -1682,13 +1733,22 @@ export function AdminDashboard({
                 maxLength={3}
                 defaultValue={editing?.destination ?? ""}
                 placeholder="PBH"
-                className={`${fieldClass} uppercase`}
+                data-field-key="destination"
+                aria-invalid={
+                  flightSticky.fieldErrors.destination ? true : undefined
+                }
+                className={labeledControlClass(
+                  `${fieldClass} uppercase`,
+                  flightSticky.fieldErrors.destination,
+                )}
               />
+              <FieldError error={flightSticky.fieldErrors.destination} />
             </label>
             <DateTimePicker
               name="departureAt"
               label="Leaves at"
               required
+              error={flightSticky.fieldErrors.departureAt}
               defaultValue={
                 editing
                   ? toDateTimeLocalValue(new Date(editing.departureAt))
@@ -1699,6 +1759,7 @@ export function AdminDashboard({
               name="arrivalAt"
               label="Arrives at"
               required
+              error={flightSticky.fieldErrors.arrivalAt}
               defaultValue={
                 editing
                   ? toDateTimeLocalValue(new Date(editing.arrivalAt))
@@ -1945,7 +2006,13 @@ export function AdminDashboard({
             </div>
 
             <div className="flex flex-wrap gap-3 sm:col-span-2">
+              {flightSticky.formError ? (
+                <div className="w-full">
+                  <Alert tone="danger">{flightSticky.formError}</Alert>
+                </div>
+              ) : null}
               <SubmitButton
+                pending={flightSticky.pending}
                 pendingLabel={editing ? "Saving…" : "Publishing…"}
                 className="btn-grad inline-flex min-h-10 items-center rounded-control px-5 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -1986,7 +2053,7 @@ export function AdminDashboard({
             </p>
             <form
               key={walkInFormKey}
-              action={createWalkInBookingAction}
+              onSubmit={walkInSticky.onSubmit}
               className="mt-6 grid gap-4 sm:grid-cols-2"
             >
               <FormSection
@@ -2013,7 +2080,10 @@ export function AdminDashboard({
                 />
               </label>
               {walkInOutboundChoice === CUSTOM_FLIGHT_VALUE && (
-                <CustomFlightFields prefix="outbound" />
+                <CustomFlightFields
+                  prefix="outbound"
+                  fieldErrors={walkInSticky.fieldErrors}
+                />
               )}
 
               {walkInOutboundChoice && (
@@ -2120,7 +2190,10 @@ export function AdminDashboard({
               )}
               {walkInNeedsManualReturn &&
                 walkInReturnChoice === CUSTOM_FLIGHT_VALUE && (
-                  <CustomFlightFields prefix="return" />
+                  <CustomFlightFields
+                    prefix="return"
+                    fieldErrors={walkInSticky.fieldErrors}
+                  />
                 )}
               <SegmentedField
                 name="cabinClass"
@@ -2206,7 +2279,19 @@ export function AdminDashboard({
                     <span className="text-xs uppercase tracking-[0.12em] text-muted">
                       Passenger name
                     </span>
-                    <input name="passengerName" required className={fieldClass} />
+                    <input
+                      name="passengerName"
+                      required
+                      data-field-key="passengerName"
+                      aria-invalid={
+                        walkInSticky.fieldErrors.passengerName ? true : undefined
+                      }
+                      className={labeledControlClass(
+                        fieldClass,
+                        walkInSticky.fieldErrors.passengerName,
+                      )}
+                    />
+                    <FieldError error={walkInSticky.fieldErrors.passengerName} />
                   </label>
                   <label className="space-y-1 text-sm">
                     <span className="text-xs uppercase tracking-[0.12em] text-muted">
@@ -2216,8 +2301,16 @@ export function AdminDashboard({
                       name="email"
                       type="email"
                       required
-                      className={fieldClass}
+                      data-field-key="email"
+                      aria-invalid={
+                        walkInSticky.fieldErrors.email ? true : undefined
+                      }
+                      className={labeledControlClass(
+                        fieldClass,
+                        walkInSticky.fieldErrors.email,
+                      )}
                     />
+                    <FieldError error={walkInSticky.fieldErrors.email} />
                   </label>
                   <label className="space-y-1 text-sm">
                     <span className="text-xs uppercase tracking-[0.12em] text-muted">
@@ -2247,6 +2340,7 @@ export function AdminDashboard({
                   items={walkInAdults}
                   onChange={setWalkInAdults}
                   canChangeCount
+                  fieldErrors={walkInSticky.fieldErrors}
                   description="Extra adults each get a seat and use the adult fare. Listed on travel docs and invoice."
                 />
                 <PassengerGroupFields
@@ -2257,6 +2351,7 @@ export function AdminDashboard({
                   canChangeCount
                   priceMode="auto"
                   autoPriceAud={walkInChildPriceAud}
+                  fieldErrors={walkInSticky.fieldErrors}
                   description="Children get a seat at 75% of the adult fare. Date of birth is required — 1–10 years old on the departure date."
                 />
                 <PassengerGroupFields
@@ -2267,6 +2362,7 @@ export function AdminDashboard({
                   canChangeCount
                   priceMode="auto"
                   autoPriceAud={walkInInfantPriceAud}
+                  fieldErrors={walkInSticky.fieldErrors}
                   description="Infants get a ticket at 10% of the adult fare but no seat. Date of birth is required — under 1 year on the departure date."
                 />
                 <p className="text-sm text-muted">
@@ -2374,10 +2470,15 @@ export function AdminDashboard({
                   label="Seat hold expires"
                   required
                   wrapperClassName="sm:col-span-2"
+                  error={walkInSticky.fieldErrors.holdExpiresAt}
                   defaultValue={toDateTimeLocalValue(
                     bankHoldExpiresAt(new Date(), 48),
                   )}
-                  helper="Seats stay reserved until this time. Not shown on the invoice — set an invoice due date separately if needed."
+                  helper={
+                    walkInSticky.fieldErrors.holdExpiresAt
+                      ? undefined
+                      : "Seats stay reserved until this time. Not shown on the invoice — set an invoice due date separately if needed."
+                  }
                 />
               ) : null}
               <details className="group sm:col-span-2">
@@ -2408,8 +2509,12 @@ export function AdminDashboard({
               </details>
               </FormSection>
 
-              <div className="sm:col-span-2">
+              <div className="sm:col-span-2 space-y-3">
+                {walkInSticky.formError ? (
+                  <Alert tone="danger">{walkInSticky.formError}</Alert>
+                ) : null}
                 <SubmitButton
+                  pending={walkInSticky.pending}
                   pendingLabel="Creating booking…"
                   className="btn-grad inline-flex min-h-10 items-center rounded-control px-5 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                 >

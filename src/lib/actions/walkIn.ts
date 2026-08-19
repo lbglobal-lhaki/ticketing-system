@@ -29,7 +29,7 @@ import {
   allocatesSeat,
   applyCatalogueCompanionFares,
   assertChildInfantAges,
-  parseCompanionTravellers,
+  parseCompanionTravellersResult,
   partyFareCents,
   type TravellerDetail,
 } from "@/lib/booking/passengers";
@@ -49,14 +49,21 @@ import {
   resolveAdultLegFares,
 } from "@/lib/pricing/service";
 import { z } from "zod";
+import {
+  failFromUnknown,
+  formFail,
+  FormValidationError,
+  zodFieldErrors,
+  type FormActionResult,
+} from "@/lib/forms/formAction";
 
 const walkInSchema = z.object({
-  flightId: z.string().min(1),
+  flightId: z.string().min(1, "Select a flight"),
   returnFlightId: z.string().optional().or(z.literal("")),
   fareProductId: z.string().optional().or(z.literal("")),
   cabinClass: z.enum(["economy", "business"]).default("economy"),
-  passengerName: z.string().trim().min(2).max(120),
-  email: z.string().trim().email(),
+  passengerName: z.string().trim().min(2, "Enter the passenger's name").max(120),
+  email: z.string().trim().email("Enter a valid email"),
   passengerPhone: z.string().trim().max(40).optional().or(z.literal("")),
   passportNumber: z.string().trim().max(40).optional().or(z.literal("")),
   nationality: z.string().trim().max(60).optional().or(z.literal("")),
@@ -110,13 +117,30 @@ async function resolveLegFlightId(
     priceAud: formData.get(`${prefix}CustomPriceAud`) || "0",
   });
   if (!parsed.success) {
-    throw new Error(
+    const mapped: Record<string, string> = {
+      airline: `${prefix}CustomAirline`,
+      flightNumber: `${prefix}CustomFlightNumber`,
+      origin: `${prefix}CustomOrigin`,
+      destination: `${prefix}CustomDestination`,
+      departureAt: `${prefix}CustomDepartureAt`,
+      arrivalAt: `${prefix}CustomArrivalAt`,
+      priceAud: `${prefix}CustomPriceAud`,
+    };
+    const errors: Record<string, string> = {};
+    for (const [key, message] of Object.entries(zodFieldErrors(parsed.error))) {
+      errors[mapped[key] ?? `${prefix}Custom${key}`] = message;
+    }
+    throw new FormValidationError(
       `Custom ${prefix} flight: ${parsed.error.issues[0]?.message ?? "invalid details"}`,
+      errors,
     );
   }
   const data = parsed.data;
   if (data.origin === data.destination) {
-    throw new Error(`Custom ${prefix} flight: From and To must be different`);
+    throw new FormValidationError(`Custom ${prefix} flight: From and To must be different`, {
+      [`${prefix}CustomOrigin`]: "From and To must be different",
+      [`${prefix}CustomDestination`]: "From and To must be different",
+    });
   }
   const tzRaw = Number(formData.get("tzOffsetMinutes"));
   const tzOffsetMinutes = Number.isFinite(tzRaw) ? tzRaw : 0;
@@ -126,13 +150,24 @@ async function resolveLegFlightId(
     departureAt = parseDateTimeLocal(data.departureAt, tzOffsetMinutes);
     arrivalAt = parseDateTimeLocal(data.arrivalAt, tzOffsetMinutes);
   } catch {
-    throw new Error(`Custom ${prefix} flight: invalid departure or arrival time`);
+    throw new FormValidationError(
+      `Custom ${prefix} flight: invalid departure or arrival time`,
+      {
+        [`${prefix}CustomDepartureAt`]: "Invalid departure or arrival time",
+        [`${prefix}CustomArrivalAt`]: "Invalid departure or arrival time",
+      },
+    );
   }
   if (arrivalAt <= departureAt) {
-    throw new Error(`Custom ${prefix} flight: arrival must be after departure`);
+    throw new FormValidationError(
+      `Custom ${prefix} flight: arrival must be after departure`,
+      { [`${prefix}CustomArrivalAt`]: "Arrival must be after departure" },
+    );
   }
   if (data.priceAud <= 0) {
-    throw new Error(`Custom ${prefix} flight: enter a price above $0`);
+    throw new FormValidationError(`Custom ${prefix} flight: enter a price above $0`, {
+      [`${prefix}CustomPriceAud`]: "Enter a price above $0",
+    });
   }
 
   const flight = await prisma.flight.create({
@@ -179,10 +214,14 @@ function readHoldExpiresAt(formData: FormData, fallbackHours = 48): Date {
   try {
     at = parseDateTimeLocal(raw, tzOffsetMinutes);
   } catch {
-    throw new Error("Invalid hold expiry date/time");
+    throw new FormValidationError("Invalid hold expiry date/time", {
+      holdExpiresAt: "Invalid hold expiry date/time",
+    });
   }
   if (at.getTime() <= Date.now()) {
-    throw new Error("Hold expiry must be in the future");
+    throw new FormValidationError("Hold expiry must be in the future", {
+      holdExpiresAt: "Hold expiry must be in the future",
+    });
   }
   return at;
 }
@@ -209,7 +248,10 @@ async function decrementSeats(
   }
 }
 
-export async function createWalkInBookingAction(formData: FormData) {
+export async function createWalkInBookingAction(
+  _prev: FormActionResult | null,
+  formData: FormData,
+): Promise<FormActionResult> {
   await requireAdmin();
 
   const parsed = walkInSchema.safeParse({
@@ -232,29 +274,23 @@ export async function createWalkInBookingAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    redirect(
-      `/admin?tab=bookings&error=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid walk-in form")}`,
+    return formFail(
+      parsed.error.issues[0]?.message ?? "Please fix the highlighted fields",
+      zodFieldErrors(parsed.error),
     );
   }
 
-  let companions;
-  try {
-    companions = parseCompanionTravellers(formData);
-  } catch (e) {
-    redirect(
-      `/admin?tab=bookings&error=${encodeURIComponent(
-        e instanceof Error ? e.message : "Invalid passenger details",
-      )}`,
-    );
+  const companionsResult = parseCompanionTravellersResult(formData);
+  if (!companionsResult.ok) {
+    return formFail(companionsResult.error, companionsResult.fieldErrors);
   }
+  const companions = companionsResult.value;
 
   // Seats = primary adult + extra adults + children. Infants take no seat.
   const seatsBooked = 1 + companions.seatedCount;
   if (seatsBooked < 1 || seatsBooked > 9) {
-    redirect(
-      `/admin?tab=bookings&error=${encodeURIComponent(
-        "Seated travellers (adults + children) must be between 1 and 9",
-      )}`,
+    return formFail(
+      "Seated travellers (adults + children) must be between 1 and 9",
     );
   }
 
@@ -263,8 +299,9 @@ export async function createWalkInBookingAction(formData: FormData) {
     seatsBooked,
   };
   if (data.paymentMethod === "bank_transfer" && !isBankTransferConfigured()) {
-    redirect(
-      "/admin?tab=bookings&error=Bank+details+not+configured+for+walk-in+bank+transfer",
+    return formFail(
+      "Bank details not configured for walk-in bank transfer",
+      { paymentMethod: "Bank details are not configured" },
     );
   }
 
@@ -276,11 +313,9 @@ export async function createWalkInBookingAction(formData: FormData) {
   if (customPriceRaw) {
     const amount = Number(customPriceRaw);
     if (!Number.isFinite(amount) || amount < 0) {
-      redirect(
-        `/admin?tab=bookings&error=${encodeURIComponent(
-          "Custom price must be a valid amount ($0 or more)",
-        )}`,
-      );
+      return formFail("Custom price must be a valid amount ($0 or more)", {
+        customPriceAud: "Custom price must be a valid amount ($0 or more)",
+      });
     }
     customTotalCents = Math.round(amount * 100);
   }
@@ -508,9 +543,9 @@ export async function createWalkInBookingAction(formData: FormData) {
     if (customGstRaw) {
       const gstAud = Number(customGstRaw);
       if (!Number.isFinite(gstAud) || gstAud < 0) {
-        redirect(
-          `/admin?tab=bookings&error=${encodeURIComponent("Custom GST must be a valid amount")}`,
-        );
+        return formFail("Custom GST must be a valid amount", {
+          customGstAud: "Custom GST must be a valid amount",
+        });
       }
       gstOverrideCents = Math.round(gstAud * 100);
       if (gstOverrideCents > 0) {
@@ -538,11 +573,7 @@ export async function createWalkInBookingAction(formData: FormData) {
       try {
         holdExpiresAt = readHoldExpiresAt(formData);
       } catch (e) {
-        redirect(
-          `/admin?tab=bookings&error=${encodeURIComponent(
-            e instanceof Error ? e.message : "Invalid hold expiry",
-          )}`,
-        );
+        return failFromUnknown(e, "Invalid hold expiry");
       }
     }
 
@@ -722,11 +753,7 @@ export async function createWalkInBookingAction(formData: FormData) {
     // Next.js implements redirect() by throwing — must rethrow so the
     // navigation isn't swallowed and shown as "NEXT_REDIRECT" in the UI.
     if (isRedirectError(error)) throw error;
-    redirect(
-      `/admin?tab=bookings&error=${encodeURIComponent(
-        error instanceof Error ? error.message : "Walk-in booking failed",
-      )}`,
-    );
+    return failFromUnknown(error, "Walk-in booking failed");
   }
 }
 
@@ -926,8 +953,8 @@ export async function deleteBookingAction(formData: FormData) {
 
 const updateBookingSchema = z.object({
   id: z.string().min(1),
-  passengerName: z.string().trim().min(2).max(120),
-  email: z.string().trim().email(),
+  passengerName: z.string().trim().min(2, "Enter the passenger's name").max(120),
+  email: z.string().trim().email("Enter a valid email"),
   passengerPhone: z.string().trim().max(40).optional().or(z.literal("")),
   passportNumber: z.string().trim().max(40).optional().or(z.literal("")),
   nationality: z.string().trim().max(60).optional().or(z.literal("")),
@@ -1050,7 +1077,10 @@ async function syncAllBookingPassengers(
 }
 
 /** Admin edit of an existing booking — passengers, baggage, amount. */
-export async function updateBookingAction(formData: FormData) {
+export async function updateBookingAction(
+  _prev: FormActionResult | null,
+  formData: FormData,
+): Promise<FormActionResult> {
   await requireAdmin();
 
   const parsed = updateBookingSchema.safeParse({
@@ -1066,29 +1096,23 @@ export async function updateBookingAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    redirect(
-      `/admin?tab=bookings&error=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid booking")}`,
+    return formFail(
+      parsed.error.issues[0]?.message ?? "Please fix the highlighted fields",
+      zodFieldErrors(parsed.error),
     );
   }
 
-  let companions;
-  try {
-    companions = parseCompanionTravellers(formData);
-  } catch (e) {
-    redirect(
-      `/admin?tab=bookings&error=${encodeURIComponent(
-        e instanceof Error ? e.message : "Invalid passenger details",
-      )}`,
-    );
+  const companionsResult = parseCompanionTravellersResult(formData);
+  if (!companionsResult.ok) {
+    return formFail(companionsResult.error, companionsResult.fieldErrors);
   }
+  const companions = companionsResult.value;
 
   const data = parsed.data;
   const seatsBooked = 1 + companions.seatedCount;
   if (seatsBooked < 1 || seatsBooked > 9) {
-    redirect(
-      `/admin?tab=bookings&error=${encodeURIComponent(
-        "Seated travellers (adults + children) must be between 1 and 9",
-      )}`,
+    return formFail(
+      "Seated travellers (adults + children) must be between 1 and 9",
     );
   }
   const amountPaidCents = Math.round(data.amountAud * 100);
@@ -1230,11 +1254,7 @@ export async function updateBookingAction(formData: FormData) {
     });
   } catch (error) {
     if (isRedirectError(error)) throw error;
-    redirect(
-      `/admin?tab=bookings&error=${encodeURIComponent(
-        error instanceof Error ? error.message : "Failed to update booking",
-      )}`,
-    );
+    return failFromUnknown(error, "Failed to update booking");
   }
 
   const refreshed = await prisma.booking.findUnique({

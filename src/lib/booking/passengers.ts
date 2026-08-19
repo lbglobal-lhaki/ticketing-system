@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { FieldErrors } from "@/lib/forms/formAction";
 
 export const PASSENGER_TYPES = ["adult", "child", "infant"] as const;
 export type PassengerType = (typeof PASSENGER_TYPES)[number];
@@ -297,15 +298,35 @@ function moneyAudToCents(raw: string): number {
   return Math.round(n * 100);
 }
 
+function setFieldError(errors: FieldErrors, key: string, message: string) {
+  if (!errors[key]) errors[key] = message;
+}
+
+type CompanionParseOk = {
+  adults: TravellerDetail[];
+  children: TravellerDetail[];
+  infants: TravellerDetail[];
+  all: TravellerDetail[];
+  seatedCount: number;
+  childFareCents: number;
+  infantFareCents: number;
+};
+
 function parseNamedGroup(
   formData: FormData,
   prefix: "extra" | "child" | "infant",
   type: PassengerType,
+  errors: FieldErrors,
 ): TravellerDetail[] {
   const names = formData.getAll(`${prefix}PassengerName`).map(String);
   if (names.length === 0) return [];
   if (names.length > 8) {
-    throw new Error(`Maximum 8 ${type} passengers`);
+    setFieldError(
+      errors,
+      `${prefix}PassengerName.0`,
+      `Maximum 8 ${type} passengers`,
+    );
+    return [];
   }
 
   const passports = formData.getAll(`${prefix}PassengerPassport`).map(String);
@@ -315,7 +336,9 @@ function parseNamedGroup(
   const prices = formData.getAll(`${prefix}PassengerPriceAud`).map(String);
   const dobs = formData.getAll(`${prefix}PassengerDateOfBirth`).map(String);
 
-  return names.map((fullName, i) => {
+  const rows: TravellerDetail[] = [];
+  names.forEach((fullName, i) => {
+    const who = `${passengerTypeLabel(type)} ${i + 1}`;
     let priceCents = 0;
     if (type === "child" || type === "infant") {
       const rawPrice = (prices[i] ?? "").trim();
@@ -323,10 +346,10 @@ function parseNamedGroup(
         try {
           priceCents = moneyAudToCents(rawPrice);
         } catch (e) {
-          throw new Error(
-            `${passengerTypeLabel(type)} ${i + 1}: ${
-              e instanceof Error ? e.message : "invalid price"
-            }`,
+          setFieldError(
+            errors,
+            `${prefix}PassengerPriceAud.${i}`,
+            `${who}: ${e instanceof Error ? e.message : "invalid price"}`,
           );
         }
       }
@@ -337,10 +360,10 @@ function parseNamedGroup(
       try {
         dateOfBirth = parseDateOfBirth(dobs[i] ?? "");
       } catch (e) {
-        throw new Error(
-          `${passengerTypeLabel(type)} ${i + 1}: ${
-            e instanceof Error ? e.message : "invalid date of birth"
-          }`,
+        setFieldError(
+          errors,
+          `${prefix}PassengerDateOfBirth.${i}`,
+          `${who}: ${e instanceof Error ? e.message : "invalid date of birth"}`,
         );
       }
     }
@@ -360,43 +383,61 @@ function parseNamedGroup(
     const parsed =
       type === "adult" ? adultSchema.safeParse(raw) : pricedSchema.safeParse(raw);
     if (!parsed.success) {
-      throw new Error(
-        `${passengerTypeLabel(type)} ${i + 1}: ${
-          parsed.error.issues[0]?.message ?? "invalid details"
-        }`,
+      const issue = parsed.error.issues[0];
+      const field = String(issue?.path[0] ?? "fullName");
+      const nameMap: Record<string, string> = {
+        fullName: `${prefix}PassengerName.${i}`,
+        passportNumber: `${prefix}PassengerPassport.${i}`,
+        nationality: `${prefix}PassengerNationality.${i}`,
+        dateOfBirth: `${prefix}PassengerDateOfBirth.${i}`,
+        priceCents: `${prefix}PassengerPriceAud.${i}`,
+      };
+      setFieldError(
+        errors,
+        nameMap[field] ?? `${prefix}PassengerName.${i}`,
+        `${who}: ${issue?.message ?? "invalid details"}`,
       );
+      return;
     }
-    return parsed.data as TravellerDetail;
+    rows.push(parsed.data as TravellerDetail);
   });
+  return rows;
 }
 
-/** Parse walk-in / edit form: extra adults + children + infants. */
-export function parseCompanionTravellers(formData: FormData): {
-  adults: TravellerDetail[];
-  children: TravellerDetail[];
-  infants: TravellerDetail[];
-  all: TravellerDetail[];
-  seatedCount: number;
-  childFareCents: number;
-  infantFareCents: number;
-} {
-  const adults = parseNamedGroup(formData, "extra", "adult");
-  const children = parseNamedGroup(formData, "child", "child");
-  const infants = parseNamedGroup(formData, "infant", "infant");
+export function parseCompanionTravellersResult(formData: FormData):
+  | { ok: true; value: CompanionParseOk }
+  | { ok: false; error: string; fieldErrors: FieldErrors } {
+  const errors: FieldErrors = {};
+  const adults = parseNamedGroup(formData, "extra", "adult", errors);
+  const children = parseNamedGroup(formData, "child", "child", errors);
+  const infants = parseNamedGroup(formData, "infant", "infant", errors);
+  if (Object.keys(errors).length > 0) {
+    const first = Object.values(errors)[0] ?? "Invalid passenger details";
+    return { ok: false, error: first, fieldErrors: errors };
+  }
   const all = [...adults, ...children, ...infants];
-  // Primary adult is counted separately by callers (+1).
   const seatedCount = adults.length + children.length;
   const childFareCents = children.reduce((s, c) => s + c.priceCents, 0);
   const infantFareCents = infants.reduce((s, c) => s + c.priceCents, 0);
   return {
-    adults,
-    children,
-    infants,
-    all,
-    seatedCount,
-    childFareCents,
-    infantFareCents,
+    ok: true,
+    value: {
+      adults,
+      children,
+      infants,
+      all,
+      seatedCount,
+      childFareCents,
+      infantFareCents,
+    },
   };
+}
+
+/** Parse walk-in / edit form: extra adults + children + infants. */
+export function parseCompanionTravellers(formData: FormData): CompanionParseOk {
+  const result = parseCompanionTravellersResult(formData);
+  if (!result.ok) throw new Error(result.error);
+  return result.value;
 }
 
 export function seatedTravellerCount(travellers: TravellerDetail[]): number {
@@ -428,16 +469,19 @@ const draftTravellerSchema = z.object({
  * travellerType_0, title_0, firstName_0, ...
  * Expected order: adults, then children, then infants.
  */
-export function parseOnlineTravellersDraft(
+export function parseOnlineTravellersDraftResult(
   formData: FormData,
   expected: { adults: number; children: number; infants: number },
   ageOn: Date,
-): TravellerDraft[] {
+):
+  | { ok: true; travellers: TravellerDraft[] }
+  | { ok: false; error: string; fieldErrors: FieldErrors } {
   const adults = Math.max(1, Math.floor(expected.adults));
   const children = Math.max(0, Math.floor(expected.children));
   const infants = Math.max(0, Math.floor(expected.infants));
   const total = adults + children + infants;
   const out: TravellerDraft[] = [];
+  const errors: FieldErrors = {};
 
   for (let i = 0; i < total; i++) {
     let expectedType: PassengerType = "adult";
@@ -458,14 +502,18 @@ export function parseOnlineTravellersDraft(
 
     const parsed = draftTravellerSchema.safeParse(raw);
     if (!parsed.success) {
-      throw new Error(
-        `${passengerTypeLabel(expectedType)} ${i + 1}: ${
-          parsed.error.issues[0]?.message ?? "invalid details"
-        }`,
+      const issue = parsed.error.issues[0];
+      const field = String(issue?.path[0] ?? "firstName");
+      setFieldError(
+        errors,
+        `${field}_${i}`,
+        issue?.message ?? "Invalid details",
       );
+      continue;
     }
     if (parsed.data.passengerType !== expectedType) {
-      throw new Error(`Traveller ${i + 1} type mismatch`);
+      setFieldError(errors, `travellerType_${i}`, `Traveller ${i + 1} type mismatch`);
+      continue;
     }
 
     let dateOfBirth = "";
@@ -481,16 +529,8 @@ export function parseOnlineTravellersDraft(
         dateOfBirth = formatDateOfBirth(dob);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "invalid date of birth";
-        if (
-          msg.startsWith("Child ") ||
-          msg.startsWith("Infant ") ||
-          msg.startsWith("Adult ")
-        ) {
-          throw e instanceof Error ? e : new Error(msg);
-        }
-        throw new Error(
-          `${passengerTypeLabel(expectedType)} ${i + 1}: ${msg}`,
-        );
+        setFieldError(errors, `dateOfBirth_${i}`, msg);
+        continue;
       }
     }
 
@@ -507,13 +547,36 @@ export function parseOnlineTravellersDraft(
     });
   }
 
-  const primary = out[0];
-  if (!primary?.email || !z.string().email().safeParse(primary.email).success) {
-    throw new Error("Primary adult needs a valid email");
+  const primaryEmail = String(formData.get("email_0") ?? "").trim();
+  const primaryPhone = String(formData.get("phone_0") ?? "").trim();
+  if (!errors.email_0) {
+    if (!primaryEmail || !z.string().email().safeParse(primaryEmail).success) {
+      setFieldError(errors, "email_0", "Enter a valid email");
+    }
   }
-  if (!primary.phone || primary.phone.trim().length < 6) {
-    throw new Error("Primary adult needs a mobile number");
+  if (!errors.phone_0) {
+    if (primaryPhone.length < 6) {
+      setFieldError(errors, "phone_0", "Enter a mobile number");
+    }
   }
 
-  return out;
+  if (Object.keys(errors).length > 0) {
+    return {
+      ok: false,
+      error: Object.values(errors)[0] ?? "Please fix the highlighted fields",
+      fieldErrors: errors,
+    };
+  }
+
+  return { ok: true, travellers: out };
+}
+
+export function parseOnlineTravellersDraft(
+  formData: FormData,
+  expected: { adults: number; children: number; infants: number },
+  ageOn: Date,
+): TravellerDraft[] {
+  const result = parseOnlineTravellersDraftResult(formData, expected, ageOn);
+  if (!result.ok) throw new Error(result.error);
+  return result.travellers;
 }
