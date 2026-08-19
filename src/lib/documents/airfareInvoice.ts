@@ -182,7 +182,6 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
 
   for (const [name, cents] of [
     ["Airport Taxes", lines.airportTaxesCents],
-    ["Extra Baggage", lines.extraBaggageCents],
     ["Travel Insurance", lines.travelInsuranceCents],
     ["Other Charges", lines.otherChargesCents],
   ] as const) {
@@ -191,6 +190,15 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     if (cents > 0) {
       itemRows.push({ name, qty: 1, unitCents: cents, totalCents: cents });
     }
+  }
+  if (lines.extraBaggageCents > 0) {
+    const bagQty = Math.max(1, Math.floor(data.extraBaggageKg ?? 0));
+    itemRows.push({
+      name: "Extra Baggage",
+      qty: bagQty,
+      unitCents: Math.round(lines.extraBaggageCents / bagQty),
+      totalCents: lines.extraBaggageCents,
+    });
   }
   if ((invoice.serviceFeeCents || 0) > 0) {
     itemRows.push({

@@ -72,6 +72,7 @@ export function makeSmokeBookingData(
     nationality: "Bhutanese",
     passengers,
     seatsBooked: opts.adults + children,
+    extraBaggageKg: 0,
     fareReleaseName: "Economy Saver",
     fareProductName: "Economy Saver",
     paymentMethod: "bank_transfer",

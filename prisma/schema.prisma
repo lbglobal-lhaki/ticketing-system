@@ -241,7 +241,7 @@ model Booking {
   fareReleaseName     String         @default("")
   fareProductCode     String         @default("")
   fareProductName     String         @default("")
-  /// Extra checked baggage purchased at booking time (kg) — admin-priced,
+  /// Extra checked bags purchased at booking time (piece count) — admin-priced,
   /// charge lives on the invoice's extraBaggageCents line.
   extraBaggageKg      Int            @default(0)
   paymentMethod       PaymentMethod?
@@ -330,6 +330,8 @@ model Invoice {
   notes             String         @default("")
   dueAt             DateTime?
   sentAt            DateTime?
+  /// When the travel document / e-ticket email was last sent.
+  travelDocSentAt   DateTime?
   paidAt            DateTime?
   markedPaidByAdmin Boolean        @default(false)
   /// Private Vercel Blob URL for the generated PDF (null until first render/upload)

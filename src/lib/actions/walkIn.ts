@@ -61,7 +61,7 @@ const walkInSchema = z.object({
   passportNumber: z.string().trim().max(40).optional().or(z.literal("")),
   nationality: z.string().trim().max(60).optional().or(z.literal("")),
   paymentMethod: z.enum(["cash", "card", "bank_transfer"]),
-  extraBaggageKg: z.coerce.number().int().min(0).max(500).default(0),
+  extraBaggageKg: z.coerce.number().int().min(0).max(20).default(0),
   extraBaggageAud: z.coerce.number().min(0).max(100000).default(0),
   bookingSource: z.enum(["walk_in", "online"]).default("walk_in"),
   customPriceAud: z.string().trim().optional().or(z.literal("")),
@@ -931,7 +931,7 @@ const updateBookingSchema = z.object({
   passengerPhone: z.string().trim().max(40).optional().or(z.literal("")),
   passportNumber: z.string().trim().max(40).optional().or(z.literal("")),
   nationality: z.string().trim().max(60).optional().or(z.literal("")),
-  extraBaggageKg: z.coerce.number().int().min(0).max(500).default(0),
+  extraBaggageKg: z.coerce.number().int().min(0).max(20).default(0),
   fareReleaseName: z.string().trim().max(120).optional().or(z.literal("")),
   amountAud: z.coerce.number().min(0).max(100000),
 });

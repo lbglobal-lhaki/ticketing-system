@@ -48,6 +48,7 @@ export type AdminInvoiceRow = {
   airfareCents: number;
   airportTaxesCents: number;
   extraBaggageCents: number;
+  extraBaggageKg: number;
   travelInsuranceCents: number;
   otherChargesCents: number;
   gstRateBps: number;
@@ -70,6 +71,7 @@ export type AdminInvoiceRow = {
   stripePaymentIntentId: string | null;
   dueAt: string | null;
   sentAt: string | null;
+  travelDocSentAt: string | null;
   paidAt: string | null;
   markedPaidByAdmin: boolean;
   createdAt: string;
@@ -116,7 +118,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
   // (which reloads the entire admin dashboard and felt like a multi-minute hang).
   const [rows, setRows] = useState(invoices);
   const invoicesKey = invoices
-    .map((i) => `${i.id}:${i.status}:${i.amountCents}:${i.sentAt ?? ""}:${i.paidAt ?? ""}`)
+    .map((i) => `${i.id}:${i.status}:${i.amountCents}:${i.sentAt ?? ""}:${i.travelDocSentAt ?? ""}:${i.paidAt ?? ""}`)
     .join("|");
   const [settledKey, setSettledKey] = useState(invoicesKey);
   if (invoicesKey !== settledKey) {
@@ -324,6 +326,16 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
         if (!result.ok) {
           setErrorMsg(result.error);
           return;
+        }
+        if (
+          "travelDocSentAt" in result &&
+          typeof result.travelDocSentAt === "string" &&
+          result.travelDocSentAt
+        ) {
+          mergeInvoicePatch({
+            id: active.id,
+            travelDocSentAt: result.travelDocSentAt,
+          });
         }
         if (
           "sentAt" in result &&
@@ -817,6 +829,18 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                         />
                       </label>
                       <label className="block text-xs text-muted">
+                        Extra bags
+                        <input
+                          name="extraBaggageKg"
+                          type="number"
+                          min={0}
+                          max={20}
+                          step="1"
+                          defaultValue={active.extraBaggageKg}
+                          className={fieldClass}
+                        />
+                      </label>
+                      <label className="block text-xs text-muted">
                         Extra baggage (AUD)
                         <input
                           name="extraBaggageAud"
@@ -976,7 +1000,11 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                       </span>
                     ) : (
                       <>
-                        {active.sentAt ? "Resend" : "Send"}{" "}
+                        {(docTab === "travel"
+                          ? active.travelDocSentAt
+                          : active.sentAt)
+                          ? "Resend"
+                          : "Send"}{" "}
                         {docTab === "travel"
                           ? "travel document"
                           : "airfare invoice"}

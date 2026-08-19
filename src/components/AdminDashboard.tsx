@@ -2309,16 +2309,16 @@ export function AdminDashboard({
               >
               <label className="space-y-1 text-sm">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                  Extra baggage (kg)
-                </span>
-                <input
-                  name="extraBaggageKg"
-                  type="number"
-                  min={0}
-                  max={500}
-                  defaultValue={0}
-                  className={fieldClass}
-                />
+                Extra bags
+              </span>
+              <input
+                name="extraBaggageKg"
+                type="number"
+                min={0}
+                max={20}
+                defaultValue={0}
+                className={fieldClass}
+              />
               </label>
               <label className="space-y-1 text-sm">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
@@ -2593,7 +2593,8 @@ export function AdminDashboard({
                           : ""}
                         {b.extraBaggageKg > 0 ? (
                           <p className="mt-0.5 text-xs text-muted">
-                            +{b.extraBaggageKg}kg baggage
+                            +{b.extraBaggageKg} extra bag
+                            {b.extraBaggageKg === 1 ? "" : "s"}
                           </p>
                         ) : null}
                       </Td>

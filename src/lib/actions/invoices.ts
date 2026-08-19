@@ -250,6 +250,11 @@ async function persistInvoiceDocument(formData: FormData) {
   const airfareCents = moneyAud(formData.get("airfareAud"));
   const airportTaxesCents = moneyAud(formData.get("airportTaxesAud"));
   const extraBaggageCents = moneyAud(formData.get("extraBaggageAud"));
+  const extraBaggageKgRaw = Number(String(formData.get("extraBaggageKg") ?? "").trim());
+  const extraBaggageKg =
+    Number.isFinite(extraBaggageKgRaw) && extraBaggageKgRaw >= 0
+      ? Math.min(20, Math.floor(extraBaggageKgRaw))
+      : null;
   const travelInsuranceCents = moneyAud(formData.get("travelInsuranceAud"));
   const otherChargesCents = moneyAud(formData.get("otherChargesAud"));
   const serviceFeeCents = moneyAud(formData.get("serviceFeeAud"));
@@ -340,6 +345,7 @@ async function persistInvoiceDocument(formData: FormData) {
       nationality: parsed.data.nationality || "",
       amountPaidCents: totals.amountCents,
       serviceFeeCents,
+      ...(extraBaggageKg !== null ? { extraBaggageKg } : {}),
     },
   });
 
@@ -389,6 +395,7 @@ async function persistInvoiceDocument(formData: FormData) {
       airfareCents,
       airportTaxesCents,
       extraBaggageCents,
+      extraBaggageKg: extraBaggageKg ?? undefined,
       travelInsuranceCents,
       otherChargesCents,
       fareCents: airfareCents,
@@ -614,16 +621,17 @@ export async function sendTravelDocumentEmailModalAction(invoiceId: string) {
     if (!result.ok && !("skipped" in result && result.skipped)) {
       return { ok: false as const, error: result.error };
     }
+    const sentAt = new Date().toISOString();
     if (!result.ok && "skipped" in result && result.skipped) {
       return {
         ok: false as const,
         error:
           result.error ||
-          "Travel document was not emailed — configure TICKETING_SMTP_USER/PASS (or ACCOUNTS_SMTP_USER/PASS) and try again.",
+          "Travel document was not emailed — configure ACCOUNTS_SMTP_USER/PASS and try again.",
       };
     }
 
-    return { ok: true as const };
+    return { ok: true as const, travelDocSentAt: sentAt };
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to send travel document";

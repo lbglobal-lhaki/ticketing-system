@@ -122,6 +122,7 @@ export async function loadBookingDocumentData(
     nationality: booking.nationality,
     passengers,
     seatsBooked: booking.seatsBooked,
+    extraBaggageKg: booking.extraBaggageKg,
     fareReleaseName: booking.fareReleaseName,
     fareProductName: booking.fareProductName,
     paymentMethod: booking.paymentMethod,
@@ -289,7 +290,7 @@ export async function sendTravelDocumentEmail(bookingId: string) {
 
   const ticketEmail = eTicketEmail(data);
   const ticketAttachment = await travelDocAttachment(data);
-  return sendEmail({
+  const result = await sendEmail({
     to,
     subject: ticketEmail.subject,
     html: ticketEmail.html,
@@ -297,6 +298,15 @@ export async function sendTravelDocumentEmail(bookingId: string) {
     mailbox: "accounts",
     attachments: [ticketAttachment],
   });
+
+  if (result.ok && data.invoice) {
+    await prisma.invoice.update({
+      where: { invoiceNumber: data.invoice.invoiceNumber },
+      data: { travelDocSentAt: new Date() },
+    });
+  }
+
+  return result;
 }
 
 /** Sends only the airfare invoice / receipt email (accounts@) — independent of the travel document. */

@@ -34,6 +34,8 @@ export type BookingDocumentData = {
   /** All named travellers (primary first). Falls back to passengerName when empty. */
   passengers: BookingDocumentPassenger[];
   seatsBooked: number;
+  /** Extra checked bags purchased with the booking (piece count). */
+  extraBaggageKg?: number;
   fareReleaseName: string;
   fareProductName?: string;
   paymentMethod: string | null;

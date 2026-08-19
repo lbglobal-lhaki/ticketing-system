@@ -268,13 +268,13 @@ export function BookingEditModal({
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="space-y-1 text-sm">
               <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Extra baggage (kg)
+                Extra bags
               </span>
               <input
                 name="extraBaggageKg"
                 type="number"
                 min={0}
-                max={500}
+                max={20}
                 defaultValue={booking.extraBaggageKg}
                 className={fieldClass}
               />
