@@ -16,6 +16,7 @@ import {
   sendTravelDocumentEmailModalAction,
 } from "@/lib/actions/invoices";
 import { formatAud } from "@/lib/pricing";
+import { EXTRA_BAG_AUD, extraBaggageCentsForBags } from "@/lib/pricing/baggage";
 import { FieldError, labeledControlClass } from "@/components/forms/FieldError";
 import {
   BulkSelectBar,
@@ -143,6 +144,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
   // Remount uncontrolled fields after Generate/Save so DOM values match DB
   // (otherwise Save after Generate silently writes pre-Generate values).
   const [formRevision, setFormRevision] = useState(0);
+  const [extraBags, setExtraBags] = useState(0);
 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -183,6 +185,10 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
     () => rows.find((i) => i.id === activeId) ?? null,
     [activeId, rows],
   );
+
+  useEffect(() => {
+    if (active) setExtraBags(active.extraBaggageKg);
+  }, [active?.id, active?.extraBaggageKg, formRevision]);
 
   useEffect(() => {
     if (!active) return;
@@ -861,20 +867,23 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                           min={0}
                           max={20}
                           step="1"
-                          defaultValue={active.extraBaggageKg}
+                          value={extraBags}
+                          onChange={(e) =>
+                            setExtraBags(
+                              Math.min(
+                                20,
+                                Math.max(0, Number(e.target.value) || 0),
+                              ),
+                            )
+                          }
                           className={fieldClass}
                         />
-                      </label>
-                      <label className="block text-xs text-muted">
-                        Extra baggage (AUD)
-                        <input
-                          name="extraBaggageAud"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          defaultValue={aud(active.extraBaggageCents)}
-                          className={fieldClass}
-                        />
+                        <span className="mt-1 block font-normal">
+                          ${EXTRA_BAG_AUD.toFixed(2)} each
+                          {extraBags > 0
+                            ? ` · ${formatAud(extraBaggageCentsForBags(extraBags))}`
+                            : ""}
+                        </span>
                       </label>
                       <label className="block text-xs text-muted">
                         Travel insurance (AUD)

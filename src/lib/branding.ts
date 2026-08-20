@@ -98,12 +98,14 @@ export function makeAccessToken() {
   return randomBytes(24).toString("base64url");
 }
 
+/** Random PNR for smoke tests. Live bookings use `allocateBookingRef`. */
 export function makeBookingRef(prefix = getBrand().bookingPrefix) {
   const stamp = new Date().toISOString().slice(0, 10).replaceAll("-", "");
   const rand = randomBytes(5).toString("hex").toUpperCase();
   return `${prefix}-${stamp}-${rand}`;
 }
 
+/** Random ticket for smoke tests. Live bookings use `allocateTicketNumbers`. */
 export function makeTicketNumber() {
   const rand = randomInt(100_000_000, 1_000_000_000);
   return `ET-${rand}`;

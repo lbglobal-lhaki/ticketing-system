@@ -8,10 +8,14 @@ import { redirect } from "next/navigation";
 import {
   bankHoldExpiresAt,
   makeAccessToken,
-  makeBookingRef,
   makeInvoiceNumber,
-  makeTicketNumber,
 } from "@/lib/branding";
+import {
+  allocateBookingRef,
+  allocateTicketNumbers,
+  retryOnUniqueConflict,
+} from "@/lib/booking/documentIds";
+import { extraBaggageCentsForBags } from "@/lib/pricing/baggage";
 import { recordDeletion } from "@/lib/audit/deletionLog";
 import { prisma } from "@/lib/db";
 import {
@@ -69,7 +73,6 @@ const walkInSchema = z.object({
   nationality: z.string().trim().max(60).optional().or(z.literal("")),
   paymentMethod: z.enum(["cash", "card", "bank_transfer"]),
   extraBaggageKg: z.coerce.number().int().min(0).max(20).default(0),
-  extraBaggageAud: z.coerce.number().min(0).max(100000).default(0),
   bookingSource: z.enum(["walk_in", "online"]).default("walk_in"),
   customPriceAud: z.string().trim().optional().or(z.literal("")),
   gstMode: z.enum(["none", "exclusive", "inclusive"]).default("none"),
@@ -266,7 +269,6 @@ export async function createWalkInBookingAction(
     nationality: formData.get("nationality") || "",
     paymentMethod: formData.get("paymentMethod"),
     extraBaggageKg: formData.get("extraBaggageKg") || "0",
-    extraBaggageAud: formData.get("extraBaggageAud") || "0",
     bookingSource: formData.get("bookingSource") || "walk_in",
     customPriceAud: formData.get("customPriceAud") || "",
     gstMode: formData.get("gstMode") || "none",
@@ -519,7 +521,7 @@ export async function createWalkInBookingAction(
     const flightFareCents = usingCustomPrice
       ? (customTotalCents as number)
       : catalogueFareCents;
-    const baggageCents = Math.round(data.extraBaggageAud * 100);
+    const baggageCents = extraBaggageCentsForBags(data.extraBaggageKg);
     const chargeableSubtotalCents = flightFareCents + baggageCents;
 
     const paidUpfront = data.paymentMethod !== "bank_transfer";
@@ -586,7 +588,8 @@ export async function createWalkInBookingAction(
             ? " · GST inclusive 10%"
             : "";
 
-    const created = await prisma.$transaction(async (tx) => {
+    const created = await retryOnUniqueConflict(() =>
+      prisma.$transaction(async (tx) => {
       await decrementSeats(
         tx,
         flight.id,
@@ -602,7 +605,6 @@ export async function createWalkInBookingAction(
         );
       }
 
-      const bookingRef = makeBookingRef();
       const adultUnitForPassengers = usingCustomPrice
         ? 0
         : unitAdultFareCents;
@@ -627,7 +629,11 @@ export async function createWalkInBookingAction(
             : pax,
         ),
       ];
-      const passengerTickets = allPassengers.map(() => makeTicketNumber());
+      const bookingRef = await allocateBookingRef(tx);
+      const passengerTickets = await allocateTicketNumbers(
+        tx,
+        allPassengers.length,
+      );
 
       const booking = await tx.booking.create({
         data: {
@@ -731,7 +737,8 @@ export async function createWalkInBookingAction(
       });
 
       return { booking, invoice };
-    });
+    }),
+    );
     bookingCreated = true;
 
     // Do not auto-email travel docs / invoices on walk-in create — admins
@@ -1014,6 +1021,12 @@ async function syncAllBookingPassengers(
     where: { bookingId },
     orderBy: { sortOrder: "asc" },
   });
+  const extraTickets = await allocateTicketNumbers(
+    tx,
+    existing.length === 0
+      ? Math.max(0, allPassengers.length - 1)
+      : Math.max(0, allPassengers.length - existing.length),
+  );
 
   for (let i = 0; i < allPassengers.length; i++) {
     const pax = allPassengers[i]!;
@@ -1061,7 +1074,12 @@ async function syncAllBookingPassengers(
           dateOfBirth: pax.dateOfBirth,
           priceCents: pax.priceCents,
           allocatesSeat: seat,
-          ticketNumber: i === 0 ? primaryTicketNumber : makeTicketNumber(),
+          ticketNumber:
+            i === 0
+              ? primaryTicketNumber
+              : extraTickets[
+                  existing.length === 0 ? i - 1 : i - existing.length
+                ]!,
         },
       });
     }
@@ -1115,7 +1133,6 @@ export async function updateBookingAction(
       "Seated travellers (adults + children) must be between 1 and 9",
     );
   }
-  const amountPaidCents = Math.round(data.amountAud * 100);
   const allPassengers: TravellerDetail[] = [
     {
       fullName: data.passengerName,
@@ -1141,6 +1158,13 @@ export async function updateBookingAction(
         },
       });
       if (!booking) throw new Error("Booking not found");
+      const extraBaggageCents = extraBaggageCentsForBags(data.extraBaggageKg);
+      const previousBaggageCents =
+        booking.invoice?.extraBaggageCents ??
+        extraBaggageCentsForBags(booking.extraBaggageKg);
+      const amountPaidCents =
+        Math.round(data.amountAud * 100) +
+        (extraBaggageCents - previousBaggageCents);
       assertChildInfantAges(companions.all, booking.flight.departureAt);
       const adultUnitCents =
         booking.passengers.find(
@@ -1233,10 +1257,10 @@ export async function updateBookingAction(
 
       if (booking.invoice) {
         // Sync customer + airfare so PDF totals (from line items) match.
-        const airfareCents = airfareCentsForTargetAmount(
-          amountPaidCents,
-          booking.invoice,
-        );
+        const airfareCents = airfareCentsForTargetAmount(amountPaidCents, {
+          ...booking.invoice,
+          extraBaggageCents,
+        });
         await tx.invoice.update({
           where: { id: booking.invoice.id },
           data: {
@@ -1245,6 +1269,7 @@ export async function updateBookingAction(
             customerPhone: data.passengerPhone || "",
             airfareCents,
             fareCents: airfareCents,
+            extraBaggageCents,
             amountCents: amountPaidCents,
             pdfBlobUrl: null,
             pdfBlobPathname: null,

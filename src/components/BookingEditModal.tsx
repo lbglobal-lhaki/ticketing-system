@@ -13,6 +13,7 @@ import { useStickyAction } from "@/components/forms/useStickyAction";
 import { toDateTimeLocalValue } from "@/lib/datetime";
 import { DateTimePicker } from "@/components/ui/DateTimePicker";
 import { formatAud } from "@/lib/pricing";
+import { EXTRA_BAG_AUD, extraBaggageCentsForBags } from "@/lib/pricing/baggage";
 import { childFareCents, infantFareCents, formatDateOfBirth } from "@/lib/booking/passengers";
 
 export type EditablePassenger = {
@@ -88,6 +89,7 @@ export function BookingEditModal({
   const [adults, setAdults] = useState<CompanionDraft[]>(initial.adults);
   const [children, setChildren] = useState<CompanionDraft[]>(initial.children);
   const [infants, setInfants] = useState<CompanionDraft[]>(initial.infants);
+  const [extraBags, setExtraBags] = useState(booking.extraBaggageKg);
   const sticky = useStickyAction(updateBookingAction);
 
   useEffect(() => {
@@ -148,6 +150,7 @@ export function BookingEditModal({
         <form
           key={booking.id}
           onSubmit={sticky.onSubmit}
+          data-skip-busy
           className="space-y-4 overflow-y-auto px-4 py-4 sm:px-6"
         >
           <input type="hidden" name="id" value={booking.id} />
@@ -293,9 +296,20 @@ export function BookingEditModal({
                 type="number"
                 min={0}
                 max={20}
-                defaultValue={booking.extraBaggageKg}
+                value={extraBags}
+                onChange={(e) =>
+                  setExtraBags(
+                    Math.min(20, Math.max(0, Number(e.target.value) || 0)),
+                  )
+                }
                 className={fieldClass}
               />
+              <span className="block text-xs text-muted">
+                ${EXTRA_BAG_AUD.toFixed(2)} each
+                {extraBags > 0
+                  ? ` · ${formatAud(extraBaggageCentsForBags(extraBags))}`
+                  : ""}
+              </span>
             </label>
             <label className="space-y-1 text-sm sm:col-span-2">
               <span className="text-xs uppercase tracking-[0.12em] text-muted">
@@ -335,9 +349,10 @@ export function BookingEditModal({
                 className={fieldClass}
               />
               <span className="block text-xs text-muted">
-                Update the total if you add or remove travellers. Child (75%)
-                and infant (10%) fares are applied from the adult fare
-                automatically.
+                Extra bags are ${EXTRA_BAG_AUD.toFixed(2)} each. Changing the bag
+                count updates the invoice baggage line and this total by that
+                amount. Child (75%) and infant (10%) fares are applied from the
+                adult fare automatically.
               </span>
             </label>
           </div>

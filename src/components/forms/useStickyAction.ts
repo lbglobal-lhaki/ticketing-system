@@ -1,6 +1,11 @@
 "use client";
 
-import { useActionState, useEffect, type FormEvent } from "react";
+import {
+  startTransition,
+  useActionState,
+  useEffect,
+  type FormEvent,
+} from "react";
 import type { FormActionResult } from "@/lib/forms/formAction";
 
 export type StickyFormAction = (
@@ -43,7 +48,10 @@ export function useStickyAction(action: StickyFormAction) {
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    dispatch(new FormData(event.currentTarget));
+    const formData = new FormData(event.currentTarget);
+    startTransition(() => {
+      dispatch(formData);
+    });
   }
 
   const failed = state?.ok === false;

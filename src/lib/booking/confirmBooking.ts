@@ -1,10 +1,13 @@
 import {
   bankHoldExpiresAt,
   makeAccessToken,
-  makeBookingRef,
   makeInvoiceNumber,
-  makeTicketNumber,
 } from "@/lib/branding";
+import {
+  allocateBookingRef,
+  allocateTicketNumbers,
+  retryOnUniqueConflict,
+} from "@/lib/booking/documentIds";
 import { prisma } from "@/lib/db";
 import {
   buildRouteLabel,
@@ -367,7 +370,8 @@ export async function confirmBooking(input: {
   }
 
   try {
-    const result = await prisma.$transaction(
+    const result = await retryOnUniqueConflict(() =>
+      prisma.$transaction(
       async (tx) => {
         const quote = await tx.priceQuote.findUnique({
           where: { id: input.quoteId },
@@ -418,8 +422,7 @@ export async function confirmBooking(input: {
           },
         });
 
-        const bookingRef = makeBookingRef();
-        const ticketNumber = makeTicketNumber();
+        const bookingRef = await allocateBookingRef(tx);
         const accessToken = makeAccessToken();
         const fareCents = quotePartyFareCents(quote);
         const serviceFeeCents = input.serviceFeeCents ?? 0;
@@ -525,9 +528,11 @@ export async function confirmBooking(input: {
           }
         }
 
-        const passengerTickets = travellers.map((_, i) =>
-          i === 0 ? ticketNumber : makeTicketNumber(),
+        const passengerTickets = await allocateTicketNumbers(
+          tx,
+          travellers.length,
         );
+        const ticketNumber = passengerTickets[0]!;
 
         const booking = await tx.booking.create({
           data: {
@@ -630,6 +635,7 @@ export async function confirmBooking(input: {
         maxWait: 15_000,
         timeout: 30_000,
       },
+    ),
     );
 
     return { ok: true as const, ...result };

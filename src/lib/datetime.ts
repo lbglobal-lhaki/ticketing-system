@@ -39,6 +39,13 @@ export function parseDateTimeLocal(
   return d;
 }
 
+/** Calendar date in the viewer's local timezone (`YYYY-MM-DD`). */
+export function toLocalYmd(isoOrDate: string | Date): string {
+  const d = typeof isoOrDate === "string" ? new Date(isoOrDate) : isoOrDate;
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 /** Admin flights list — date + time in en-AU. */
 export function formatFlightDateTime(isoOrDate: string | Date): string {
   const d = typeof isoOrDate === "string" ? new Date(isoOrDate) : isoOrDate;

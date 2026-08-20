@@ -53,7 +53,7 @@ import { Combobox, type ComboboxOption } from "@/components/admin/Combobox";
 import { SegmentedField } from "@/components/admin/SegmentedField";
 import { ListFilterBar, NoMatches } from "@/components/admin/ListFilterBar";
 import { bankHoldExpiresAt } from "@/lib/branding";
-import { formatFlightDateTime, toDateTimeLocalValue } from "@/lib/datetime";
+import { formatFlightDateTime, toDateTimeLocalValue, toLocalYmd } from "@/lib/datetime";
 import {
   BUSINESS_FARE_TEMPLATE,
   CABIN_CLASSES,
@@ -67,6 +67,7 @@ import {
   partyFareCents,
 } from "@/lib/booking/passengers";
 import { formatAud } from "@/lib/pricing";
+import { EXTRA_BAG_AUD, extraBaggageCentsForBags } from "@/lib/pricing/baggage";
 import { AdminShell, type NavGroup } from "@/components/ui/AdminShell";
 import { Button } from "@/components/ui/Button";
 import { DateTimePicker } from "@/components/ui/DateTimePicker";
@@ -632,13 +633,8 @@ export function AdminDashboard({
   const [bookingFilter, setBookingFilter] = useState("all");
   const [walkInOutboundChoice, setWalkInOutboundChoice] = useState("");
   const [walkInReturnChoice, setWalkInReturnChoice] = useState("");
-  /**
-   * True when the admin has chosen to pick the return leg themselves instead
-   * of taking the flight's fixed pairing. The server never required the paired
-   * leg — it only checks the return departs later, runs the reverse route and
-   * sells the same cabin — so any valid flight is accepted here too.
-   */
-  const [walkInManualReturn, setWalkInManualReturn] = useState(false);
+  const [walkInReturnDate, setWalkInReturnDate] = useState("");
+  const [walkInExtraBags, setWalkInExtraBags] = useState(0);
   const [walkInFareProductId, setWalkInFareProductId] = useState("");
   const [walkInCabin, setWalkInCabin] = useState<CabinClass>("economy");
   const [walkInTripType, setWalkInTripType] = useState<TripType>("one_way");
@@ -665,6 +661,8 @@ export function AdminDashboard({
   // just on the one button that was clicked.
   const [busy, setBusy] = useState(false);
   const busySafetyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const walkInWasPending = useRef(false);
+  const flightWasPending = useRef(false);
 
   function markBusy() {
     setBusy(true);
@@ -674,6 +672,28 @@ export function AdminDashboard({
     // than the route's own server timeout budget.
     busySafetyTimeout.current = setTimeout(() => setBusy(false), 55_000);
   }
+
+  const flightPending = createFlightSticky.pending || updateFlightSticky.pending;
+  useEffect(() => {
+    if (walkInSticky.pending) {
+      walkInWasPending.current = true;
+      return;
+    }
+    if (walkInWasPending.current) {
+      walkInWasPending.current = false;
+      setBusy(false);
+    }
+  }, [walkInSticky.pending]);
+  useEffect(() => {
+    if (flightPending) {
+      flightWasPending.current = true;
+      return;
+    }
+    if (flightWasPending.current) {
+      flightWasPending.current = false;
+      setBusy(false);
+    }
+  }, [flightPending]);
 
   // The redirect target always carries a fresh (or cleared) query string —
   // that's the one reliable signal that the new dashboard has arrived. Clear
@@ -698,7 +718,8 @@ export function AdminDashboard({
       setWalkInFormKey((k) => k + 1);
       setWalkInOutboundChoice("");
       setWalkInReturnChoice("");
-      setWalkInManualReturn(false);
+      setWalkInReturnDate("");
+      setWalkInExtraBags(0);
       setWalkInFareProductId("");
       setWalkInCabin("economy");
       setWalkInTripType("one_way");
@@ -745,33 +766,30 @@ export function AdminDashboard({
       walkInPairedReturn.active &&
       walkInPairedReturn.remainingSeats > 0,
   );
-  /*
-   * The picker shows when there is no pairing to fall back on, or when the
-   * admin has explicitly asked to choose the return themselves. Exactly one of
-   * the picker and the auto-attached hidden input is ever rendered, so only one
-   * `returnFlightId` is submitted.
-   */
-  const walkInNeedsManualReturn =
-    walkInTripType === "round_trip" &&
-    (!walkInCanAutoRoundTrip ||
-      walkInOutboundChoice === CUSTOM_FLIGHT_VALUE ||
-      walkInManualReturn);
 
-  const walkInUsesPairedReturn =
-    walkInTripType === "round_trip" &&
-    walkInCanAutoRoundTrip &&
-    walkInOutboundChoice !== CUSTOM_FLIGHT_VALUE &&
-    !walkInManualReturn;
+  useEffect(() => {
+    if (walkInTripType !== "round_trip") {
+      setWalkInReturnDate("");
+      setWalkInReturnChoice("");
+      return;
+    }
+    if (walkInPairedReturn) {
+      setWalkInReturnDate(toLocalYmd(walkInPairedReturn.departureAt));
+      setWalkInReturnChoice(walkInPairedReturn.id);
+      return;
+    }
+    setWalkInReturnChoice("");
+    setWalkInReturnDate("");
+  }, [walkInOutboundChoice, walkInTripType, walkInPairedReturn?.id]);
 
   /**
-   * Return legs the server will actually accept: reverse route, departing
-   * after the outbound, still on sale. Anything else would come back as a
-   * validation error, so it is not offered. "Custom flight" stays available
-   * for legs that are not in the system at all.
+   * Every return the server will accept: reverse route, after the outbound,
+   * still on sale. The date picker only reorders this list — it never hides
+   * flights, so the admin can always see how many returns exist.
    */
-  const walkInReturnOptions = useMemo<ComboboxOption[]>(() => {
+  const walkInReturnFlights = useMemo(() => {
     const out = walkInOutboundFlight;
-    const candidates = flights.filter((f) => {
+    return flights.filter((f) => {
       if (!f.active || f.remainingSeats <= 0) return false;
       if (!out) return true;
       if (f.id === out.id) return false;
@@ -780,6 +798,46 @@ export function AdminDashboard({
       }
       return new Date(f.departureAt) > new Date(out.departureAt);
     });
+  }, [flights, walkInOutboundFlight]);
+
+  const walkInReturnDateMatchCount = useMemo(() => {
+    if (!walkInReturnDate) return 0;
+    return walkInReturnFlights.filter(
+      (f) => toLocalYmd(f.departureAt) === walkInReturnDate,
+    ).length;
+  }, [walkInReturnFlights, walkInReturnDate]);
+
+  const walkInReturnDateSummary = useMemo(() => {
+    const seen = new Set<string>();
+    const labels: string[] = [];
+    for (const f of walkInReturnFlights) {
+      const ymd = toLocalYmd(f.departureAt);
+      if (!ymd || seen.has(ymd)) continue;
+      seen.add(ymd);
+      labels.push(
+        new Date(f.departureAt).toLocaleDateString("en-AU", {
+          day: "numeric",
+          month: "short",
+        }),
+      );
+    }
+    return labels;
+  }, [walkInReturnFlights]);
+
+  const walkInReturnOptions = useMemo<ComboboxOption[]>(() => {
+    const matching: typeof walkInReturnFlights = [];
+    const rest: typeof walkInReturnFlights = [];
+    for (const f of walkInReturnFlights) {
+      if (
+        walkInReturnDate &&
+        toLocalYmd(f.departureAt) === walkInReturnDate
+      ) {
+        matching.push(f);
+      } else {
+        rest.push(f);
+      }
+    }
+    const ordered = walkInReturnDate ? [...matching, ...rest] : walkInReturnFlights;
     return [
       {
         value: CUSTOM_FLIGHT_VALUE,
@@ -787,9 +845,20 @@ export function AdminDashboard({
         description: "Type the airline, route and times by hand",
         keywords: "custom manual new other adhoc",
       },
-      ...candidates.map((f) => flightOption(f, { showSeats: true })),
+      ...ordered.map((f) => {
+        const option = flightOption(f, { showSeats: true });
+        const onSelectedDate =
+          Boolean(walkInReturnDate) &&
+          toLocalYmd(f.departureAt) === walkInReturnDate;
+        return {
+          ...option,
+          description: onSelectedDate
+            ? `${option.description} · matches date`
+            : option.description,
+        };
+      }),
     ];
-  }, [flights, walkInOutboundFlight]);
+  }, [walkInReturnFlights, walkInReturnDate]);
 
   const editing = useMemo(
     () => flights.find((f) => f.id === editingId) ?? null,
@@ -1653,6 +1722,7 @@ export function AdminDashboard({
           <form
             key={editing?.id ?? "new"}
             onSubmit={flightSticky.onSubmit}
+            data-skip-busy
             className="mt-8 grid max-w-4xl gap-6 sm:grid-cols-2"
           >
             {editing && <input type="hidden" name="id" value={editing.id} />}
@@ -2054,6 +2124,7 @@ export function AdminDashboard({
             <form
               key={walkInFormKey}
               onSubmit={walkInSticky.onSubmit}
+              data-skip-busy
               className="mt-6 grid gap-4 sm:grid-cols-2"
             >
               <FormSection
@@ -2071,7 +2142,7 @@ export function AdminDashboard({
                   onChange={(next) => {
                     setWalkInOutboundChoice(next);
                     setWalkInReturnChoice("");
-                    setWalkInManualReturn(false);
+                    setWalkInReturnDate("");
                     setWalkInTripType("one_way");
                   }}
                   placeholder="Select outbound flight"
@@ -2097,7 +2168,7 @@ export function AdminDashboard({
                       onClick={() => {
                         setWalkInTripType("one_way");
                         setWalkInReturnChoice("");
-                        setWalkInManualReturn(false);
+                        setWalkInReturnDate("");
                       }}
                       className={`rounded-full px-4 py-2 transition ${
                         walkInTripType === "one_way"
@@ -2119,76 +2190,106 @@ export function AdminDashboard({
                       Round trip
                     </button>
                   </div>
-                  {walkInUsesPairedReturn && walkInPairedReturn && (
-                    <>
-                      <input
-                        type="hidden"
-                        name="returnFlightId"
-                        value={walkInPairedReturn.id}
-                      />
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-card border border-line bg-background/60 px-3 py-2.5">
-                        <p className="text-xs text-muted">
-                          Paired return attached:{" "}
-                          <span className="font-medium text-foreground">
-                            {walkInPairedReturn.airline}{" "}
-                            {walkInPairedReturn.flightNumber}
-                          </span>{" "}
-                          · {walkInPairedReturn.origin}→
-                          {walkInPairedReturn.destination} ·{" "}
-                          {formatFlightDateTime(walkInPairedReturn.departureAt)}
-                        </p>
+                  {walkInTripType === "round_trip" && walkInCanAutoRoundTrip && walkInPairedReturn ? (
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-card border border-line bg-background/60 px-3 py-2.5">
+                      <p className="text-xs text-muted">
+                        Suggested paired return:{" "}
+                        <span className="font-medium text-foreground">
+                          {walkInPairedReturn.airline}{" "}
+                          {walkInPairedReturn.flightNumber}
+                        </span>{" "}
+                        · {walkInPairedReturn.origin}→
+                        {walkInPairedReturn.destination} ·{" "}
+                        {formatFlightDateTime(walkInPairedReturn.departureAt)}
+                      </p>
+                      {walkInReturnChoice !== walkInPairedReturn.id ? (
                         <button
                           type="button"
                           onClick={() => {
-                            setWalkInManualReturn(true);
-                            setWalkInReturnChoice("");
+                            setWalkInReturnDate(
+                              toLocalYmd(walkInPairedReturn.departureAt),
+                            );
+                            setWalkInReturnChoice(walkInPairedReturn.id);
                           }}
                           className="text-xs font-medium text-accent underline-offset-2 hover:underline"
                         >
-                          Choose a different return
+                          Use the paired return
                         </button>
-                      </div>
-                    </>
-                  )}
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               )}
 
-              {walkInNeedsManualReturn && (
-                <label className="space-y-1 text-sm sm:col-span-2">
-                  <span className="flex flex-wrap items-center justify-between gap-2">
+              {walkInTripType === "round_trip" && walkInOutboundChoice ? (
+                <>
+                  <label className="space-y-1 text-sm sm:col-span-2">
                     <span className="text-xs uppercase tracking-[0.12em] text-muted">
                       Return flight
                     </span>
-                    {walkInCanAutoRoundTrip &&
-                    walkInOutboundChoice !== CUSTOM_FLIGHT_VALUE ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setWalkInManualReturn(false);
-                          setWalkInReturnChoice("");
-                        }}
-                        className="text-xs font-medium text-accent underline-offset-2 hover:underline"
-                      >
-                        Use the paired return instead
-                      </button>
-                    ) : null}
-                  </span>
-                  <Combobox
-                    name="returnFlightId"
-                    required
-                    value={walkInReturnChoice}
-                    onChange={setWalkInReturnChoice}
-                    placeholder="Select return flight"
-                    searchPlaceholder="Flight number, route, date…"
-                    options={walkInReturnOptions}
+                    <Combobox
+                      name="returnFlightId"
+                      required
+                      value={walkInReturnChoice}
+                      onChange={(id) => {
+                        setWalkInReturnChoice(id);
+                        if (id && id !== CUSTOM_FLIGHT_VALUE) {
+                          const selected = flights.find((f) => f.id === id);
+                          if (selected) {
+                            setWalkInReturnDate(
+                              toLocalYmd(selected.departureAt),
+                            );
+                          }
+                        }
+                      }}
+                      placeholder="Select return flight"
+                      searchPlaceholder="Flight number, route, date…"
+                      options={walkInReturnOptions}
+                    />
+                    <span className="block text-xs text-muted">
+                      {walkInReturnFlights.length === 0
+                        ? "No reverse-route flights after this outbound. Use a custom flight if needed."
+                        : `${walkInReturnFlights.length} return flight${
+                            walkInReturnFlights.length === 1 ? "" : "s"
+                          } on the reverse route${
+                            walkInReturnDateSummary.length > 0
+                              ? ` · ${walkInReturnDateSummary.join(", ")}`
+                              : ""
+                          }. Open the list to see every option.`}
+                    </span>
+                  </label>
+                  <DateTimePicker
+                    name="returnDateFilter"
+                    label="Narrow by return date"
+                    showTime={false}
+                    value={walkInReturnDate}
+                    onChange={setWalkInReturnDate}
+                    min={
+                      walkInOutboundFlight
+                        ? toLocalYmd(walkInOutboundFlight.departureAt)
+                        : undefined
+                    }
+                    wrapperClassName="sm:col-span-2"
+                    helper={
+                      walkInReturnDate
+                        ? `${walkInReturnDateMatchCount} flight${
+                            walkInReturnDateMatchCount === 1 ? "" : "s"
+                          } on this date are listed first — every other return stays in the list.`
+                        : "Optional. Matching flights move to the top of the list; every other return stays visible."
+                    }
                   />
-                  <span className="block text-xs text-muted">
-                    Showing flights on the reverse route that depart after the
-                    outbound leg and still have seats.
-                  </span>
-                </label>
-              )}
-              {walkInNeedsManualReturn &&
+                  {walkInReturnDate ? (
+                    <button
+                      type="button"
+                      onClick={() => setWalkInReturnDate("")}
+                      className="text-xs font-medium text-accent underline-offset-2 hover:underline sm:col-span-2"
+                    >
+                      Show all return dates
+                    </button>
+                  ) : null}
+                </>
+              ) : null}
+              {walkInTripType === "round_trip" &&
                 walkInReturnChoice === CUSTOM_FLIGHT_VALUE && (
                   <CustomFlightFields
                     prefix="return"
@@ -2412,19 +2513,20 @@ export function AdminDashboard({
                 type="number"
                 min={0}
                 max={20}
-                defaultValue={0}
+                value={walkInExtraBags}
+                onChange={(e) =>
+                  setWalkInExtraBags(
+                    Math.min(20, Math.max(0, Number(e.target.value) || 0)),
+                  )
+                }
                 className={fieldClass}
               />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                  Extra baggage charge (AUD)
-                </span>
-                <MoneyInput
-                  name="extraBaggageAud"
-                  defaultValue="0.00"
-                  className={fieldClass}
-                />
+              <span className="block text-xs text-muted">
+                ${EXTRA_BAG_AUD.toFixed(2)} each
+                {walkInExtraBags > 0
+                  ? ` · ${formatAud(extraBaggageCentsForBags(walkInExtraBags))}`
+                  : ""}
+              </span>
               </label>
               <SegmentedField
                 name="bookingSource"

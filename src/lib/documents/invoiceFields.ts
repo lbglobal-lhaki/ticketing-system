@@ -136,9 +136,7 @@ export function defaultInvoiceIdentity() {
 }
 
 export function displayTicketCode(ticketNumber: string) {
-  const cleaned = ticketNumber.replace(/^ET-/i, "").replace(/\D/g, "");
-  if (cleaned.length >= 5) return `LBG${cleaned.slice(-5)}`;
-  return ticketNumber;
+  return ticketNumber.trim();
 }
 
 export function defaultFareCalculationLine(input: {

@@ -150,6 +150,7 @@ function FareForm({
   return (
     <form
       onSubmit={sticky.onSubmit}
+      data-skip-busy
       className="space-y-4 rounded-2xl border border-line bg-white/80 p-4 sm:p-5"
     >
       <input type="hidden" name="id" value={fare.id} />

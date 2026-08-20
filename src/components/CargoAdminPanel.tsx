@@ -710,6 +710,7 @@ export function CargoAdminPanel({
             {(mode === "edit" || mode === "create") && (
               <form
                 onSubmit={cargoSticky.onSubmit}
+                data-skip-busy
                 className="mt-5 space-y-4 border-t border-line pt-4"
               >
                 {mode === "edit" && active && (

@@ -20,6 +20,7 @@ import {
 import { invalidateInvoicePdfBlob } from "@/lib/documents/invoiceBlob";
 import { recordDeletion } from "@/lib/audit/deletionLog";
 import { parseDateTimeLocal } from "@/lib/datetime";
+import { extraBaggageCentsForBags } from "@/lib/pricing/baggage";
 import { z } from "zod";
 
 
@@ -249,18 +250,18 @@ async function persistInvoiceDocument(formData: FormData) {
 
   const existing = await prisma.invoice.findUnique({
     where: { id: parsed.data.id },
-    include: { booking: { select: { bookingRef: true } } },
+    include: { booking: { select: { bookingRef: true, extraBaggageKg: true } } },
   });
   if (!existing) return { ok: false as const, error: "Invoice not found" };
 
   const airfareCents = moneyAud(formData.get("airfareAud"));
   const airportTaxesCents = moneyAud(formData.get("airportTaxesAud"));
-  const extraBaggageCents = moneyAud(formData.get("extraBaggageAud"));
   const extraBaggageKgRaw = Number(String(formData.get("extraBaggageKg") ?? "").trim());
   const extraBaggageKg =
     Number.isFinite(extraBaggageKgRaw) && extraBaggageKgRaw >= 0
       ? Math.min(20, Math.floor(extraBaggageKgRaw))
-      : null;
+      : existing.booking.extraBaggageKg;
+  const extraBaggageCents = extraBaggageCentsForBags(extraBaggageKg);
   const travelInsuranceCents = moneyAud(formData.get("travelInsuranceAud"));
   const otherChargesCents = moneyAud(formData.get("otherChargesAud"));
   const serviceFeeCents = moneyAud(formData.get("serviceFeeAud"));
@@ -351,7 +352,7 @@ async function persistInvoiceDocument(formData: FormData) {
       nationality: parsed.data.nationality || "",
       amountPaidCents: totals.amountCents,
       serviceFeeCents,
-      ...(extraBaggageKg !== null ? { extraBaggageKg } : {}),
+      extraBaggageKg,
     },
   });
 
@@ -401,7 +402,7 @@ async function persistInvoiceDocument(formData: FormData) {
       airfareCents,
       airportTaxesCents,
       extraBaggageCents,
-      extraBaggageKg: extraBaggageKg ?? undefined,
+      extraBaggageKg,
       travelInsuranceCents,
       otherChargesCents,
       fareCents: airfareCents,
