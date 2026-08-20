@@ -102,7 +102,7 @@ export function AdminShell({
     <div className="mx-auto w-full max-w-[100rem] px-4 py-6 sm:px-6 lg:px-8">
       <div className="lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-8">
         {/* Desktop rail */}
-        <aside className="relative z-[160] hidden lg:block">
+        <aside className="hidden lg:block">
           <div className="sticky top-24 rounded-card border border-line bg-surface/80 p-3 shadow-ui-sm backdrop-blur-sm">
             {nav}
           </div>
