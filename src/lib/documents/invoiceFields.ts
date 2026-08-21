@@ -26,6 +26,21 @@ export function buildRouteLabel(input: {
   return `${from}-${to}`;
 }
 
+/** Travel-doc welcome line: "Perth to Paro" or both legs joined with "and". */
+export function charterWelcomeRoute(input: {
+  origin: string;
+  destination: string;
+  roundTrip: boolean;
+  returnOrigin?: string | null;
+  returnDestination?: string | null;
+}) {
+  const outbound = `${cityName(input.origin)} to ${cityName(input.destination)}`;
+  if (!input.roundTrip) return outbound;
+  const retFrom = cityName(input.returnOrigin || input.destination);
+  const retTo = cityName(input.returnDestination || input.origin);
+  return `${outbound} and ${retFrom} to ${retTo}`;
+}
+
 export function invoiceLineSubtotal(lines: {
   airfareCents: number;
   airportTaxesCents: number;

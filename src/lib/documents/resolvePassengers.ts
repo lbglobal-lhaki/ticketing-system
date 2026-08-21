@@ -92,6 +92,8 @@ export function resolveDocumentPassengers(input: {
           d?.nationality ||
           (i === 0 ? booking.nationality || "" : ""),
         ticketNumber: existing?.ticketNumber || booking.ticketNumber,
+        returnTicketNumber: existing?.returnTicketNumber ?? null,
+        bookingRef: existing?.bookingRef ?? null,
         passengerType: existing?.passengerType || d?.passengerType || type,
         dateOfBirth: existing?.dateOfBirth ?? d?.dateOfBirth ?? null,
         priceCents:

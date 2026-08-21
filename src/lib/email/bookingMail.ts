@@ -93,6 +93,8 @@ export async function loadBookingDocumentData(
       passportNumber: p.passportNumber,
       nationality: p.nationality,
       ticketNumber: p.ticketNumber,
+      returnTicketNumber: p.returnTicketNumber,
+      bookingRef: p.bookingRef,
       passengerType: p.passengerType,
       dateOfBirth: p.dateOfBirth,
       priceCents: p.priceCents,

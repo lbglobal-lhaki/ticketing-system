@@ -11,7 +11,7 @@ import {
   totalSeatsFromReleases,
 } from "@/lib/fares/templates";
 import { restoreFareAndFlight } from "@/lib/booking/inventory";
-import { parseDateTimeLocal } from "@/lib/datetime";
+import { parseFlightDateTime } from "@/lib/datetime";
 import { flightFormSchema, parseFareReleasesFromForm } from "@/lib/validation";
 import { z } from "zod";
 import {
@@ -19,11 +19,6 @@ import {
   zodFieldErrors,
   type FormActionResult,
 } from "@/lib/forms/formAction";
-
-function parseTzOffsetMinutes(formData: FormData): number {
-  const raw = Number(formData.get("tzOffsetMinutes"));
-  return Number.isFinite(raw) ? raw : 0;
-}
 
 function formError(
   message: string,
@@ -73,12 +68,11 @@ export async function createFlightAction(
     });
   }
 
-  const tzOffsetMinutes = parseTzOffsetMinutes(formData);
   let departureAt: Date;
   let arrivalAt: Date;
   try {
-    departureAt = parseDateTimeLocal(data.departureAt, tzOffsetMinutes);
-    arrivalAt = parseDateTimeLocal(data.arrivalAt, tzOffsetMinutes);
+    departureAt = parseFlightDateTime(data.departureAt);
+    arrivalAt = parseFlightDateTime(data.arrivalAt);
   } catch {
     return formError("Invalid departure or arrival time", {
       departureAt: "Invalid departure or arrival time",
@@ -174,12 +168,11 @@ export async function updateFlightAction(
     });
   }
 
-  const tzOffsetMinutes = parseTzOffsetMinutes(formData);
   let departureAt: Date;
   let arrivalAt: Date;
   try {
-    departureAt = parseDateTimeLocal(data.departureAt, tzOffsetMinutes);
-    arrivalAt = parseDateTimeLocal(data.arrivalAt, tzOffsetMinutes);
+    departureAt = parseFlightDateTime(data.departureAt);
+    arrivalAt = parseFlightDateTime(data.arrivalAt);
   } catch {
     return formError("Invalid departure or arrival time", {
       departureAt: "Invalid departure or arrival time",

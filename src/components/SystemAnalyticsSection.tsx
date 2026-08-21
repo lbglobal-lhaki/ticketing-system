@@ -219,6 +219,8 @@ export function SystemAnalyticsSection({
                       {new Date(f.departureAt).toLocaleString("en-AU", {
                         dateStyle: "medium",
                         timeStyle: "short",
+                        timeZone: "UTC",
+                        hour12: false,
                       })}
                     </p>
                     {f.cabins.length > 0 ? (

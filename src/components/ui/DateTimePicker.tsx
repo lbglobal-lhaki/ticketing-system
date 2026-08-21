@@ -22,8 +22,9 @@ import { FormField, controlPadding, controlShell } from "@/components/ui/Input";
  *
  * VALUE FORMAT — this is the whole ballgame.
  *
- *   showTime (default) — `YYYY-MM-DDTHH:mm`, paired with a hidden
- *     `tzOffsetMinutes` and parsed server-side by `parseDateTimeLocal()`.
+ *   showTime (default) — `YYYY-MM-DDTHH:mm`. Flight schedules are parsed as
+ *     wall-clock by `parseFlightDateTime()`. Hold/due fields still send
+ *     `tzOffsetMinutes` and use `parseDateTimeLocal()`.
  *   showTime={false}  — `YYYY-MM-DD`, what `<input type="date">` submitted
  *     and what `parseDateOfBirth()` expects.
  *

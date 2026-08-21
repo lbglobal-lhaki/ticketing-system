@@ -6,10 +6,12 @@ import {
   computeInvoiceTotals,
   defaultBaggageLabel,
   displayTicketCode,
+  charterWelcomeRoute,
   ICON_GLOBE,
   ICON_MAIL,
   ICON_PHONE,
 } from "@/lib/documents/invoiceFields";
+import { formatFlightClock, formatFlightDate } from "@/lib/datetime";
 import { formatAud } from "@/lib/pricing";
 import { PDF_FONT_FAMILY, pdfFontFaceCss } from "@/lib/documents/pdfFonts";
 import type {
@@ -97,7 +99,7 @@ function countryForAirport(code: string) {
   return "";
 }
 
-/** Reference date format: DD/MM/YYYY. */
+/** Issue / letter dates stay in Australia/Sydney. */
 function ticketDate(date: Date) {
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
@@ -107,14 +109,14 @@ function ticketDate(date: Date) {
   }).format(date);
 }
 
-/** Reference time format: 24h, e.g. 01:25. */
-function ticketTime(date: Date) {
-  return new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "Australia/Sydney",
-  }).format(date);
+/** Schedule date: the wall-clock the admin typed (UTC-stored). */
+function ticketFlightDate(date: Date) {
+  return formatFlightDate(date);
+}
+
+/** Schedule time: 24h, e.g. 01:25 — same digits as the Drukair timetable. */
+function ticketFlightTime(date: Date) {
+  return formatFlightClock(date);
 }
 
 /**
@@ -240,9 +242,9 @@ function passCard(
 
       <div class="pass-grid">
         <div><span>Flight No</span><strong>${esc(flight.flightNumber)}</strong></div>
-        <div><span>Date</span><strong>${esc(ticketDate(flight.departureAt))}</strong></div>
-        <div><span>Departure</span><strong>${esc(ticketTime(flight.departureAt))}</strong><i>${esc(from)} Time</i></div>
-        <div><span>Arrival</span><strong>${esc(ticketTime(flight.arrivalAt))}</strong><i>${esc(to)} Time</i></div>
+        <div><span>Date</span><strong>${esc(ticketFlightDate(flight.departureAt))}</strong></div>
+        <div><span>Departure</span><strong>${esc(ticketFlightTime(flight.departureAt))}</strong><i>${esc(from)} Time</i></div>
+        <div><span>Arrival</span><strong>${esc(ticketFlightTime(flight.arrivalAt))}</strong><i>${esc(to)} Time</i></div>
         <div><span>Class</span><strong>${esc(cabinLabel(flight.cabinClass))}</strong></div>
         <div><span>Seat</span><strong>${esc(opts.seat)}</strong></div>
         <div><span>Included Baggage</span><strong>${esc(opts.baggage)}</strong></div>
@@ -278,7 +280,7 @@ function passCard(
       <div class="stub-rows">
         <span>Ticket No:</span><b>${esc(opts.ticketCode)}</b>
         <span>Flight No:</span><b>${esc(flight.flightNumber)}</b>
-        <span>Date:</span><b>${esc(ticketDate(flight.departureAt))}</b>
+        <span>Date:</span><b>${esc(ticketFlightDate(flight.departureAt))}</b>
         <span>Seat:</span><b>${esc(opts.seat)}</b>
         <span>Class</span><b>${esc(cabinTitle(flight.cabinClass))}</b>
       </div>
@@ -407,7 +409,16 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
     assetDataUri("header-wide.png") ||
     assetDataUri("header-page1.png");
 
-  const routeLabel = `${cityName(data.flight.origin)} to ${cityName(data.flight.destination)}`;
+  const isRoundTrip =
+    data.tripType === "round_trip" || Boolean(data.returnFlight);
+  const routeLabel = charterWelcomeRoute({
+    origin: data.flight.origin,
+    destination: data.flight.destination,
+    roundTrip: isRoundTrip,
+    returnOrigin: data.returnFlight?.origin,
+    returnDestination: data.returnFlight?.destination,
+  });
+  const flightNoun = isRoundTrip ? "Flights" : "Flight";
 
   /* ---------------------------------------------------------------- sheet 1 */
 
@@ -447,7 +458,7 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
       Extra baggage, Cargo services, Special meals, Wheelchair assistance, Travel insurance, Flight changes (subject to fare conditions)<br />
       <strong>Please contact our team before your departure</strong></p>
 
-      <p class="tight">We sincerely appreciate your trust in ${esc(brand.issuingAgent)} and look forward to welcoming you onboard our ${esc(routeLabel)} Direct Chartered Flight.</p>
+      <p class="tight">We sincerely appreciate your trust in ${esc(brand.issuingAgent)} and look forward to welcoming you onboard our ${esc(routeLabel)} Direct Chartered ${flightNoun}.</p>
       <p>We wish you a safe and pleasant journey.</p>
       <p>Kind regards,</p>
       <p class="tight">${esc(brand.issuingAgent)}<br />${esc(brand.reservationsTeam)}</p>
@@ -470,10 +481,16 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
   const ticketSheet = (
     pax: BookingDocumentPassenger,
     flight: BookingDocumentData["flight"],
+    isReturn: boolean,
   ) => {
     const type = pax.passengerType || "adult";
     const noSeat = type === "infant" || pax.allocatesSeat === false;
-    const ticketCode = displayTicketCode(pax.ticketNumber);
+    const ticketCode = displayTicketCode(
+      isReturn && pax.returnTicketNumber
+        ? pax.returnTicketNumber
+        : pax.ticketNumber,
+    );
+    const paxBookingRef = pax.bookingRef || data.bookingRef;
     const fareCents = fareByTraveller.get(pax) ?? 0;
 
     return `
@@ -481,7 +498,7 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
     <div class="tk-head">
       <h1>E-TICKET, ITINERARY, RECEIPTS AND TAX INVOICE</h1>
       <h2>Passenger Information</h2>
-      <div class="tk-ref"><strong>Booking Reference:</strong><span>${esc(data.bookingRef)}</span></div>
+      <div class="tk-ref"><strong>Booking Reference:</strong><span>${esc(paxBookingRef)}</span></div>
       <div class="pax-box">
         <span>Ticket Number:</span><b>${esc(ticketCode)}</b>
         <span>Passenger Name:</span><b>${esc(pax.fullName)}</b>
@@ -574,7 +591,7 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
   };
 
   const ticketSheets = travellers.flatMap((pax) =>
-    flights.map((flight) => ticketSheet(pax, flight)),
+    flights.map((flight, index) => ticketSheet(pax, flight, index > 0)),
   );
 
   /* ------------------------------------------------------ checklist sheet */

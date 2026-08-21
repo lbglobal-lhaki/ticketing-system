@@ -4,8 +4,7 @@ import {
   makeInvoiceNumber,
 } from "@/lib/branding";
 import {
-  allocateBookingRef,
-  allocateTicketNumbers,
+  allocatePassengerDocumentIds,
   retryOnUniqueConflict,
 } from "@/lib/booking/documentIds";
 import { prisma } from "@/lib/db";
@@ -422,7 +421,6 @@ export async function confirmBooking(input: {
           },
         });
 
-        const bookingRef = await allocateBookingRef(tx);
         const accessToken = makeAccessToken();
         const fareCents = quotePartyFareCents(quote);
         const serviceFeeCents = input.serviceFeeCents ?? 0;
@@ -528,11 +526,13 @@ export async function confirmBooking(input: {
           }
         }
 
-        const passengerTickets = await allocateTicketNumbers(
+        const ids = await allocatePassengerDocumentIds(
           tx,
           travellers.length,
+          Boolean(returnFlight),
         );
-        const ticketNumber = passengerTickets[0]!;
+        const bookingRef = ids.bookingRefs[0]!;
+        const ticketNumber = ids.outboundTickets[0]!;
 
         const booking = await tx.booking.create({
           data: {
@@ -572,7 +572,9 @@ export async function confirmBooking(input: {
                 dateOfBirth: pax.dateOfBirth,
                 priceCents: pax.priceCents,
                 allocatesSeat: allocatesSeat(pax.passengerType),
-                ticketNumber: passengerTickets[index]!,
+                ticketNumber: ids.outboundTickets[index]!,
+                returnTicketNumber: ids.returnTickets[index] ?? null,
+                bookingRef: ids.bookingRefs[index]!,
               })),
             },
           },

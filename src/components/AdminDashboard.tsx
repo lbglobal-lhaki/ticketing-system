@@ -53,7 +53,7 @@ import { Combobox, type ComboboxOption } from "@/components/admin/Combobox";
 import { SegmentedField } from "@/components/admin/SegmentedField";
 import { ListFilterBar, NoMatches } from "@/components/admin/ListFilterBar";
 import { bankHoldExpiresAt } from "@/lib/branding";
-import { formatFlightDateTime, toDateTimeLocalValue, toLocalYmd } from "@/lib/datetime";
+import { formatFlightDateTime, toDateTimeLocalValue, toFlightDateTimeLocalValue, toFlightYmd } from "@/lib/datetime";
 import {
   BUSINESS_FARE_TEMPLATE,
   CABIN_CLASSES,
@@ -138,6 +138,8 @@ type BookingPassengerRow = {
   passportNumber: string;
   nationality: string;
   ticketNumber: string;
+  returnTicketNumber?: string | null;
+  bookingRef?: string | null;
   passengerType: "adult" | "child" | "infant";
   dateOfBirth: string | null;
   priceCents: number;
@@ -774,7 +776,7 @@ export function AdminDashboard({
       return;
     }
     if (walkInPairedReturn) {
-      setWalkInReturnDate(toLocalYmd(walkInPairedReturn.departureAt));
+      setWalkInReturnDate(toFlightYmd(walkInPairedReturn.departureAt));
       setWalkInReturnChoice(walkInPairedReturn.id);
       return;
     }
@@ -803,7 +805,7 @@ export function AdminDashboard({
   const walkInReturnDateMatchCount = useMemo(() => {
     if (!walkInReturnDate) return 0;
     return walkInReturnFlights.filter(
-      (f) => toLocalYmd(f.departureAt) === walkInReturnDate,
+      (f) => toFlightYmd(f.departureAt) === walkInReturnDate,
     ).length;
   }, [walkInReturnFlights, walkInReturnDate]);
 
@@ -811,13 +813,14 @@ export function AdminDashboard({
     const seen = new Set<string>();
     const labels: string[] = [];
     for (const f of walkInReturnFlights) {
-      const ymd = toLocalYmd(f.departureAt);
+      const ymd = toFlightYmd(f.departureAt);
       if (!ymd || seen.has(ymd)) continue;
       seen.add(ymd);
       labels.push(
         new Date(f.departureAt).toLocaleDateString("en-AU", {
           day: "numeric",
           month: "short",
+          timeZone: "UTC",
         }),
       );
     }
@@ -830,7 +833,7 @@ export function AdminDashboard({
     for (const f of walkInReturnFlights) {
       if (
         walkInReturnDate &&
-        toLocalYmd(f.departureAt) === walkInReturnDate
+        toFlightYmd(f.departureAt) === walkInReturnDate
       ) {
         matching.push(f);
       } else {
@@ -849,7 +852,7 @@ export function AdminDashboard({
         const option = flightOption(f, { showSeats: true });
         const onSelectedDate =
           Boolean(walkInReturnDate) &&
-          toLocalYmd(f.departureAt) === walkInReturnDate;
+          toFlightYmd(f.departureAt) === walkInReturnDate;
         return {
           ...option,
           description: onSelectedDate
@@ -1821,7 +1824,7 @@ export function AdminDashboard({
               error={flightSticky.fieldErrors.departureAt}
               defaultValue={
                 editing
-                  ? toDateTimeLocalValue(new Date(editing.departureAt))
+                  ? toFlightDateTimeLocalValue(new Date(editing.departureAt))
                   : ""
               }
             />
@@ -1832,7 +1835,7 @@ export function AdminDashboard({
               error={flightSticky.fieldErrors.arrivalAt}
               defaultValue={
                 editing
-                  ? toDateTimeLocalValue(new Date(editing.arrivalAt))
+                  ? toFlightDateTimeLocalValue(new Date(editing.arrivalAt))
                   : ""
               }
             />
@@ -2207,7 +2210,7 @@ export function AdminDashboard({
                           type="button"
                           onClick={() => {
                             setWalkInReturnDate(
-                              toLocalYmd(walkInPairedReturn.departureAt),
+                              toFlightYmd(walkInPairedReturn.departureAt),
                             );
                             setWalkInReturnChoice(walkInPairedReturn.id);
                           }}
@@ -2237,7 +2240,7 @@ export function AdminDashboard({
                           const selected = flights.find((f) => f.id === id);
                           if (selected) {
                             setWalkInReturnDate(
-                              toLocalYmd(selected.departureAt),
+                              toFlightYmd(selected.departureAt),
                             );
                           }
                         }
@@ -2266,7 +2269,7 @@ export function AdminDashboard({
                     onChange={setWalkInReturnDate}
                     min={
                       walkInOutboundFlight
-                        ? toLocalYmd(walkInOutboundFlight.departureAt)
+                        ? toFlightYmd(walkInOutboundFlight.departureAt)
                         : undefined
                     }
                     wrapperClassName="sm:col-span-2"

@@ -52,7 +52,7 @@ function travelDateLabel(date: Date) {
     day: "numeric",
     month: "long",
     year: "numeric",
-    timeZone: "Australia/Sydney",
+    timeZone: "UTC",
   }).format(date);
 }
 

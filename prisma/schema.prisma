@@ -285,6 +285,10 @@ model BookingPassenger {
   /// False for infants — they travel on a ticket but take no seat.
   allocatesSeat  Boolean       @default(true)
   ticketNumber   String        @unique
+  /// Outbound ticket is `ticketNumber`. Round-trip return sheet uses this.
+  returnTicketNumber String?   @unique
+  /// Per-passenger PNR (LB8941, LB8942, …). Falls back to Booking.bookingRef.
+  bookingRef     String?       @unique
   createdAt      DateTime      @default(now())
 
   @@index([bookingId])

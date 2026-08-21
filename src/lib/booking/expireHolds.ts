@@ -1,4 +1,5 @@
 import { formatDocDateTime, getBrand } from "@/lib/branding";
+import { formatFlightDateTime } from "@/lib/datetime";
 import { releaseQuoteHold, restoreFareAndFlight } from "@/lib/booking/inventory";
 import { formatAud } from "@/lib/pricing";
 import type { BookingDocumentData } from "@/lib/documents/templates";
@@ -23,7 +24,7 @@ export function holdExpiredEmail(data: BookingDocumentData) {
     <p>Your bank-transfer booking <strong>${data.bookingRef}</strong> was held pending payment.</p>
     <p>We have not received confirmation of payment, so the seats are <strong>no longer on hold</strong> and have been returned to the ticket pool.</p>
     <p><strong>Route:</strong> ${route}<br/>
-    <strong>Departure:</strong> ${formatDocDateTime(data.flight.departureAt)}<br/>
+    <strong>Departure:</strong> ${formatFlightDateTime(data.flight.departureAt)}<br/>
     <strong>Amount that was due:</strong> ${formatAud(data.amountPaidCents)}</p>
     <p>To travel on this route, please start a new booking on our website. Fares and availability may have changed.</p>
     <p><a href="${brand.siteUrl}">Book again</a></p>

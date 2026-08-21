@@ -14,6 +14,8 @@ export type BookingDocumentPassenger = {
   passportNumber?: string | null;
   nationality?: string | null;
   ticketNumber: string;
+  returnTicketNumber?: string | null;
+  bookingRef?: string | null;
   passengerType?: "adult" | "child" | "infant" | string;
   dateOfBirth?: Date | string | null;
   priceCents?: number;

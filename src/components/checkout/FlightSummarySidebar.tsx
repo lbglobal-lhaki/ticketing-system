@@ -182,7 +182,7 @@ function SegmentBlock({
         {formatCardDate(departureAt)}{" "}
         {new Intl.DateTimeFormat("en-AU", {
           year: "numeric",
-          timeZone: "Australia/Sydney",
+          timeZone: "UTC",
         }).format(departureAt)}{" "}
         · {formatClock(departureAt)}-{formatClock(arrivalAt)} · Nonstop ·{" "}
         {duration}

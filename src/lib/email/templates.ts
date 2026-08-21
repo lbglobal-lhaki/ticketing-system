@@ -3,6 +3,7 @@ import {
   formatDocDateTime,
   getBrand,
 } from "@/lib/branding";
+import { formatFlightDateTime } from "@/lib/datetime";
 import { withAccessToken } from "@/lib/documentAccess";
 import type { BookingDocumentData } from "@/lib/documents/templates";
 import { emailLogoImgHtml } from "@/lib/email/inlineLogo";
@@ -41,7 +42,7 @@ export function eTicketEmail(data: BookingDocumentData) {
     <p>Thank you for your payment. Your travel document for booking <strong>${esc(data.bookingRef)}</strong> is attached to this email.</p>
     <p><strong>Booking Reference:</strong> ${esc(data.bookingRef)}<br/>
     <strong>Route:</strong> ${esc(route)}<br/>
-    <strong>Departure:</strong> ${esc(formatDocDateTime(data.flight.departureAt))}</p>
+    <strong>Departure:</strong> ${esc(formatFlightDateTime(data.flight.departureAt))}</p>
     <p><a href="${travelUrl}">View travel document online</a></p>
     ${
       data.invoice
@@ -57,7 +58,7 @@ Thank you for your payment. Your travel document for booking ${data.bookingRef} 
 
 Booking Reference: ${data.bookingRef}
 Route: ${route}
-Departure: ${formatDocDateTime(data.flight.departureAt)}
+Departure: ${formatFlightDateTime(data.flight.departureAt)}
 
 Travel document: ${travelUrl}
 ${data.invoice ? "Your tax invoice / receipt is emailed separately by our accounts team.\n" : ""}
@@ -144,7 +145,7 @@ export function bankTransferEmail(data: BookingDocumentData) {
     <h2 style="font-size:14px;letter-spacing:0.12em;text-transform:uppercase;color:#2563EB;border-bottom:1px solid #E2E8F0;padding-bottom:6px">Booking Summary</h2>
     <p><strong>Booking Reference:</strong> ${esc(data.bookingRef)}<br/>
     <strong>Route:</strong> ${esc(route)}<br/>
-    <strong>Departure:</strong> ${esc(formatDocDateTime(data.flight.departureAt))}<br/>
+    <strong>Departure:</strong> ${esc(formatFlightDateTime(data.flight.departureAt))}<br/>
     <strong>Amount Due:</strong> ${esc(formatAud(amount))}</p>
     <p>Please transfer the total amount using the reference:<br/><strong>${esc(reference)}</strong></p>
     <p><a href="${invoiceUrl}">View Airfare Invoice &amp; bank details</a></p>
@@ -164,7 +165,7 @@ export function bankTransferEmail(data: BookingDocumentData) {
 Your ${brand.issuingAgent} booking ${data.bookingRef} is Pending Payment.
 
 Route: ${route}
-Departure: ${formatDocDateTime(data.flight.departureAt)}
+Departure: ${formatFlightDateTime(data.flight.departureAt)}
 Amount Due: ${formatAud(amount)}
 Payment reference: ${reference}
 

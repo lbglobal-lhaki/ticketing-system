@@ -62,7 +62,8 @@ export function formatClock(date: Date | string) {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-    timeZone: "Australia/Sydney",
+    hourCycle: "h23",
+    timeZone: "UTC",
   }).format(d);
 }
 
@@ -71,7 +72,7 @@ export function formatShortDate(date: Date | string) {
   return new Intl.DateTimeFormat("en-AU", {
     day: "numeric",
     month: "short",
-    timeZone: "Australia/Sydney",
+    timeZone: "UTC",
   }).format(d);
 }
 
@@ -83,7 +84,7 @@ export function formatCardDate(date: Date | string) {
     day: "numeric",
     month: "short",
     year: "numeric",
-    timeZone: "Australia/Sydney",
+    timeZone: "UTC",
   }).format(d);
 }
 

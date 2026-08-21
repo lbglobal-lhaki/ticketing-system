@@ -14,13 +14,23 @@ type IdStore = {
     findMany: (args: {
       where: { bookingRef?: { startsWith: string }; ticketNumber?: { startsWith: string } };
       select: { bookingRef?: true; ticketNumber?: true };
-    }) => Promise<Array<{ bookingRef?: string; ticketNumber?: string }>>;
+    }) => Promise<Array<{ bookingRef?: string | null; ticketNumber?: string | null }>>;
   };
   bookingPassenger: {
     findMany: (args: {
-      where: { ticketNumber: { startsWith: string } };
-      select: { ticketNumber: true };
-    }) => Promise<Array<{ ticketNumber: string }>>;
+      where: Record<string, unknown>;
+      select: {
+        ticketNumber?: true;
+        returnTicketNumber?: true;
+        bookingRef?: true;
+      };
+    }) => Promise<
+      Array<{
+        ticketNumber?: string | null;
+        returnTicketNumber?: string | null;
+        bookingRef?: string | null;
+      }>
+    >;
   };
 };
 
@@ -53,14 +63,25 @@ async function nextTicketSerial(db: IdStore): Promise<number> {
       select: { ticketNumber: true },
     }),
     db.bookingPassenger.findMany({
-      where: { ticketNumber: { startsWith: `${TICKET_AIRLINE_CODE}-` } },
-      select: { ticketNumber: true },
+      where: {
+        OR: [
+          { ticketNumber: { startsWith: `${TICKET_AIRLINE_CODE}-` } },
+          { returnTicketNumber: { startsWith: `${TICKET_AIRLINE_CODE}-` } },
+        ],
+      },
+      select: { ticketNumber: true, returnTicketNumber: true },
     }),
   ]);
   let max = TICKET_START_SERIAL - 1;
-  for (const row of [...bookings, ...passengers]) {
+  for (const row of bookings) {
     const serial = parseTicketSerial(row.ticketNumber ?? "");
     if (serial != null && serial > max) max = serial;
+  }
+  for (const row of passengers) {
+    for (const value of [row.ticketNumber, row.returnTicketNumber]) {
+      const serial = parseTicketSerial(value ?? "");
+      if (serial != null && serial > max) max = serial;
+    }
   }
   return max + 1;
 }
@@ -75,17 +96,53 @@ export async function allocateTicketNumbers(
   return Array.from({ length: n }, (_, i) => formatTicketNumber(start + i));
 }
 
-export async function allocateBookingRef(db: IdStore): Promise<string> {
-  const rows = await db.booking.findMany({
-    where: { bookingRef: { startsWith: BOOKING_REF_PREFIX } },
-    select: { bookingRef: true },
-  });
+async function nextBookingRefSerial(db: IdStore): Promise<number> {
+  const [bookings, passengers] = await Promise.all([
+    db.booking.findMany({
+      where: { bookingRef: { startsWith: BOOKING_REF_PREFIX } },
+      select: { bookingRef: true },
+    }),
+    db.bookingPassenger.findMany({
+      where: { bookingRef: { startsWith: BOOKING_REF_PREFIX } },
+      select: { bookingRef: true },
+    }),
+  ]);
   let max = BOOKING_REF_START_SERIAL - 1;
-  for (const row of rows) {
+  for (const row of [...bookings, ...passengers]) {
     const serial = parseBookingRefSerial(row.bookingRef ?? "");
     if (serial != null && serial > max) max = serial;
   }
-  return formatBookingRef(max + 1);
+  return max + 1;
+}
+
+export async function allocateBookingRefs(
+  db: IdStore,
+  count: number,
+): Promise<string[]> {
+  const n = Math.max(0, Math.floor(count));
+  if (n === 0) return [];
+  const start = await nextBookingRefSerial(db);
+  return Array.from({ length: n }, (_, i) => formatBookingRef(start + i));
+}
+
+export async function allocateBookingRef(db: IdStore): Promise<string> {
+  const [ref] = await allocateBookingRefs(db, 1);
+  return ref!;
+}
+
+export async function allocatePassengerDocumentIds(
+  db: IdStore,
+  passengerCount: number,
+  roundTrip: boolean,
+) {
+  const n = Math.max(0, Math.floor(passengerCount));
+  const bookingRefs = await allocateBookingRefs(db, n);
+  const tickets = await allocateTicketNumbers(db, roundTrip ? n * 2 : n);
+  return {
+    bookingRefs,
+    outboundTickets: tickets.slice(0, n),
+    returnTickets: roundTrip ? tickets.slice(n) : [],
+  };
 }
 
 export function isUniqueConstraintError(error: unknown): boolean {

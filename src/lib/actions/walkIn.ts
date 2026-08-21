@@ -11,7 +11,8 @@ import {
   makeInvoiceNumber,
 } from "@/lib/branding";
 import {
-  allocateBookingRef,
+  allocateBookingRefs,
+  allocatePassengerDocumentIds,
   allocateTicketNumbers,
   retryOnUniqueConflict,
 } from "@/lib/booking/documentIds";
@@ -37,7 +38,7 @@ import {
   partyFareCents,
   type TravellerDetail,
 } from "@/lib/booking/passengers";
-import { parseDateTimeLocal } from "@/lib/datetime";
+import { parseDateTimeLocal, parseFlightDateTime } from "@/lib/datetime";
 import { getCurrentFareRelease } from "@/lib/fares/current";
 import {
   cabinLabel,
@@ -145,13 +146,11 @@ async function resolveLegFlightId(
       [`${prefix}CustomDestination`]: "From and To must be different",
     });
   }
-  const tzRaw = Number(formData.get("tzOffsetMinutes"));
-  const tzOffsetMinutes = Number.isFinite(tzRaw) ? tzRaw : 0;
   let departureAt: Date;
   let arrivalAt: Date;
   try {
-    departureAt = parseDateTimeLocal(data.departureAt, tzOffsetMinutes);
-    arrivalAt = parseDateTimeLocal(data.arrivalAt, tzOffsetMinutes);
+    departureAt = parseFlightDateTime(data.departureAt);
+    arrivalAt = parseFlightDateTime(data.arrivalAt);
   } catch {
     throw new FormValidationError(
       `Custom ${prefix} flight: invalid departure or arrival time`,
@@ -629,11 +628,12 @@ export async function createWalkInBookingAction(
             : pax,
         ),
       ];
-      const bookingRef = await allocateBookingRef(tx);
-      const passengerTickets = await allocateTicketNumbers(
+      const ids = await allocatePassengerDocumentIds(
         tx,
         allPassengers.length,
+        Boolean(returnFlight),
       );
+      const bookingRef = ids.bookingRefs[0]!;
 
       const booking = await tx.booking.create({
         data: {
@@ -659,7 +659,7 @@ export async function createWalkInBookingAction(
           source: data.bookingSource,
           status: paidUpfront ? "confirmed" : "pending_payment",
           bookingRef,
-          ticketNumber: passengerTickets[0]!,
+          ticketNumber: ids.outboundTickets[0]!,
           accessToken: makeAccessToken(),
           holdExpiresAt,
           passengers: {
@@ -674,7 +674,9 @@ export async function createWalkInBookingAction(
               dateOfBirth: pax.dateOfBirth,
               priceCents: pax.priceCents,
               allocatesSeat: allocatesSeat(pax.passengerType),
-              ticketNumber: passengerTickets[index]!,
+              ticketNumber: ids.outboundTickets[index]!,
+              returnTicketNumber: ids.returnTickets[index] ?? null,
+              bookingRef: ids.bookingRefs[index]!,
             })),
           },
         },
@@ -1016,6 +1018,8 @@ async function syncAllBookingPassengers(
   bookingId: string,
   allPassengers: TravellerDetail[],
   primaryTicketNumber: string,
+  primaryBookingRef: string,
+  roundTrip: boolean,
 ) {
   const existing = await tx.bookingPassenger.findMany({
     where: { bookingId },
@@ -1028,10 +1032,27 @@ async function syncAllBookingPassengers(
       : Math.max(0, allPassengers.length - existing.length),
   );
 
+  let missingRefCount = 0;
+  let missingReturnCount = 0;
+  for (let i = 0; i < allPassengers.length; i++) {
+    const row = existing[i];
+    if (!row?.bookingRef && i !== 0) missingRefCount += 1;
+    if (roundTrip && !row?.returnTicketNumber) missingReturnCount += 1;
+  }
+  const extraRefs = await allocateBookingRefs(tx, missingRefCount);
+  const extraReturns = await allocateTicketNumbers(tx, missingReturnCount);
+  let refCursor = 0;
+  let returnCursor = 0;
+
   for (let i = 0; i < allPassengers.length; i++) {
     const pax = allPassengers[i]!;
     const row = existing[i];
     const seat = allocatesSeat(pax.passengerType);
+    const bookingRef =
+      row?.bookingRef || (i === 0 ? primaryBookingRef : extraRefs[refCursor++]!);
+    const returnTicketNumber = roundTrip
+      ? row?.returnTicketNumber || extraReturns[returnCursor++]!
+      : (row?.returnTicketNumber ?? null);
     if (row) {
       // Only the primary passenger (index 0) submits contact details, so an
       // empty companion email/phone means "not collected" — keep whatever is
@@ -1058,6 +1079,8 @@ async function syncAllBookingPassengers(
           priceCents: keepsAdultFare ? row.priceCents : pax.priceCents,
           dateOfBirth: pax.dateOfBirth,
           allocatesSeat: seat,
+          bookingRef,
+          returnTicketNumber,
         },
       });
     } else {
@@ -1080,6 +1103,8 @@ async function syncAllBookingPassengers(
               : extraTickets[
                   existing.length === 0 ? i - 1 : i - existing.length
                 ]!,
+          bookingRef,
+          returnTicketNumber,
         },
       });
     }
@@ -1253,6 +1278,8 @@ export async function updateBookingAction(
         booking.id,
         pricedPassengers,
         booking.ticketNumber,
+        booking.bookingRef,
+        Boolean(booking.returnFlightId),
       );
 
       if (booking.invoice) {
