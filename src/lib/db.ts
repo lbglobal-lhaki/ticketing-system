@@ -44,16 +44,14 @@ function createPool() {
     );
   }
 
-  // Railway's TCP proxy (*.proxy.rlwy.net) drops idle sockets. Keep the pool
-  // small and recycle connections before the proxy does, otherwise the next
-  // query fails with "Server has closed the connection".
-  // On Vercel each lambda has its own pool — max 5 per instance exhausts
-  // Railway's connection cap and surfaces as "timeout exceeded when trying to connect".
+  // Railway's TCP proxy drops idle sockets. Recycle clients before it does,
+  // but never call pool.end() while the serverless instance is still serving
+  // — the header cart query and the page query share this pool.
   const pool = new Pool({
     connectionString,
     max: onVercel ? 1 : 5,
     idleTimeoutMillis: 10_000,
-    connectionTimeoutMillis: onVercel ? 8_000 : 15_000,
+    connectionTimeoutMillis: 20_000,
     allowExitOnIdle: true,
     keepAlive: true,
     ssl:
@@ -78,25 +76,23 @@ function createPrismaClient(pool: Pool) {
   return new PrismaClient({ adapter });
 }
 
-async function disposePool(pool: Pool | undefined) {
-  if (!pool) return;
-  try {
-    await pool.end();
-  } catch {
-    // Best-effort — pool may already be closed after a crash.
-  }
-}
-
-function resetPrismaClient() {
-  const oldPool = globalForPrisma.pgPool;
+function initPrismaClient() {
   globalForPrisma.pgPool = createPool();
   globalForPrisma.prisma = createPrismaClient(globalForPrisma.pgPool);
   globalForPrisma.prismaSchemaVersion = PRISMA_SCHEMA_VERSION;
-  void disposePool(oldPool);
   return globalForPrisma.prisma;
 }
 
+function poolIsEnded(pool: Pool | undefined) {
+  return Boolean(pool && (pool as Pool & { ended?: boolean }).ended);
+}
+
 function getPrisma(): PrismaClient {
+  if (poolIsEnded(globalForPrisma.pgPool)) {
+    globalForPrisma.pgPool = undefined;
+    globalForPrisma.prisma = undefined;
+  }
+
   const client = globalForPrisma.prisma as
     | (PrismaClient & {
         invoice?: unknown;
@@ -119,72 +115,28 @@ function getPrisma(): PrismaClient {
     typeof client.adminLoginGuard === "undefined";
 
   if (stale) {
-    resetPrismaClient();
+    initPrismaClient();
   }
 
   return globalForPrisma.prisma!;
 }
 
-function wrapMaybePromise(run: () => unknown): unknown {
-  try {
-    const result = run();
-    if (result && typeof (result as Promise<unknown>).then === "function") {
-      return (result as Promise<unknown>).catch((error: unknown) => {
-        if (!isTransientDbError(error)) throw error;
-        console.warn("[db] connection failed — recreating pool and retrying once");
-        resetPrismaClient();
-        return run();
-      });
-    }
-    return result;
-  } catch (error) {
-    if (!isTransientDbError(error)) throw error;
-    console.warn("[db] connection failed — recreating pool and retrying once");
-    resetPrismaClient();
-    return run();
-  }
-}
-
 /**
- * Always resolves to the current client. Hot-reload / reconnect replaces the
- * underlying instance; a plain `export const prisma = getPrisma()` would keep
- * pointing at the dead one.
+ * Always resolves to the current client. Hot-reload replaces the underlying
+ * instance; a plain `export const prisma = getPrisma()` would keep pointing
+ * at the dead one.
  */
 export const prisma = new Proxy({} as PrismaClient, {
-  get(_target, prop) {
+  get(_target, prop, receiver) {
     const client = getPrisma();
-    const value = Reflect.get(client as object, prop);
-    if (typeof value === "function") {
-      return (...args: unknown[]) =>
-        wrapMaybePromise(() => {
-          const fresh = getPrisma();
-          return (Reflect.get(fresh as object, prop) as Function).apply(
-            fresh,
-            args,
-          );
-        });
-    }
-    if (value && typeof value === "object") {
-      return new Proxy(value, {
-        get(_model, method) {
-          const fn = Reflect.get(
-            Reflect.get(getPrisma() as object, prop) as object,
-            method,
-          );
-          if (typeof fn !== "function") return fn;
-          return (...args: unknown[]) =>
-            wrapMaybePromise(() => {
-              const model = Reflect.get(getPrisma() as object, prop) as object;
-              return (Reflect.get(model, method) as Function).apply(model, args);
-            });
-        },
-      });
-    }
-    return value;
+    const value = Reflect.get(client as object, prop, receiver);
+    return typeof value === "function"
+      ? (value as (...args: unknown[]) => unknown).bind(client)
+      : value;
   },
 });
 
-/** Run a DB call; on a dropped Railway/proxy socket, rebuild the pool once and retry. */
+/** Retry a DB call once on a dropped Railway/proxy socket — same pool. */
 export async function withDbRetry<T>(
   fn: (db: PrismaClient) => Promise<T>,
 ): Promise<T> {
@@ -192,8 +144,7 @@ export async function withDbRetry<T>(
     return await fn(getPrisma());
   } catch (error) {
     if (!isTransientDbError(error)) throw error;
-    console.warn("[db] connection closed — recreating pool and retrying once");
-    resetPrismaClient();
+    console.warn("[db] transient connection error — retrying once");
     return fn(getPrisma());
   }
 }
