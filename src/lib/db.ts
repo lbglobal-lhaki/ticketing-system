@@ -2,6 +2,7 @@ import dns from "node:dns";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
+import { databaseHost, resolveDatabaseUrl } from "@/lib/databaseUrl";
 
 dns.setDefaultResultOrder("ipv4first");
 
@@ -21,26 +22,17 @@ function isTransientDbError(error: unknown): boolean {
   );
 }
 
-function dbHost(connectionString: string): string {
-  try {
-    return new URL(connectionString.replace(/^postgres(ql)?:/i, "https:"))
-      .hostname;
-  } catch {
-    return "";
-  }
-}
-
 function createPool() {
-  const connectionString = process.env.DATABASE_URL;
+  const connectionString = resolveDatabaseUrl();
   if (!connectionString) {
-    throw new Error("DATABASE_URL is not set");
+    throw new Error("DATABASE_URL or DATABASE_PUBLIC_URL is not set");
   }
 
-  const host = dbHost(connectionString);
+  const host = databaseHost(connectionString);
   const onVercel = Boolean(process.env.VERCEL);
   if (onVercel && host.endsWith(".railway.internal")) {
     throw new Error(
-      "DATABASE_URL uses Railway's private hostname, which Vercel cannot reach. Set it to the public TCP URL (*.proxy.rlwy.net) with ?sslmode=require.",
+      "Vercel is using Railway's private hostname. Set DATABASE_PUBLIC_URL to the public TCP URL (*.proxy.rlwy.net).",
     );
   }
 
@@ -54,10 +46,7 @@ function createPool() {
     connectionTimeoutMillis: 20_000,
     allowExitOnIdle: true,
     keepAlive: true,
-    ssl:
-      host.includes("proxy.rlwy.net") || host.includes("railway.app")
-        ? { rejectUnauthorized: false }
-        : undefined,
+    ssl: { rejectUnauthorized: false },
   });
 
   pool.on("error", (err) => {

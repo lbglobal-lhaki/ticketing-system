@@ -1,12 +1,6 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
-
-function databaseUrl() {
-  const url = process.env["DATABASE_URL"] ?? "";
-  if (!url) return url;
-  if (/[?&]sslmode=/i.test(url)) return url;
-  return url.includes("?") ? `${url}&sslmode=require` : `${url}?sslmode=require`;
-}
+import { resolveDatabaseUrl } from "./src/lib/databaseUrl";
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
@@ -15,6 +9,6 @@ export default defineConfig({
     seed: "tsx prisma/seed.ts",
   },
   datasource: {
-    url: databaseUrl(),
+    url: resolveDatabaseUrl(),
   },
 });

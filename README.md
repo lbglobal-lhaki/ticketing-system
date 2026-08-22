@@ -80,13 +80,10 @@ Seeded examples (dates are relative to seed time — pick a date within ~2 weeks
    - `DATABASE_URL` (private, best if app is also on Railway), or
    - `DATABASE_PUBLIC_URL` / public TCP URL (use this when the **app is on Vercel**)
 3. In Vercel → Project → **Settings** → **Environment Variables**:
-   - `DATABASE_URL` = Railway public Postgres URL (add `?sslmode=require` if missing)
+   - `DATABASE_URL` = Railway private URL (optional if public is set)
+   - `DATABASE_PUBLIC_URL` = Railway public TCP URL (`*.proxy.rlwy.net`, add `?sslmode=require` if missing)
    - `ADMIN_PASSWORD` = a strong password
-4. Deploy on Vercel. Build runs:
-
-```bash
-prisma generate && prisma migrate deploy && next build
-```
+4. Deploy on Vercel. Build generates Prisma Client and compiles Next.js (migrations run from a machine that can reach Railway: `npm run db:deploy`).
 
 5. Seed once (from your laptop, using the same Railway URL):
 

@@ -2,10 +2,11 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { fareTemplateForCabin } from "../src/lib/fares/templates";
+import { resolveDatabaseUrl } from "../src/lib/databaseUrl";
 
-const connectionString = process.env.DATABASE_URL;
+const connectionString = resolveDatabaseUrl();
 if (!connectionString) {
-  throw new Error("DATABASE_URL is required to seed the database");
+  throw new Error("DATABASE_URL or DATABASE_PUBLIC_URL is required to seed");
 }
 
 if (
