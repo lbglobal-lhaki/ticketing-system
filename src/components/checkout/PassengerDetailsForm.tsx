@@ -7,7 +7,9 @@ import { useStickyAction } from "@/components/forms/useStickyAction";
 import {
   ADULT_AGE_HINT,
   CHILD_AGE_HINT,
+  CHILD_AGE_RANGE_LABEL,
   INFANT_AGE_HINT,
+  INFANT_MAX_AGE_YEARS,
   childFareCents,
   infantFareCents,
   partyFareCents,
@@ -560,9 +562,9 @@ function TravellerCard({
           <p className="mt-1.5 text-sm text-muted">
             Name must match the passport
             {row.passengerType === "infant"
-              ? ". Infants travel without a seat. Date of birth is required — under 1 year on the departure date."
+              ? `. Infants travel without a seat. Date of birth is required — under ${INFANT_MAX_AGE_YEARS} years on the departure date.`
               : row.passengerType === "child"
-                ? ". Date of birth is required — must be 1–10 years old on the departure date."
+                ? `. Date of birth is required — must be ${CHILD_AGE_RANGE_LABEL} years old on the departure date.`
                 : "."}
           </p>
 
@@ -683,8 +685,8 @@ function TravellerCard({
                     err("dateOfBirth")
                       ? undefined
                       : row.passengerType === "infant"
-                        ? "Must be under 1 year old on the departure date."
-                        : "Must be 1–10 years old on the departure date."
+                        ? `Must be under ${INFANT_MAX_AGE_YEARS} years old on the departure date.`
+                        : `Must be ${CHILD_AGE_RANGE_LABEL} years old on the departure date.`
                   }
                 />
               )}

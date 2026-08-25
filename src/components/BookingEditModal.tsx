@@ -258,7 +258,7 @@ export function BookingEditModal({
             priceMode={autoCompanionFares ? "auto" : "edit"}
             autoPriceAud={(childFareCents(adultUnitCents) / 100).toFixed(2)}
             fieldErrors={sticky.fieldErrors}
-            description="Children get a seat at 75% of the adult fare. Date of birth is required — 1–10 years old on the departure date."
+            description="Children get a seat at 75% of the adult fare. Date of birth is required — 2–11 years old on the departure date."
           />
           <PassengerGroupFields
             type="infant"
@@ -269,7 +269,7 @@ export function BookingEditModal({
             priceMode={autoCompanionFares ? "auto" : "edit"}
             autoPriceAud={(infantFareCents(adultUnitCents) / 100).toFixed(2)}
             fieldErrors={sticky.fieldErrors}
-            description="Infants get a ticket at 10% of the adult fare but no seat. Date of birth is required — under 1 year on the departure date."
+            description="Infants get a ticket at 10% of the adult fare but no seat. Date of birth is required — under 2 years on the departure date."
           />
 
           <p className="text-sm text-muted">

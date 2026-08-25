@@ -134,8 +134,14 @@ async function main() {
     assert(
       passengerTypeFromAge(
         completedAgeYears(parseDateOfBirth("2025-08-18"), ageOn),
+      ) === "infant",
+      "exactly 1 → infant",
+    );
+    assert(
+      passengerTypeFromAge(
+        completedAgeYears(parseDateOfBirth("2024-08-18"), ageOn),
       ) === "child",
-      "exactly 1 → child",
+      "exactly 2 → child",
     );
     assert(
       passengerTypeFromAge(
@@ -146,8 +152,14 @@ async function main() {
     assert(
       passengerTypeFromAge(
         completedAgeYears(parseDateOfBirth("2015-08-18"), ageOn),
+      ) === "child",
+      "exactly 11 → child",
+    );
+    assert(
+      passengerTypeFromAge(
+        completedAgeYears(parseDateOfBirth("2014-08-18"), ageOn),
       ) === "adult",
-      "exactly 11 → adult",
+      "exactly 12 → adult",
     );
 
     // Wrong type: 5-year-old cannot be an infant

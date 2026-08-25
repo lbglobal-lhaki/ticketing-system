@@ -124,13 +124,14 @@ export function passengerTypeLabel(type: PassengerType | string): string {
   return "Adult";
 }
 
-/** Infant: younger than 1 on the flight date. Child: 1 through 10. Adult: 11+. */
-export const INFANT_MAX_AGE_YEARS = 1;
-export const CHILD_MAX_AGE_YEARS = 11;
+/** Infant: younger than 2 on the flight date. Child: 2 through 11. Adult: 12+. */
+export const INFANT_MAX_AGE_YEARS = 2;
+export const CHILD_MAX_AGE_YEARS = 12;
+export const CHILD_AGE_RANGE_LABEL = `${INFANT_MAX_AGE_YEARS}–${CHILD_MAX_AGE_YEARS - 1}`;
 
-export const ADULT_AGE_HINT = "11+ years · full fare";
-export const CHILD_AGE_HINT = "1–10 years · 75% of adult fare · seat";
-export const INFANT_AGE_HINT = "Under 1 year · 10% of adult fare · no seat";
+export const ADULT_AGE_HINT = `${CHILD_MAX_AGE_YEARS}+ years · full fare`;
+export const CHILD_AGE_HINT = `${CHILD_AGE_RANGE_LABEL} years · 75% of adult fare · seat`;
+export const INFANT_AGE_HINT = `Under ${INFANT_MAX_AGE_YEARS} years · 10% of adult fare · no seat`;
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -227,14 +228,14 @@ export function assertDobMatchesType(
   const expected = passengerTypeFromAge(age);
   if (type === "infant" && expected !== "infant") {
     throw new Error(
-      `${who}: must be under 1 year old on the departure date. Book them as a ${expected} instead.`,
+      `${who}: must be under ${INFANT_MAX_AGE_YEARS} years old on the departure date. Book them as a ${expected} instead.`,
     );
   }
   if (type === "child" && expected !== "child") {
     throw new Error(
       expected === "infant"
-        ? `${who}: must be 1–10 years old on the departure date. Book them as an infant instead.`
-        : `${who}: must be 1–10 years old on the departure date. Book them as an adult instead.`,
+        ? `${who}: must be ${CHILD_AGE_RANGE_LABEL} years old on the departure date. Book them as an infant instead.`
+        : `${who}: must be ${CHILD_AGE_RANGE_LABEL} years old on the departure date. Book them as an adult instead.`,
     );
   }
 }

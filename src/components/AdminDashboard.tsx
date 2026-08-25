@@ -2456,7 +2456,7 @@ export function AdminDashboard({
                   priceMode="auto"
                   autoPriceAud={walkInChildPriceAud}
                   fieldErrors={walkInSticky.fieldErrors}
-                  description="Children get a seat at 75% of the adult fare. Date of birth is required — 1–10 years old on the departure date."
+                  description="Children get a seat at 75% of the adult fare. Date of birth is required — 2–11 years old on the departure date."
                 />
                 <PassengerGroupFields
                   type="infant"
@@ -2467,7 +2467,7 @@ export function AdminDashboard({
                   priceMode="auto"
                   autoPriceAud={walkInInfantPriceAud}
                   fieldErrors={walkInSticky.fieldErrors}
-                  description="Infants get a ticket at 10% of the adult fare but no seat. Date of birth is required — under 1 year on the departure date."
+                  description="Infants get a ticket at 10% of the adult fare but no seat. Date of birth is required — under 2 years on the departure date."
                 />
                 <p className="text-sm text-muted">
                   Seats (adults + children):{" "}

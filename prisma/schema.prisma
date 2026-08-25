@@ -278,7 +278,7 @@ model BookingPassenger {
   nationality    String        @default("")
   passengerType  PassengerType @default(adult)
   /// Required for child/infant. Age on the outbound departure date decides
-  /// the type: under 1 = infant, 1–10 = child. Adults leave this null.
+  /// the type: under 2 = infant, 2–11 = child. Adults leave this null.
   dateOfBirth    DateTime?
   /// Admin-set fare for child/infant (cents). Adults keep 0 (system fare).
   priceCents     Int           @default(0)

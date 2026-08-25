@@ -4,8 +4,10 @@ import { MoneyInput } from "@/components/MoneyInput";
 import { DateTimePicker } from "@/components/ui/DateTimePicker";
 import { FieldError, labeledControlClass } from "@/components/forms/FieldError";
 import {
+  CHILD_AGE_RANGE_LABEL,
   CHILD_FARE_RATE,
   INFANT_FARE_RATE,
+  INFANT_MAX_AGE_YEARS,
   passengerTypeLabel,
   type PassengerType,
 } from "@/lib/booking/passengers";
@@ -230,8 +232,8 @@ export function PassengerGroupFields({
                 fieldErrors[`${namePrefix}DateOfBirth.${i}`]
                   ? undefined
                   : type === "infant"
-                    ? "Under 1 year on the departure date."
-                    : "1–10 years old on the departure date."
+                    ? `Under ${INFANT_MAX_AGE_YEARS} years on the departure date.`
+                    : `${CHILD_AGE_RANGE_LABEL} years old on the departure date.`
               }
             />
           ) : null}
