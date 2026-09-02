@@ -517,7 +517,7 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
         baseParams={baseParams}
         flights={withTripTotals}
         airports={airports}
-        outboundSummary={`${outbound.airline} ${outbound.flightNumber} · ${airportLabel(outbound.origin)} → ${airportLabel(outbound.destination)} · ${formatFlightTime(outbound.departureAt)} · ${formatAud(outboundPrice.displayPriceCents)}`}
+        outboundSummary={`${outbound.airline} ${outbound.flightNumber} · ${airportLabel(outbound.origin)} → ${airportLabel(outbound.destination)} · ${formatFlightTime(outbound.departureAt, outbound.origin)} · ${formatAud(outboundPrice.displayPriceCents)}`}
       />
     );
   }

@@ -492,6 +492,10 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
     );
     const paxBookingRef = pax.bookingRef || data.bookingRef;
     const fareCents = fareByTraveller.get(pax) ?? 0;
+    const assignedSeat = (
+      isReturn ? pax.seatReturn : pax.seatOutbound
+    )?.trim();
+    const ticketSeat = noSeat ? "–" : assignedSeat || seat;
 
     return `
   <section class="sheet ticket">
@@ -534,7 +538,7 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
       passengerName: pax.fullName,
       ticketCode,
       issueDate: data.createdAt,
-      seat: noSeat ? "–" : seat,
+      seat: ticketSeat,
       baggage: noSeat ? "–" : includedBaggage,
       assets,
     })}

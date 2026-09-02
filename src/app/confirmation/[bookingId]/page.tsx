@@ -25,7 +25,13 @@ export default async function ConfirmationPage({
   const bankDetails = getBankTransferDetails();
   const booking = await prisma.booking.findUnique({
     where: { id: bookingId },
-    include: { flight: true, returnFlight: true, invoice: true, quote: true },
+    include: {
+      flight: true,
+      returnFlight: true,
+      invoice: true,
+      quote: true,
+      passengers: { orderBy: { sortOrder: "asc" } },
+    },
   });
   if (!booking) notFound();
 
@@ -66,15 +72,25 @@ export default async function ConfirmationPage({
         ? booking.quote.quotedPriceCents
         : booking.quote.quotedPriceCents * booking.seatsBooked
       : Math.max(0, booking.amountPaidCents - booking.serviceFeeCents));
+  const seatFeeCents =
+    booking.passengers.reduce((sum, p) => sum + (p.seatFeeCents || 0), 0) ||
+    invoice?.otherChargesCents ||
+    0;
   const cardServiceFeeCents =
     booking.paymentMethod === "card" ? booking.serviceFeeCents || 0 : 0;
   const cardGstCents =
     booking.paymentMethod === "card"
       ? Math.max(
           0,
-          booking.amountPaidCents - fareOnlyCents - cardServiceFeeCents,
+          booking.amountPaidCents -
+            fareOnlyCents -
+            seatFeeCents -
+            cardServiceFeeCents,
         )
       : 0;
+  const seatedPassengers = booking.passengers.filter(
+    (p) => p.allocatesSeat && (p.seatOutbound || p.seatReturn),
+  );
 
   return (
     <main className="page-shell relative overflow-x-clip pb-safe">
@@ -147,7 +163,10 @@ export default async function ConfirmationPage({
                 {airportLabel(booking.flight.destination)}
               </p>
               <p className="mt-1 text-muted">
-                {formatFlightTime(booking.flight.departureAt)}
+                {formatFlightTime(
+                  booking.flight.departureAt,
+                  booking.flight.origin,
+                )}
               </p>
             </div>
             {isRound && booking.returnFlight && (
@@ -162,7 +181,10 @@ export default async function ConfirmationPage({
                   {airportLabel(booking.returnFlight.destination)}
                 </p>
                 <p className="mt-1 text-muted">
-                  {formatFlightTime(booking.returnFlight.departureAt)}
+                  {formatFlightTime(
+                    booking.returnFlight.departureAt,
+                    booking.returnFlight.origin,
+                  )}
                 </p>
               </div>
             )}
@@ -173,6 +195,23 @@ export default async function ConfirmationPage({
             <p>
               <span className="text-muted">Seats</span> {booking.seatsBooked}
             </p>
+            {seatedPassengers.length > 0 ? (
+              <ul className="space-y-1 text-sm">
+                {seatedPassengers.map((p) => (
+                  <li key={p.id}>
+                    <span className="text-muted">{p.fullName}</span>{" "}
+                    {p.seatOutbound}
+                    {isRound && p.seatReturn ? ` / ${p.seatReturn}` : ""}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {seatFeeCents > 0 ? (
+              <p>
+                <span className="text-muted">Seat selection</span>{" "}
+                {formatAud(seatFeeCents)}
+              </p>
+            ) : null}
             {cardServiceFeeCents > 0 || cardGstCents > 0 ? (
               <>
                 <p>

@@ -9,6 +9,8 @@ type BankCheckoutFormProps = {
   quoteId: string;
   maxSeats: number;
   partyFareCents: number;
+  seatFeeCents?: number;
+  gstCents: number;
   paymentProofEmail: string;
   initialPassenger: {
     passengerName: string;
@@ -32,6 +34,8 @@ export function BankCheckoutForm({
   quoteId,
   maxSeats,
   partyFareCents,
+  seatFeeCents = 0,
+  gstCents,
   paymentProofEmail,
   initialPassenger,
   bankPreview,
@@ -45,7 +49,7 @@ export function BankCheckoutForm({
     Math.max(1, initialPassenger.seatsBooked ?? 1),
     Math.min(9, Math.max(1, maxSeats || initialPassenger.seatsBooked || 1)),
   );
-  const totalCents = partyFareCents;
+  const totalCents = partyFareCents + seatFeeCents + gstCents;
 
   return (
     <form action={action} className="space-y-8">
@@ -108,20 +112,58 @@ export function BankCheckoutForm({
               {seatsBooked} seat{seatsBooked === 1 ? "" : "s"}
             </p>
           </div>
-          <Link
-            href={`/checkout/${quoteId}/passengers`}
-            className="text-sm font-semibold text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
-          >
-            Edit details
-          </Link>
+          <div className="flex flex-col items-end gap-1">
+            <Link
+              href={`/checkout/${quoteId}/passengers`}
+              className="text-sm font-semibold text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+            >
+              Edit details
+            </Link>
+            <Link
+              href={`/checkout/${quoteId}/seats`}
+              className="text-sm font-semibold text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+            >
+              Change seats
+            </Link>
+          </div>
         </div>
-        <div className="mt-4 flex items-end justify-between gap-4 border-t border-line pt-4">
-          <p className="text-xs uppercase tracking-[0.14em] text-muted">
-            Amount due
-          </p>
-          <p className="font-[family-name:var(--font-syne)] text-3xl font-semibold">
-            {formatAud(totalCents)}
-          </p>
+        <div className="mt-4 space-y-2 border-t border-line pt-4 text-sm">
+          <div className="flex justify-between gap-4">
+            <span className="text-muted">Ticket fare</span>
+            <span className="font-medium">{formatAud(partyFareCents)}</span>
+          </div>
+          {seatFeeCents > 0 ? (
+            <div className="flex justify-between gap-4">
+              <span className="text-muted">Seat selection</span>
+              <span className="font-medium">{formatAud(seatFeeCents)}</span>
+            </div>
+          ) : null}
+          {gstCents > 0 ? (
+            <div className="flex justify-between gap-4">
+              <span className="text-muted">GST (10%)</span>
+              <span className="font-medium">{formatAud(gstCents)}</span>
+            </div>
+          ) : null}
+          <div className="flex items-end justify-between gap-4 pt-2">
+            <p className="text-xs uppercase tracking-[0.14em] text-muted">
+              Amount due
+            </p>
+            <p className="font-[family-name:var(--font-syne)] text-3xl font-semibold">
+              {formatAud(totalCents)}
+            </p>
+          </div>
+          {gstCents > 0 ? (
+            <p className="text-xs text-muted">
+              GST (10%) is added on this fare
+              {seatFeeCents > 0 ? " and seat extras" : ""}. Promotional Saver
+              fares stay at the advertised amount.
+            </p>
+          ) : (
+            <p className="text-xs text-muted">
+              This promotional fare is charged at the advertised amount; GST is
+              not added at checkout.
+            </p>
+          )}
         </div>
       </div>
 

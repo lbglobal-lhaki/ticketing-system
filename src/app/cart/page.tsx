@@ -37,7 +37,7 @@ function CartItem({ quote }: { quote: CartQuote }) {
             <p className="font-medium text-foreground">Outbound</p>
             <p className="mt-0.5 break-words">
               {quote.flight.airline} {quote.flight.flightNumber} ·{" "}
-              {formatFlightTime(quote.flight.departureAt)}
+              {formatFlightTime(quote.flight.departureAt, quote.flight.origin)}
               {quote.fareReleaseName ? ` · ${quote.fareReleaseName}` : ""}
             </p>
           </div>
@@ -46,7 +46,10 @@ function CartItem({ quote }: { quote: CartQuote }) {
               <p className="font-medium text-foreground">Return</p>
               <p className="mt-0.5 break-words">
                 {quote.returnFlight.airline} {quote.returnFlight.flightNumber} ·{" "}
-                {formatFlightTime(quote.returnFlight.departureAt)}
+                {formatFlightTime(
+                  quote.returnFlight.departureAt,
+                  quote.returnFlight.origin,
+                )}
                 {quote.returnFareReleaseName
                   ? ` · ${quote.returnFareReleaseName}`
                   : ""}

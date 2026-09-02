@@ -9,6 +9,7 @@ import {
   generateTravelDocumentModalAction,
   markInvoicePaidAction,
   markInvoiceUnpaidAction,
+  reactivateInvoiceAction,
   saveInvoiceDocumentModalAction,
   sendAirfareInvoiceEmailAction,
   sendAirfareInvoiceEmailModalAction,
@@ -575,15 +576,48 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                     </MenuItem>
 
                     <MenuDivider />
-                  {/*
-                   * Not simply "!== paid": an invoice only reaches "cancelled"
-                   * when its booking's hold expired (expireHolds.ts), and
-                   * markInvoicePaidAction refuses those — so offering the
-                   * button there is an action that can only ever error.
-                   * "failed" stays actionable: a declined card followed by cash
-                   * at the counter is a real recovery path.
-                   */}
-                  {invoice.status === "unpaid" || invoice.status === "failed" ? (
+                  {invoice.status === "cancelled" ? (
+                    <>
+                      <MenuItem>
+                        <form action={reactivateInvoiceAction}>
+                          <input type="hidden" name="id" value={invoice.id} />
+                          <SubmitButton
+                            pendingLabel="Reopening…"
+                            onClick={(e) => {
+                              if (
+                                !confirm(
+                                  `Reopen ${invoice.invoiceNumber} as unpaid and hold the seats again for 48 hours? If those seats have already been sold, this will fail.`,
+                                )
+                              ) {
+                                e.preventDefault();
+                              }
+                            }}
+                          >
+                            Reactivate invoice
+                          </SubmitButton>
+                        </form>
+                      </MenuItem>
+                      <MenuItem>
+                        <form action={markInvoicePaidAction}>
+                          <input type="hidden" name="id" value={invoice.id} />
+                          <SubmitButton
+                            pendingLabel="Confirming…"
+                            onClick={(e) => {
+                              if (
+                                !confirm(
+                                  `Payment received after the hold expired. Re-hold seats if still available and mark ${invoice.invoiceNumber} paid?`,
+                                )
+                              ) {
+                                e.preventDefault();
+                              }
+                            }}
+                          >
+                            Reactivate and mark paid
+                          </SubmitButton>
+                        </form>
+                      </MenuItem>
+                    </>
+                  ) : invoice.status === "unpaid" || invoice.status === "failed" ? (
                     <MenuItem>
                       <form action={markInvoicePaidAction}>
                         <input type="hidden" name="id" value={invoice.id} />

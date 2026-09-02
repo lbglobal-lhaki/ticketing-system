@@ -10,8 +10,13 @@ import {
 import { quotePartyFareCents } from "@/lib/booking/passengers";
 import { getCheckoutQuoteState } from "@/lib/checkout/loadQuote";
 import { passengerDraftFromQuote } from "@/lib/checkout/passengerDraft";
-import { calculateCardServiceFee } from "@/lib/payments/fees";
+import { calculateCardServiceFee, exclusiveGstAppliesToFare } from "@/lib/payments/fees";
 import { createPaymentIntent, getStripePublicConfig } from "@/lib/payments/stripe";
+import {
+  quoteSeatFeeFromQuote,
+  seatsSelectionComplete,
+  travellersFromDraft,
+} from "@/lib/seats/selection";
 import { getSessionId } from "@/lib/session";
 
 // Confirming a card payment also generates PDF e-ticket/invoice attachments
@@ -31,6 +36,15 @@ export default async function CardCheckoutPage({
   if (state.available && !draft.complete) {
     redirect(`/checkout/${quoteId}/passengers`);
   }
+  if (
+    state.available &&
+    !seatsSelectionComplete(
+      travellersFromDraft(state.quote.travellersDraft),
+      state.isRound,
+    )
+  ) {
+    redirect(`/checkout/${quoteId}/seats`);
+  }
 
   const stripe = getStripePublicConfig();
   if (!stripe.configured) {
@@ -46,7 +60,10 @@ export default async function CardCheckoutPage({
       Math.min(9, Math.max(1, state.maxSeats + (state.quote.heldSeats || 0))),
     );
     const fareCents = quotePartyFareCents(state.quote);
-    const fee = calculateCardServiceFee(fareCents);
+    const seatFeeCents = quoteSeatFeeFromQuote(state.quote);
+    const fee = calculateCardServiceFee(fareCents + seatFeeCents, {
+      includeGst: exclusiveGstAppliesToFare(state.quote),
+    });
     const sessionId = await getSessionId();
     const idempotencyKey = createHash("sha256")
       .update(`pi:${quoteId}:${seatsBooked}:${fee.totalCents}:${sessionId}`)
@@ -76,6 +93,7 @@ export default async function CardCheckoutPage({
   }
 
   const partyFareCents = quotePartyFareCents(state.quote);
+  const seatFeeCents = quoteSeatFeeFromQuote(state.quote);
 
   return (
     <CheckoutShell
@@ -94,6 +112,8 @@ export default async function CardCheckoutPage({
               quoteId={quoteId}
               maxSeats={state.maxSeats}
               partyFareCents={partyFareCents}
+              seatFeeCents={seatFeeCents}
+              includeGst={exclusiveGstAppliesToFare(state.quote)}
               initialPassenger={draft}
               stripe={{
                 publishableKey: stripe.publishableKey,

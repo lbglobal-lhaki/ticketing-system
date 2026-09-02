@@ -11,9 +11,18 @@ import { getCheckoutQuoteState } from "@/lib/checkout/loadQuote";
 import { passengerDraftFromQuote } from "@/lib/checkout/passengerDraft";
 import { getBrand } from "@/lib/branding";
 import {
+  exclusiveGstAppliesToFare,
+  exclusiveGstCents,
+} from "@/lib/payments/fees";
+import {
   getBankTransferDetails,
   isBankTransferConfigured,
 } from "@/lib/payments/bank";
+import {
+  quoteSeatFeeFromQuote,
+  seatsSelectionComplete,
+  travellersFromDraft,
+} from "@/lib/seats/selection";
 
 // Confirming a bank-transfer booking also generates a PDF invoice attachment
 // via headless Chromium, which can take longer than the platform default.
@@ -32,6 +41,15 @@ export default async function BankCheckoutPage({
   if (state.available && !draft.complete) {
     redirect(`/checkout/${quoteId}/passengers`);
   }
+  if (
+    state.available &&
+    !seatsSelectionComplete(
+      travellersFromDraft(state.quote.travellersDraft),
+      state.isRound,
+    )
+  ) {
+    redirect(`/checkout/${quoteId}/seats`);
+  }
 
   if (!isBankTransferConfigured()) {
     redirect(`/checkout/${quoteId}`);
@@ -43,6 +61,12 @@ export default async function BankCheckoutPage({
   }
 
   const brand = getBrand();
+  const partyFareCents = quotePartyFareCents(state.quote);
+  const seatFeeCents = quoteSeatFeeFromQuote(state.quote);
+  const gstCents = exclusiveGstCents(
+    partyFareCents + seatFeeCents,
+    exclusiveGstAppliesToFare(state.quote),
+  );
 
   return (
     <CheckoutShell
@@ -60,7 +84,9 @@ export default async function BankCheckoutPage({
             <BankCheckoutForm
               quoteId={quoteId}
               maxSeats={state.maxSeats}
-              partyFareCents={quotePartyFareCents(state.quote)}
+              partyFareCents={partyFareCents}
+              seatFeeCents={seatFeeCents}
+              gstCents={gstCents}
               paymentProofEmail={brand.paymentProofEmail}
               initialPassenger={draft}
               bankPreview={bank}

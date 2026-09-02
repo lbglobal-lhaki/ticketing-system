@@ -31,6 +31,10 @@ import {
   restoreFareAndFlight,
 } from "@/lib/booking/inventory";
 import {
+  bookingNeedsSeatReclaim,
+  reclaimExpiredBookingHold,
+} from "@/lib/booking/reactivateHold";
+import {
   allocatesSeat,
   applyCatalogueCompanionFares,
   assertChildInfantAges,
@@ -776,36 +780,72 @@ export async function markBookingPaidAction(formData: FormData) {
     include: { invoice: true },
   });
   if (!booking) redirect("/admin?tab=bookings&error=Booking+not+found");
-  if (booking.status === "hold_expired" || booking.status === "cancelled") {
-    redirect(
-      "/admin?tab=bookings&error=Cannot+mark+paid+—+this+hold+already+expired+or+was+cancelled",
-    );
-  }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.booking.update({
-      where: { id },
-      data: {
-        status: "confirmed",
-        holdExpiresAt: null,
-      },
-    });
-    if (booking.invoice) {
-      await tx.invoice.update({
-        where: { id: booking.invoice.id },
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (bookingNeedsSeatReclaim(booking.status)) {
+        await reclaimExpiredBookingHold(tx, id, { markPaid: true });
+        return;
+      }
+      await tx.booking.update({
+        where: { id },
         data: {
-          status: "paid",
-          paidAt: new Date(),
-          markedPaidByAdmin: true,
-          pdfBlobUrl: null,
-          pdfBlobPathname: null,
+          status: "confirmed",
+          holdExpiresAt: null,
         },
       });
-    }
-  });
+      if (booking.invoice) {
+        await tx.invoice.update({
+          where: { id: booking.invoice.id },
+          data: {
+            status: "paid",
+            paidAt: new Date(),
+            markedPaidByAdmin: true,
+            pdfBlobUrl: null,
+            pdfBlobPathname: null,
+          },
+        });
+      }
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Could not mark booking paid";
+    redirect(`/admin?tab=bookings&error=${encodeURIComponent(message)}`);
+  }
 
   revalidatePath("/admin");
   redirect("/admin?tab=bookings&saved=booking-paid");
+}
+
+export async function reactivateBookingAction(formData: FormData) {
+  await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/admin?tab=bookings&error=Missing+booking");
+
+  const booking = await prisma.booking.findUnique({
+    where: { id },
+  });
+  if (!booking) redirect("/admin?tab=bookings&error=Booking+not+found");
+  if (!bookingNeedsSeatReclaim(booking.status)) {
+    redirect(
+      `/admin?tab=bookings&error=${encodeURIComponent(
+        "This booking is not cancelled or expired.",
+      )}`,
+    );
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await reclaimExpiredBookingHold(tx, id, { markPaid: false });
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Could not reactivate booking";
+    redirect(`/admin?tab=bookings&error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/admin");
+  redirect("/admin?tab=bookings&saved=booking-reactivated");
 }
 
 export async function markBookingUnpaidAction(formData: FormData) {
@@ -1199,15 +1239,15 @@ export async function updateBookingAction(
         adultUnitCents > 0
           ? applyCatalogueCompanionFares(allPassengers, adultUnitCents)
           : allPassengers;
-      if (booking.status === "cancelled") {
-        throw new Error("Cancelled bookings cannot be edited");
-      }
 
       const seatDelta = seatsBooked - booking.seatsBooked;
       if (seatDelta !== 0) {
-        if (booking.status === "hold_expired") {
+        if (
+          booking.status === "hold_expired" ||
+          booking.status === "cancelled"
+        ) {
           throw new Error(
-            "Cannot change passengers on an expired hold — create a new booking",
+            "Reactivate this booking before changing passengers — seats were returned to the pool",
           );
         }
         if (!booking.fareReleaseId) {

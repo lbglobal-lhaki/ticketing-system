@@ -9,6 +9,7 @@ import {
   parseOnlineTravellersDraftResult,
   partyFareCents,
   seatedCountFromMix,
+  type TravellerDraft,
 } from "@/lib/booking/passengers";
 import { prisma } from "@/lib/db";
 import {
@@ -87,7 +88,19 @@ export async function savePassengerDetailsAction(
     if (!parsedTravellers.ok) {
       return formFail(parsedTravellers.error, parsedTravellers.fieldErrors);
     }
-    const travellers = parsedTravellers.travellers;
+    const travellers = parsedTravellers.travellers.map((t, i) => {
+      const prev = Array.isArray(quote.travellersDraft)
+        ? (quote.travellersDraft as TravellerDraft[])[i]
+        : undefined;
+      if (prev && prev.passengerType === t.passengerType) {
+        return {
+          ...t,
+          seatOutbound: prev.seatOutbound,
+          seatReturn: prev.seatReturn,
+        };
+      }
+      return t;
+    });
     const primary = travellers[0]!;
 
     const quotedPriceCents = partyFareCents({
@@ -128,7 +141,8 @@ export async function savePassengerDetailsAction(
 
   revalidatePath(`/checkout/${quoteId}`);
   revalidatePath(`/checkout/${quoteId}/passengers`);
+  revalidatePath(`/checkout/${quoteId}/seats`);
   revalidatePath(`/checkout/${quoteId}/card`);
   revalidatePath(`/checkout/${quoteId}/bank`);
-  redirect(`/checkout/${quoteId}`);
+  redirect(`/checkout/${quoteId}/seats`);
 }

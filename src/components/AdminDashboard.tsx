@@ -21,6 +21,7 @@ import {
   deleteBookingAction,
   markBookingPaidAction,
   markBookingUnpaidAction,
+  reactivateBookingAction,
 } from "@/lib/actions/walkIn";
 import { BookingEditModal } from "@/components/BookingEditModal";
 import {
@@ -2818,7 +2819,6 @@ export function AdminDashboard({
                           the same, only its position changed.
                         */}
                         <div className="flex items-center justify-end gap-1">
-                          {b.status !== "cancelled" ? (
                             <Button
                               variant="secondary"
                               size="sm"
@@ -2826,16 +2826,57 @@ export function AdminDashboard({
                             >
                               Edit
                             </Button>
-                          ) : null}
 
                           <Menu label={`Actions for ${b.bookingRef}`}>
                             {b.paymentMethod === "bank_transfer" &&
-                            b.status === "pending_payment" ? (
+                            (b.status === "pending_payment" ||
+                              b.status === "hold_expired" ||
+                              b.status === "cancelled") ? (
                               <MenuItem>
                                 <form action={markBookingPaidAction}>
                                   <input type="hidden" name="id" value={b.id} />
-                                  <SubmitButton pendingLabel="Confirming…">
-                                    Mark paid
+                                  <SubmitButton
+                                    pendingLabel="Confirming…"
+                                    onClick={
+                                      b.status === "pending_payment"
+                                        ? undefined
+                                        : (e) => {
+                                            if (
+                                              !confirm(
+                                                `Payment received after the hold expired. Re-hold seats if still available and mark ${b.bookingRef} paid?`,
+                                              )
+                                            ) {
+                                              e.preventDefault();
+                                            }
+                                          }
+                                    }
+                                  >
+                                    {b.status === "pending_payment"
+                                      ? "Mark paid"
+                                      : "Reactivate and mark paid"}
+                                  </SubmitButton>
+                                </form>
+                              </MenuItem>
+                            ) : null}
+                            {b.paymentMethod === "bank_transfer" &&
+                            (b.status === "hold_expired" ||
+                              b.status === "cancelled") ? (
+                              <MenuItem>
+                                <form action={reactivateBookingAction}>
+                                  <input type="hidden" name="id" value={b.id} />
+                                  <SubmitButton
+                                    pendingLabel="Reopening…"
+                                    onClick={(e) => {
+                                      if (
+                                        !confirm(
+                                          `Reopen ${b.bookingRef} as unpaid and hold the seats again for 48 hours? If those seats have already been sold, this will fail.`,
+                                        )
+                                      ) {
+                                        e.preventDefault();
+                                      }
+                                    }}
+                                  >
+                                    Reactivate booking
                                   </SubmitButton>
                                 </form>
                               </MenuItem>
@@ -2859,7 +2900,8 @@ export function AdminDashboard({
                             ) : null}
                             {b.status === "hold_expired" ? (
                               <p className="px-3 py-2 text-xs text-accent-red">
-                                Hold expired — seats returned.
+                                Hold expired — seats returned. Reactivate to
+                                reopen, or mark paid if the transfer arrived late.
                               </p>
                             ) : null}
 

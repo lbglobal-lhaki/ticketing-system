@@ -289,6 +289,10 @@ model BookingPassenger {
   returnTicketNumber String?   @unique
   /// Per-passenger PNR (LB8941, LB8942, …). Falls back to Booking.bookingRef.
   bookingRef     String?       @unique
+  /// Chosen seats on the Drukair A320neo map (e.g. 12A). Empty until selected.
+  seatOutbound   String        @default("")
+  seatReturn     String        @default("")
+  seatFeeCents   Int           @default(0)
   createdAt      DateTime      @default(now())
 
   @@index([bookingId])

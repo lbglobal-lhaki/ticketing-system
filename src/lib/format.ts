@@ -1,3 +1,5 @@
+import { airportTzAbbr } from "@/lib/datetime";
+
 const AIRPORTS: Record<string, string> = {
   PER: "Perth",
   PBH: "Paro",
@@ -42,8 +44,8 @@ export function buildAirportOptions(codes: string[]): AirportOption[] {
     .sort((a, b) => a.city.localeCompare(b.city) || a.code.localeCompare(b.code));
 }
 
-export function formatFlightTime(date: Date): string {
-  return new Intl.DateTimeFormat("en-AU", {
+export function formatFlightTime(date: Date, airportCode?: string): string {
+  const formatted = new Intl.DateTimeFormat("en-AU", {
     weekday: "short",
     day: "numeric",
     month: "short",
@@ -52,6 +54,8 @@ export function formatFlightTime(date: Date): string {
     hour12: false,
     timeZone: "UTC",
   }).format(date);
+  if (!airportCode) return formatted;
+  return `${formatted} ${airportTzAbbr(airportCode, date)}`;
 }
 
 export function cabinLabel(cabin: string): string {

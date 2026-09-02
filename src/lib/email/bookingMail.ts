@@ -99,6 +99,8 @@ export async function loadBookingDocumentData(
       dateOfBirth: p.dateOfBirth,
       priceCents: p.priceCents,
       allocatesSeat: p.allocatesSeat,
+      seatOutbound: p.seatOutbound,
+      seatReturn: p.seatReturn,
     })),
     quote: quote
       ? {

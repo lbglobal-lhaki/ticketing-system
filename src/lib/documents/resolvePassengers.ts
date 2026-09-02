@@ -105,6 +105,8 @@ export function resolveDocumentPassengers(input: {
                 ? infantFareCents(unit)
                 : 0,
         allocatesSeat: allocatesSeat(type),
+        seatOutbound: existing?.seatOutbound || d?.seatOutbound || "",
+        seatReturn: existing?.seatReturn || d?.seatReturn || "",
       });
     }
     passengers = rebuilt;

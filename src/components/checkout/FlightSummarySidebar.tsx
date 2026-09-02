@@ -5,14 +5,25 @@ import {
   quotePartyFareCents,
 } from "@/lib/booking/passengers";
 import {
+  exclusiveGstAppliesToFare,
+  exclusiveGstCents,
+} from "@/lib/payments/fees";
+import {
   formatCardDate,
   formatClock,
   formatDuration,
   flightDurationMinutes,
 } from "@/lib/flights/results";
+import { airportTzAbbr } from "@/lib/datetime";
 import { airportCity } from "@/lib/format";
 import { formatAud } from "@/lib/pricing";
 import type { CheckoutQuoteState } from "@/lib/checkout/loadQuote";
+import {
+  quoteSeatFeeFromQuote,
+  seatAssignmentLabel,
+  seatedTravellers,
+  travellersFromDraft,
+} from "@/lib/seats/selection";
 
 type FlightSummarySidebarProps = {
   state: CheckoutQuoteState;
@@ -40,6 +51,12 @@ export function FlightSummarySidebar({
   const children = isParty ? Math.max(0, quote.childCount || 0) : 0;
   const infants = isParty ? Math.max(0, quote.infantCount || 0) : 0;
   const totalCents = quotePartyFareCents(quote);
+  const seatFeeCents = quoteSeatFeeFromQuote(quote);
+  const includeGst = exclusiveGstAppliesToFare(quote);
+  const gstCents = exclusiveGstCents(totalCents + seatFeeCents, includeGst);
+  const dueCents = totalCents + seatFeeCents + gstCents;
+  const draft = travellersFromDraft(quote.travellersDraft);
+  const seatLabel = seatAssignmentLabel(draft, isRound);
 
   const mixParts = [
     `${adults} adult${adults === 1 ? "" : "s"}`,
@@ -123,19 +140,37 @@ export function FlightSummarySidebar({
             <span className="font-medium">{formatAud(totalCents)}</span>
           </div>
         )}
+        {seatFeeCents > 0 ? (
+          <div className="flex justify-between gap-4">
+            <span className="text-muted">
+              Seat selection
+              {seatLabel ? ` (${seatLabel})` : ""}
+            </span>
+            <span className="font-medium">{formatAud(seatFeeCents)}</span>
+          </div>
+        ) : seatedTravellers(draft).some((t) => t.seatOutbound) ? (
+          <div className="flex justify-between gap-4">
+            <span className="text-muted">Seats</span>
+            <span className="font-medium">{seatLabel || "Selected"}</span>
+          </div>
+        ) : null}
         <div className="flex justify-between gap-4">
-          <span className="text-muted">Taxes, Fees, and Charges</span>
-          <span className="font-medium">{formatAud(0)}</span>
+          <span className="text-muted">
+            {gstCents > 0 ? "GST (10%)" : "Taxes, Fees, and Charges"}
+          </span>
+          <span className="font-medium">{formatAud(gstCents)}</span>
         </div>
         <div className="flex items-end justify-between gap-4 border-t border-dashed border-line pt-4">
           <span className="font-semibold text-foreground">Total Price</span>
           <span className="font-[family-name:var(--font-syne)] text-2xl font-bold tracking-tight text-accent-deep">
-            {formatAud(totalCents)}
+            {formatAud(dueCents)}
           </span>
         </div>
         <p className="text-xs text-muted">
-          {mixParts.join(", ")}. Total trip price for all travellers including
-          taxes and fees.
+          {mixParts.join(", ")}.
+          {gstCents > 0
+            ? " GST (10%) is added on this fare and any seat extras; promotional Saver fares stay at the advertised amount."
+            : " Promotional fare charged at the advertised amount (GST is not added)."}
         </p>
       </div>
 
@@ -167,7 +202,7 @@ function SegmentBlock({
   detailsHref: string;
 }) {
   const duration = formatDuration(
-    flightDurationMinutes(departureAt, arrivalAt),
+    flightDurationMinutes(departureAt, arrivalAt, origin, destination),
   );
 
   return (
@@ -184,8 +219,9 @@ function SegmentBlock({
           year: "numeric",
           timeZone: "UTC",
         }).format(departureAt)}{" "}
-        · {formatClock(departureAt)}-{formatClock(arrivalAt)} · Nonstop ·{" "}
-        {duration}
+        · {formatClock(departureAt)} {airportTzAbbr(origin, departureAt)}–
+        {formatClock(arrivalAt)} {airportTzAbbr(destination, arrivalAt)} ·
+        Nonstop · {duration}
       </p>
 
       <div className="mt-3 flex items-center gap-3 rounded-xl bg-accent/8 px-3 py-3">

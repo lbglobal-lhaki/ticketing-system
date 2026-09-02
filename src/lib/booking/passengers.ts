@@ -88,6 +88,9 @@ export type TravellerDraft = {
   /** Contact only required / used on the primary adult. */
   email?: string;
   phone?: string;
+  /** A320neo seat ids, e.g. 12A. Infants leave these empty. */
+  seatOutbound?: string;
+  seatReturn?: string;
 };
 
 export function travellerDisplayName(t: {

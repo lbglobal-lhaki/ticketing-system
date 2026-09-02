@@ -136,6 +136,78 @@ export function toFlightYmd(isoOrDate: string | Date): string {
 
 const FLIGHT_TZ = "UTC";
 
+/** IANA zone for published local times at each airport. */
+const AIRPORT_TIME_ZONES: Record<string, string> = {
+  PER: "Australia/Perth",
+  PBH: "Asia/Thimphu",
+  SYD: "Australia/Sydney",
+  MEL: "Australia/Melbourne",
+  BNE: "Australia/Brisbane",
+  ADL: "Australia/Adelaide",
+  CNS: "Australia/Brisbane",
+  AKL: "Pacific/Auckland",
+  SIN: "Asia/Singapore",
+  LHR: "Europe/London",
+  LAX: "America/Los_Angeles",
+};
+
+const AIRPORT_TZ_ABBR: Record<string, string> = {
+  PER: "AWST",
+  PBH: "BTT",
+  BNE: "AEST",
+  CNS: "AEST",
+  SIN: "SGT",
+};
+
+export function airportTimeZone(code: string): string {
+  return AIRPORT_TIME_ZONES[code.toUpperCase()] ?? "UTC";
+}
+
+/** Short zone label for customer-facing clocks (Perth AWST, Paro BTT). */
+export function airportTzAbbr(code: string, at?: Date): string {
+  const normalized = code.toUpperCase();
+  if (AIRPORT_TZ_ABBR[normalized]) return AIRPORT_TZ_ABBR[normalized];
+  const tz = airportTimeZone(normalized);
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    timeZone: tz,
+    timeZoneName: "short",
+    hour: "numeric",
+  }).formatToParts(at ?? new Date());
+  return parts.find((p) => p.type === "timeZoneName")?.value ?? tz;
+}
+
+/**
+ * Stored flight timestamps are wall-clock digits in UTC. Convert that wall
+ * clock to a real instant in the airport's local timezone so duration is the
+ * actual block time (Perth UTC+8 vs Paro UTC+6), not the clock difference.
+ */
+export function flightScheduleInstant(
+  date: Date | string,
+  airportCode: string,
+): Date {
+  const d = typeof date === "string" ? new Date(date) : date;
+  return zonedWallClockToUtc(
+    d.getUTCFullYear(),
+    d.getUTCMonth() + 1,
+    d.getUTCDate(),
+    d.getUTCHours(),
+    d.getUTCMinutes(),
+    d.getUTCSeconds(),
+    airportTimeZone(airportCode),
+  );
+}
+
+export function scheduledFlightDurationMinutes(
+  departureAt: Date | string,
+  arrivalAt: Date | string,
+  origin: string,
+  destination: string,
+): number {
+  const dep = flightScheduleInstant(departureAt, origin);
+  const arr = flightScheduleInstant(arrivalAt, destination);
+  return Math.max(0, Math.round((arr.getTime() - dep.getTime()) / 60000));
+}
+
 /** Admin flights list — the wall-clock the admin typed. */
 export function formatFlightDateTime(isoOrDate: string | Date): string {
   const d = typeof isoOrDate === "string" ? new Date(isoOrDate) : isoOrDate;

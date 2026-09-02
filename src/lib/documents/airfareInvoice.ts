@@ -212,10 +212,16 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
   const passengerListHtml = travellers
     .map((p, i) => {
       const type = passengerTypeLabel(p.passengerType || "adult");
+      const assigned = [p.seatOutbound, p.seatReturn]
+        .map((s) => (s || "").trim())
+        .filter(Boolean)
+        .join(" / ");
       const seat =
         p.passengerType === "infant" || p.allocatesSeat === false
           ? " · no seat"
-          : "";
+          : assigned
+            ? ` · seat ${assigned}`
+            : "";
       const price =
         (p.priceCents ?? 0) > 0 &&
         (p.passengerType === "child" || p.passengerType === "infant")

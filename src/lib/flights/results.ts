@@ -1,3 +1,4 @@
+import { scheduledFlightDurationMinutes } from "@/lib/datetime";
 import { airportCity } from "@/lib/format";
 
 export type CabinFare = {
@@ -41,10 +42,17 @@ export type DateStripDay = {
   flightCount: number;
 };
 
-export function flightDurationMinutes(departureAt: Date, arrivalAt: Date) {
-  return Math.max(
-    0,
-    Math.round((arrivalAt.getTime() - departureAt.getTime()) / 60000),
+export function flightDurationMinutes(
+  departureAt: Date,
+  arrivalAt: Date,
+  origin: string,
+  destination: string,
+) {
+  return scheduledFlightDurationMinutes(
+    departureAt,
+    arrivalAt,
+    origin,
+    destination,
   );
 }
 
@@ -250,6 +258,8 @@ export function groupFlightResults(rows: GroupFlightInput[]): FlightResultRow[] 
       const durationMinutes = flightDurationMinutes(
         row.flight.departureAt,
         row.flight.arrivalAt,
+        row.flight.origin,
+        row.flight.destination,
       );
       map.set(key, {
         key,

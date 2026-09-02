@@ -26,6 +26,9 @@ type CardCheckoutFormProps = {
   maxSeats: number;
   /** Total airfare for the party (or legacy unit×seats already applied). */
   partyFareCents: number;
+  /** Extra for window / exit-row seats. */
+  seatFeeCents?: number;
+  includeGst: boolean;
   initialPassenger: {
     passengerName: string;
     email: string;
@@ -55,6 +58,8 @@ export function CardCheckoutForm({
   quoteId,
   maxSeats,
   partyFareCents,
+  seatFeeCents = 0,
+  includeGst,
   initialPassenger,
   stripe,
 }: CardCheckoutFormProps) {
@@ -76,8 +81,11 @@ export function CardCheckoutForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const fareCents = partyFareCents;
-  const fee = useMemo(() => calculateCardServiceFee(fareCents), [fareCents]);
+  const fareCents = partyFareCents + Math.max(0, seatFeeCents);
+  const fee = useMemo(
+    () => calculateCardServiceFee(fareCents, { includeGst }),
+    [fareCents, includeGst],
+  );
 
   const passengerOk =
     passengerName.length >= 2 &&
@@ -149,12 +157,20 @@ export function CardCheckoutForm({
               {seatsBooked} seat{seatsBooked === 1 ? "" : "s"}
             </p>
           </div>
-          <Link
-            href={`/checkout/${quoteId}/passengers`}
-            className="text-sm font-semibold text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
-          >
-            Edit details
-          </Link>
+          <div className="flex flex-col items-end gap-1">
+            <Link
+              href={`/checkout/${quoteId}/passengers`}
+              className="text-sm font-semibold text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+            >
+              Edit details
+            </Link>
+            <Link
+              href={`/checkout/${quoteId}/seats`}
+              className="text-sm font-semibold text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+            >
+              Change seats
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -269,8 +285,14 @@ export function CardCheckoutForm({
         <dl className="mt-4 space-y-3 text-sm">
           <div className="flex justify-between gap-4">
             <dt className="text-muted">Ticket fare</dt>
-            <dd className="font-medium">{formatAud(fee.fareCents)}</dd>
+            <dd className="font-medium">{formatAud(partyFareCents)}</dd>
           </div>
+          {seatFeeCents > 0 ? (
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted">Seat selection</dt>
+              <dd className="font-medium">{formatAud(seatFeeCents)}</dd>
+            </div>
+          ) : null}
           <div className="flex justify-between gap-4">
             <dt className="text-muted">
               Credit card fee{" "}
@@ -278,13 +300,15 @@ export function CardCheckoutForm({
             </dt>
             <dd className="font-medium">{formatAud(fee.serviceFeeCents)}</dd>
           </div>
-          <div className="flex justify-between gap-4">
-            <dt className="text-muted">
-              GST{" "}
-              <span className="text-foreground/70">({fee.gstRateLabel})</span>
-            </dt>
-            <dd className="font-medium">{formatAud(fee.gstCents)}</dd>
-          </div>
+          {fee.includeGst && fee.gstCents > 0 ? (
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted">
+                GST{" "}
+                <span className="text-foreground/70">({fee.gstRateLabel})</span>
+              </dt>
+              <dd className="font-medium">{formatAud(fee.gstCents)}</dd>
+            </div>
+          ) : null}
           <div className="flex justify-between gap-4 border-t border-line pt-3">
             <dt className="font-semibold text-foreground">Total due</dt>
             <dd className="font-[family-name:var(--font-syne)] text-2xl font-semibold">
@@ -294,8 +318,10 @@ export function CardCheckoutForm({
         </dl>
         <p className="mt-3 text-xs text-muted">
           The credit card fee covers card processing for Visa, Mastercard, and
-          digital wallets. GST ({fee.gstRateLabel}) is added on top of the fare
-          and card fee — it is not included in those amounts.
+          digital wallets.
+          {fee.includeGst
+            ? ` GST (${fee.gstRateLabel}) is added on top of the fare${seatFeeCents > 0 ? ", seat extras," : ""} and card fee — it is not included in those amounts.`
+            : " This promotional fare is charged at the advertised amount; GST is not added at checkout."}
         </p>
       </div>
 

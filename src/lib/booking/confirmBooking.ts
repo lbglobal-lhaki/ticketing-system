@@ -10,6 +10,7 @@ import {
 import { prisma } from "@/lib/db";
 import {
   buildRouteLabel,
+  computeInvoiceTotals,
   defaultEndorsementText,
   defaultFareCalculationLine,
   defaultInvoiceIdentity,
@@ -40,8 +41,19 @@ import {
   quotePartyFareCents,
   seatedCountFromMix,
   travellerDisplayName,
-  type TravellerDraft,
 } from "@/lib/booking/passengers";
+import { catalogueGstInvoiceFields } from "@/lib/payments/fees";
+import { occupiedSeatsForFlight } from "@/lib/seats/occupancy";
+import {
+  parseCabinClass,
+  passengerSeatFields,
+  quoteIsRoundTrip,
+  quoteSeatFeeCents,
+  seatAssignmentLabel,
+  seatsSelectionComplete,
+  travellersFromDraft,
+  validateSeatPicks,
+} from "@/lib/seats/selection";
 
 export async function createPriceQuote(input: {
   flightId: string;
@@ -374,6 +386,7 @@ export async function confirmBooking(input: {
       async (tx) => {
         const quote = await tx.priceQuote.findUnique({
           where: { id: input.quoteId },
+          include: { fareRelease: { select: { cabinClass: true } } },
         });
 
         if (!quote) throw new Error("Quote not found");
@@ -424,7 +437,53 @@ export async function confirmBooking(input: {
         const accessToken = makeAccessToken();
         const fareCents = quotePartyFareCents(quote);
         const serviceFeeCents = input.serviceFeeCents ?? 0;
-        const amountCents = input.amountCentsOverride ?? fareCents;
+        const draftRaw = quote.travellersDraft;
+        const draftList = travellersFromDraft(draftRaw);
+        const cabin = parseCabinClass(quote.fareRelease?.cabinClass);
+        const roundTrip = quoteIsRoundTrip(quote);
+        if (!seatsSelectionComplete(draftList, roundTrip)) {
+          throw new Error("Choose seats for every adult and child before paying");
+        }
+        const takenOutbound = await occupiedSeatsForFlight(
+          {
+            flightId: quote.flightId,
+            leg: "outbound",
+            exceptQuoteId: quote.id,
+          },
+          tx,
+        );
+        const takenReturn =
+          roundTrip && quote.returnFlightId
+            ? await occupiedSeatsForFlight(
+                {
+                  flightId: quote.returnFlightId,
+                  leg: "return",
+                  exceptQuoteId: quote.id,
+                },
+                tx,
+              )
+            : new Set<string>();
+        const seatError = validateSeatPicks({
+          draft: draftList,
+          cabin,
+          roundTrip,
+          takenOutbound,
+          takenReturn,
+        });
+        if (seatError) throw new Error(seatError);
+        const otherChargesCents = quoteSeatFeeCents(draftList, cabin, roundTrip);
+        const gstFields = catalogueGstInvoiceFields(quote);
+        const totals = computeInvoiceTotals({
+          airfareCents: fareCents,
+          airportTaxesCents: 0,
+          extraBaggageCents: 0,
+          travelInsuranceCents: 0,
+          otherChargesCents,
+          serviceFeeCents,
+          gstRateBps: gstFields.gstRateBps,
+          gstIncluded: gstFields.gstIncluded,
+        });
+        const amountCents = input.amountCentsOverride ?? totals.amountCents;
         const paid = input.invoiceStatus === "paid";
         const holdExpiresAt =
           !paid && input.paymentMethod === "bank_transfer"
@@ -432,15 +491,13 @@ export async function confirmBooking(input: {
             : null;
         const invoiceNotes =
           serviceFeeCents > 0
-            ? `Includes card processing fee and exclusive GST (10%).`
+            ? gstFields.gstRateBps > 0
+              ? "Includes card processing fee and exclusive GST (10%)."
+              : "Includes card processing fee. Promotional fare charged at the advertised amount."
             : holdExpiresAt
               ? "Awaiting bank transfer."
               : "";
 
-        const draftRaw = quote.travellersDraft;
-        const draftList: TravellerDraft[] = Array.isArray(draftRaw)
-          ? (draftRaw as TravellerDraft[])
-          : [];
         const unit = quote.unitAdultFareCents || quote.quotedPriceCents;
         const adultsN = Math.max(1, quote.adultCount || input.seatsBooked || 1);
         const childrenN = Math.max(0, quote.childCount || 0);
@@ -456,6 +513,9 @@ export async function confirmBooking(input: {
           passengerType: "adult" | "child" | "infant";
           dateOfBirth: Date | null;
           priceCents: number;
+          seatOutbound: string;
+          seatReturn: string;
+          seatFeeCents: number;
         }> = [];
         const expected =
           (quote.unitAdultFareCents > 0
@@ -500,6 +560,7 @@ export async function confirmBooking(input: {
               passengerType: d.passengerType || type,
               dateOfBirth,
               priceCents,
+              ...passengerSeatFields(d, cabin, roundTrip),
             });
           } else if (i === 0) {
             travellers.push({
@@ -511,6 +572,7 @@ export async function confirmBooking(input: {
               passengerType: "adult",
               dateOfBirth: null,
               priceCents: 0,
+              ...passengerSeatFields(draftList[0], cabin, roundTrip),
             });
           } else {
             travellers.push({
@@ -522,6 +584,9 @@ export async function confirmBooking(input: {
               passengerType: type,
               dateOfBirth: null,
               priceCents,
+              seatOutbound: "",
+              seatReturn: "",
+              seatFeeCents: 0,
             });
           }
         }
@@ -575,6 +640,9 @@ export async function confirmBooking(input: {
                 ticketNumber: ids.outboundTickets[index]!,
                 returnTicketNumber: ids.returnTickets[index] ?? null,
                 bookingRef: ids.bookingRefs[index]!,
+                seatOutbound: pax.seatOutbound,
+                seatReturn: pax.seatReturn,
+                seatFeeCents: pax.seatFeeCents,
               })),
             },
           },
@@ -599,13 +667,13 @@ export async function confirmBooking(input: {
             airportTaxesCents: 0,
             extraBaggageCents: 0,
             travelInsuranceCents: 0,
-            otherChargesCents: 0,
-          gstRateBps: 1000,
-          gstIncluded: false,
+            otherChargesCents,
+            gstRateBps: gstFields.gstRateBps,
+            gstIncluded: gstFields.gstIncluded,
             accountNumber: identity.accountNumber,
             businessTpn: identity.businessTpn,
             routeLabel,
-            seatLabel: "",
+            seatLabel: seatAssignmentLabel(draftList, roundTrip),
             nameRef: bookingRef.slice(-7),
             endorsementText: defaultEndorsementText(),
             fareCalculationLine: defaultFareCalculationLine({

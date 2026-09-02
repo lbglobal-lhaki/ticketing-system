@@ -391,7 +391,7 @@ export function PassengerDetailsForm({
           pendingLabel="Saving…"
           className="btn-cta min-h-12 px-10 text-sm disabled:cursor-not-allowed disabled:opacity-70"
         >
-          Continue to payment
+          Continue to seat selection
         </SubmitButton>
       </div>
     </form>

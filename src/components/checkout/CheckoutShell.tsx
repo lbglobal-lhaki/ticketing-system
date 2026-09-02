@@ -2,6 +2,7 @@ import Link from "next/link";
 import { airportLabel, formatFlightTime } from "@/lib/format";
 import { formatAud } from "@/lib/pricing";
 import type { CheckoutQuoteState } from "@/lib/checkout/loadQuote";
+import { quoteSeatFeeFromQuote } from "@/lib/seats/selection";
 
 export function CheckoutShell({
   children,
@@ -46,6 +47,7 @@ export function QuoteSummaryCard({
   title: string;
 }) {
   const { quote, isRound } = state;
+  const seatFeeCents = quoteSeatFeeFromQuote(quote);
 
   return (
     <aside className="min-w-0 rounded-2xl border border-line bg-surface/85 p-5 backdrop-blur-sm sm:rounded-none sm:p-8">
@@ -78,7 +80,7 @@ export function QuoteSummaryCard({
             {airportLabel(quote.flight.destination)}
           </p>
           <p className="mt-1 text-muted">
-            {formatFlightTime(quote.flight.departureAt)}
+            {formatFlightTime(quote.flight.departureAt, quote.flight.origin)}
             {quote.fareReleaseName ? ` · ${quote.fareReleaseName}` : ""}
           </p>
           {isRound && (
@@ -110,7 +112,10 @@ export function QuoteSummaryCard({
               {airportLabel(quote.returnFlight.destination)}
             </p>
             <p className="mt-1 text-muted">
-              {formatFlightTime(quote.returnFlight.departureAt)}
+              {formatFlightTime(
+              quote.returnFlight.departureAt,
+              quote.returnFlight.origin,
+            )}
               {quote.returnFareReleaseName
                 ? ` · ${quote.returnFareReleaseName}`
                 : ""}
@@ -128,8 +133,13 @@ export function QuoteSummaryCard({
               : "Price per seat"}
           </p>
           <p className="mt-2 font-[family-name:var(--font-syne)] text-4xl font-semibold tracking-tight">
-            {formatAud(quote.quotedPriceCents)}
+            {formatAud(quote.quotedPriceCents + seatFeeCents)}
           </p>
+          {seatFeeCents > 0 ? (
+            <p className="mt-2 text-sm text-muted">
+              Includes {formatAud(seatFeeCents)} seat extras
+            </p>
+          ) : null}
           <p className="mt-2 text-sm text-muted">
             Lock expires {formatFlightTime(quote.expiresAt)}
           </p>

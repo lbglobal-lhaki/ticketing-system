@@ -8,6 +8,7 @@ import {
   type CabinFare,
   type FlightResultRow,
 } from "@/lib/flights/results";
+import { airportTzAbbr } from "@/lib/datetime";
 import { formatAud } from "@/lib/pricing";
 
 type FlightResultCardProps = {
@@ -63,6 +64,7 @@ export function FlightResultCard({
           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-3 sm:gap-5">
             <Endpoint
               time={formatClock(flight.departureAt)}
+              tz={airportTzAbbr(flight.origin, new Date(flight.departureAt))}
               date={formatCardDate(flight.departureAt)}
               code={flight.origin}
               city={routeCityLabel(flight.origin)}
@@ -90,6 +92,10 @@ export function FlightResultCard({
 
             <Endpoint
               time={formatClock(flight.arrivalAt)}
+              tz={airportTzAbbr(
+                flight.destination,
+                new Date(flight.arrivalAt),
+              )}
               date={formatCardDate(flight.arrivalAt)}
               code={flight.destination}
               city={routeCityLabel(flight.destination)}
@@ -157,12 +163,14 @@ function TripBadge({ flight }: { flight: FlightResultRow }) {
 
 function Endpoint({
   time,
+  tz,
   date,
   code,
   city,
   align,
 }: {
   time: string;
+  tz: string;
   date: string;
   code: string;
   city: string;
@@ -173,7 +181,10 @@ function Endpoint({
       <p className="font-[family-name:var(--font-syne)] text-2xl font-bold leading-none tracking-tight text-foreground sm:text-[1.75rem]">
         {time}
       </p>
-      <p className="mt-1.5 text-xs text-muted">{date}</p>
+      <p className="mt-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted">
+        {tz}
+      </p>
+      <p className="mt-1 text-xs text-muted">{date}</p>
       <p className="mt-2 font-[family-name:var(--font-syne)] text-lg font-bold tracking-tight text-foreground sm:text-xl">
         {code}
       </p>

@@ -38,8 +38,8 @@ export function FlightCard(props: FlightCardProps) {
           {airportLabel(props.origin)} → {airportLabel(props.destination)}
         </p>
         <p className="text-sm text-zinc-500">
-          Departs {formatFlightTime(props.departureAt)} · Arrives{" "}
-          {formatFlightTime(props.arrivalAt)}
+          Departs {formatFlightTime(props.departureAt, props.origin)} · Arrives{" "}
+          {formatFlightTime(props.arrivalAt, props.destination)}
         </p>
         {props.fareReleaseName && (
           <p className="text-sm font-medium text-accent">

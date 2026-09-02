@@ -5,6 +5,7 @@ import {
   flightDurationMinutes,
   routeCityLabel,
 } from "@/lib/flights/results";
+import { airportTzAbbr } from "@/lib/datetime";
 
 type Leg = {
   airline: string;
@@ -39,7 +40,12 @@ export function SelectedFlightSummary({
 }
 
 function FlightLegRow({ leg, label }: { leg: Leg; label?: string }) {
-  const duration = flightDurationMinutes(leg.departureAt, leg.arrivalAt);
+  const duration = flightDurationMinutes(
+    leg.departureAt,
+    leg.arrivalAt,
+    leg.origin,
+    leg.destination,
+  );
   return (
     <div className="mt-4 min-w-0">
       {label ? (
@@ -65,6 +71,9 @@ function FlightLegRow({ leg, label }: { leg: Leg; label?: string }) {
           <p className="font-[family-name:var(--font-syne)] text-xl font-bold tracking-tight sm:text-2xl">
             {formatClock(leg.departureAt)}
           </p>
+          <p className="text-[11px] font-medium text-muted sm:text-xs">
+            {airportTzAbbr(leg.origin, leg.departureAt)}
+          </p>
           <p className="text-[11px] text-muted sm:text-xs">
             {formatShortDate(leg.departureAt)}
           </p>
@@ -88,6 +97,9 @@ function FlightLegRow({ leg, label }: { leg: Leg; label?: string }) {
         <div className="min-w-0 text-right">
           <p className="font-[family-name:var(--font-syne)] text-xl font-bold tracking-tight sm:text-2xl">
             {formatClock(leg.arrivalAt)}
+          </p>
+          <p className="text-[11px] font-medium text-muted sm:text-xs">
+            {airportTzAbbr(leg.destination, leg.arrivalAt)}
           </p>
           <p className="text-[11px] text-muted sm:text-xs">
             {formatShortDate(leg.arrivalAt)}

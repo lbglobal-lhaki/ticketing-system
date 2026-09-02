@@ -22,6 +22,10 @@ import { recordDeletion } from "@/lib/audit/deletionLog";
 import { parseDateTimeLocal } from "@/lib/datetime";
 import { extraBaggageCentsForBags } from "@/lib/pricing/baggage";
 import { z } from "zod";
+import {
+  bookingNeedsSeatReclaim,
+  reclaimExpiredBookingHold,
+} from "@/lib/booking/reactivateHold";
 
 
 function moneyAud(value: FormDataEntryValue | null) {
@@ -47,37 +51,75 @@ export async function markInvoicePaidAction(formData: FormData) {
     include: { booking: true },
   });
   if (!current) redirect("/admin?tab=invoices&error=Invoice+not+found");
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (bookingNeedsSeatReclaim(current.booking.status)) {
+        await reclaimExpiredBookingHold(tx, current.bookingId, {
+          markPaid: true,
+        });
+        return;
+      }
+      const updated = await tx.invoice.update({
+        where: { id },
+        data: {
+          status: "paid",
+          paidAt: new Date(),
+          markedPaidByAdmin: true,
+          pdfBlobUrl: null,
+          pdfBlobPathname: null,
+        },
+      });
+      await tx.booking.update({
+        where: { id: updated.bookingId },
+        data: { status: "confirmed", holdExpiresAt: null },
+      });
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Could not mark invoice paid";
+    redirect(`/admin?tab=invoices&error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/admin");
+  redirect("/admin?tab=invoices&saved=invoice-paid");
+}
+
+export async function reactivateInvoiceAction(formData: FormData) {
+  await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/admin?tab=invoices&error=Missing+invoice");
+
+  const current = await prisma.invoice.findUnique({
+    where: { id },
+    include: { booking: true },
+  });
+  if (!current) redirect("/admin?tab=invoices&error=Invoice+not+found");
   if (
-    current.booking.status === "hold_expired" ||
-    current.booking.status === "cancelled"
+    current.status !== "cancelled" &&
+    !bookingNeedsSeatReclaim(current.booking.status)
   ) {
     redirect(
       `/admin?tab=invoices&error=${encodeURIComponent(
-        "Cannot mark paid — booking hold expired or cancelled. Create a new booking.",
+        "This invoice is not cancelled.",
       )}`,
     );
   }
 
-  await prisma.$transaction(async (tx) => {
-    const updated = await tx.invoice.update({
-      where: { id },
-      data: {
-        status: "paid",
-        paidAt: new Date(),
-        markedPaidByAdmin: true,
-        // Paid status appears on the PDF — force regenerate on next send/view.
-        pdfBlobUrl: null,
-        pdfBlobPathname: null,
-      },
+  try {
+    await prisma.$transaction(async (tx) => {
+      await reclaimExpiredBookingHold(tx, current.bookingId, {
+        markPaid: false,
+      });
     });
-    await tx.booking.update({
-      where: { id: updated.bookingId },
-      data: { status: "confirmed", holdExpiresAt: null },
-    });
-  });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Could not reactivate invoice";
+    redirect(`/admin?tab=invoices&error=${encodeURIComponent(message)}`);
+  }
 
   revalidatePath("/admin");
-  redirect("/admin?tab=invoices&saved=invoice-paid");
+  redirect("/admin?tab=invoices&saved=invoice-reactivated");
 }
 
 export async function markInvoiceUnpaidAction(formData: FormData) {

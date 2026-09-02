@@ -8,6 +8,7 @@ import {
 import { getCheckoutQuoteState } from "@/lib/checkout/loadQuote";
 import { isBankTransferConfigured } from "@/lib/payments/bank";
 import { getStripePublicConfig } from "@/lib/payments/stripe";
+import { seatsSelectionComplete, travellersFromDraft } from "@/lib/seats/selection";
 
 export default async function CheckoutPage({
   params,
@@ -25,13 +26,23 @@ export default async function CheckoutPage({
     redirect(`/checkout/${quoteId}/passengers`);
   }
 
+  if (
+    state.available &&
+    !seatsSelectionComplete(
+      travellersFromDraft(state.quote.travellersDraft),
+      state.isRound,
+    )
+  ) {
+    redirect(`/checkout/${quoteId}/seats`);
+  }
+
   const stripe = getStripePublicConfig();
   const bankConfigured = isBankTransferConfigured();
 
   return (
     <CheckoutShell
-      backHref={`/checkout/${quoteId}/passengers`}
-      backLabel="Back to passenger details"
+      backHref={`/checkout/${quoteId}/seats`}
+      backLabel="Back to seat selection"
     >
       <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr] lg:gap-8">
         <div className="order-2 lg:order-1">

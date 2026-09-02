@@ -3,11 +3,12 @@ import { confirmBooking } from "@/lib/booking/confirmBooking";
 import { quotePartyFareCents } from "@/lib/booking/passengers";
 import { passengerDraftFromQuote } from "@/lib/checkout/passengerDraft";
 import { prisma } from "@/lib/db";
-import { calculateCardServiceFee } from "@/lib/payments/fees";
+import { calculateCardServiceFee, exclusiveGstAppliesToFare } from "@/lib/payments/fees";
 import {
   refundPaymentIntent,
   retrievePaymentIntent,
 } from "@/lib/payments/stripe";
+import { quoteSeatFeeFromQuote, seatsSelectionComplete, travellersFromDraft } from "@/lib/seats/selection";
 
 export type CardFulfillmentResult =
   | {
@@ -111,6 +112,7 @@ export async function fulfillCardPayment(input: {
 
   const quote = await prisma.priceQuote.findUnique({
     where: { id: quoteId },
+    include: { fareRelease: { select: { cabinClass: true } } },
   });
   if (!quote) {
     return { ok: false, error: "Quote is no longer available" };
@@ -145,7 +147,23 @@ export async function fulfillCardPayment(input: {
   }
 
   const fareCents = quotePartyFareCents(quote);
-  const { totalCents, serviceFeeCents } = calculateCardServiceFee(fareCents);
+  const seatFeeCents = quoteSeatFeeFromQuote(quote);
+  if (
+    !seatsSelectionComplete(
+      travellersFromDraft(quote.travellersDraft),
+      quote.tripType === "round_trip" && Boolean(quote.returnFlightId),
+    )
+  ) {
+    return {
+      ok: false,
+      error: "Choose seats for every adult and child before paying.",
+    };
+  }
+  const includeGst = exclusiveGstAppliesToFare(quote);
+  const { totalCents, serviceFeeCents } = calculateCardServiceFee(
+    fareCents + seatFeeCents,
+    { includeGst },
+  );
 
   if (intent.amount !== totalCents) {
     // Wrong amount and not yet fulfilled — refund once.

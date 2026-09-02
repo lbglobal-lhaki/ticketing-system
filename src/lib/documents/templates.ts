@@ -20,6 +20,8 @@ export type BookingDocumentPassenger = {
   dateOfBirth?: Date | string | null;
   priceCents?: number;
   allocatesSeat?: boolean;
+  seatOutbound?: string | null;
+  seatReturn?: string | null;
 };
 
 export type BookingDocumentData = {
