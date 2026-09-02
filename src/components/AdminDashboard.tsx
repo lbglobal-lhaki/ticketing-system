@@ -24,6 +24,7 @@ import {
   reactivateBookingAction,
 } from "@/lib/actions/walkIn";
 import { BookingEditModal } from "@/components/BookingEditModal";
+import { SpecialAssistanceFields } from "@/components/SpecialAssistanceFields";
 import {
   DeletedRecordsPanel,
   type AdminDeletedRecordRow,
@@ -67,6 +68,10 @@ import {
   infantFareCents,
   partyFareCents,
 } from "@/lib/booking/passengers";
+import {
+  formatSpecialAssistance,
+  hasSpecialAssistance,
+} from "@/lib/booking/specialAssistance";
 import { formatAud } from "@/lib/pricing";
 import { EXTRA_BAG_AUD, extraBaggageCentsForBags } from "@/lib/pricing/baggage";
 import { AdminShell, type NavGroup } from "@/components/ui/AdminShell";
@@ -161,6 +166,7 @@ type BookingRow = {
   amountPaidCents: number;
   fareReleaseName: string;
   extraBaggageKg: number;
+  specialAssistance?: unknown;
   status: "pending_payment" | "confirmed" | "cancelled" | "hold_expired";
   paymentMethod: "card" | "bank_transfer" | "cash" | null;
   source: "online" | "walk_in";
@@ -942,6 +948,9 @@ export function AdminDashboard({
           `${b.flight.origin}${b.flight.destination}`,
           b.returnFlight?.flightNumber,
           b.passengers?.map((p) => p.fullName).join(" "),
+          hasSpecialAssistance(b.specialAssistance)
+            ? formatSpecialAssistance(b.specialAssistance)
+            : "",
         );
       }),
     [bookings, bookingFilter, bookingQuery],
@@ -2505,6 +2514,13 @@ export function AdminDashboard({
               </FormSection>
 
               <FormSection
+                title="Special assistance"
+                description="Optional. We'll pass this to the airline so they can arrange help at the airport or on board."
+              >
+                <SpecialAssistanceFields fieldClass={fieldClass} />
+              </FormSection>
+
+              <FormSection
                 title="Payment"
                 description="Cash and card are marked paid immediately. Bank transfer holds the seats until the expiry you set."
               >
@@ -2790,6 +2806,12 @@ export function AdminDashboard({
                             </p>
                           ) : null;
                         })()}
+                        {hasSpecialAssistance(b.specialAssistance) ? (
+                          <p className="text-xs text-muted">
+                            Assistance:{" "}
+                            {formatSpecialAssistance(b.specialAssistance)}
+                          </p>
+                        ) : null}
                       </Td>
                       <Td muted>
                         {b.flight.cabinClass === "business"
@@ -2962,6 +2984,7 @@ export function AdminDashboard({
             nationality: editingBooking.nationality,
             seatsBooked: editingBooking.seatsBooked,
             extraBaggageKg: editingBooking.extraBaggageKg,
+            specialAssistance: editingBooking.specialAssistance,
             fareReleaseName: editingBooking.fareReleaseName,
             amountPaidCents: editingBooking.amountPaidCents,
             status: editingBooking.status,

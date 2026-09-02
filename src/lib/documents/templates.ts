@@ -40,6 +40,8 @@ export type BookingDocumentData = {
   seatsBooked: number;
   /** Extra checked bags purchased with the booking (piece count). */
   extraBaggageKg?: number;
+  /** Party-level special assistance notes (wheelchair, language, other). */
+  specialAssistance?: unknown;
   fareReleaseName: string;
   fareProductName?: string;
   paymentMethod: string | null;

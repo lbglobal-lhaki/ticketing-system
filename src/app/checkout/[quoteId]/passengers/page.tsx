@@ -65,6 +65,7 @@ export default async function PassengerDetailsPage({
                 unitAdultFareCents={unitAdult}
                 error={error ? decodeURIComponent(error) : null}
                 initialTravellers={draftList}
+                initialSpecialAssistance={q.specialAssistance}
                 ageOnIso={formatDateOfBirth(q.flight.departureAt)}
                 initial={{
                   title: q.passengerTitle || undefined,

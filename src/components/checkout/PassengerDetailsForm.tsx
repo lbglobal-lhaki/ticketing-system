@@ -20,6 +20,7 @@ import {
 import { formatAud } from "@/lib/pricing";
 import { SubmitButton } from "@/components/SubmitButton";
 import { DateTimePicker } from "@/components/ui/DateTimePicker";
+import { SpecialAssistanceFields } from "@/components/SpecialAssistanceFields";
 
 const fieldClass =
   "mt-1.5 w-full rounded-lg border border-line bg-white px-3.5 py-3 text-sm text-foreground outline-none transition focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/35";
@@ -44,6 +45,7 @@ type PassengerDetailsFormProps = {
     seatsBooked?: number;
   };
   initialTravellers?: TravellerDraft[];
+  initialSpecialAssistance?: unknown;
   /** Outbound departure — child/infant age is calculated on this date. */
   ageOnIso?: string;
   error?: string | null;
@@ -132,6 +134,7 @@ export function PassengerDetailsForm({
   unitAdultFareCents,
   initial,
   initialTravellers,
+  initialSpecialAssistance,
   ageOnIso,
   error: errorProp,
 }: PassengerDetailsFormProps) {
@@ -352,6 +355,22 @@ export function PassengerDetailsForm({
           fieldErrors={fieldErrors}
         />
       ))}
+
+      <section>
+        <h2 className="font-[family-name:var(--font-syne)] text-lg font-bold text-accent-deep">
+          Special Assistance
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          Optional. Tell us if anyone in this party needs extra help at the
+          airport or on board.
+        </p>
+        <div className="mt-4">
+          <SpecialAssistanceFields
+            initial={initialSpecialAssistance}
+            fieldClass={fieldClass}
+          />
+        </div>
+      </section>
 
       <label className="flex items-start gap-3 text-sm text-muted">
         <input

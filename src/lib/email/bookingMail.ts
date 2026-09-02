@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { parseSpecialAssistance } from "@/lib/booking/specialAssistance";
 import { resolveDocumentPassengers } from "@/lib/documents/resolvePassengers";
 import type { BookingDocumentData } from "@/lib/documents/templates";
 import {
@@ -127,6 +128,7 @@ export async function loadBookingDocumentData(
     passengers,
     seatsBooked: booking.seatsBooked,
     extraBaggageKg: booking.extraBaggageKg,
+    specialAssistance: parseSpecialAssistance(booking.specialAssistance),
     fareReleaseName: booking.fareReleaseName,
     fareProductName: booking.fareProductName,
     paymentMethod: booking.paymentMethod,

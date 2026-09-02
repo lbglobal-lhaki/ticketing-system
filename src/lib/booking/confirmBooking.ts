@@ -42,6 +42,7 @@ import {
   seatedCountFromMix,
   travellerDisplayName,
 } from "@/lib/booking/passengers";
+import { specialAssistanceToJson } from "@/lib/booking/specialAssistance";
 import { catalogueGstInvoiceFields } from "@/lib/payments/fees";
 import { occupiedSeatsForFlight } from "@/lib/seats/occupancy";
 import {
@@ -618,6 +619,9 @@ export async function confirmBooking(input: {
             serviceFeeCents,
             fareProductCode: quote.fareProductCode,
             fareProductName: quote.fareProductName,
+            specialAssistance: specialAssistanceToJson(
+              quote.specialAssistance,
+            ),
             paymentMethod: input.paymentMethod,
             source: "online",
             status: paid ? "confirmed" : "pending_payment",

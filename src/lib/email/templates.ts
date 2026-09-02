@@ -7,6 +7,20 @@ import { formatFlightDateTime, airportTzAbbr } from "@/lib/datetime";
 import { withAccessToken } from "@/lib/documentAccess";
 import type { BookingDocumentData } from "@/lib/documents/templates";
 import { emailLogoImgHtml } from "@/lib/email/inlineLogo";
+import {
+  formatSpecialAssistance,
+  hasSpecialAssistance,
+} from "@/lib/booking/specialAssistance";
+
+function specialAssistanceEmailHtml(data: BookingDocumentData) {
+  if (!hasSpecialAssistance(data.specialAssistance)) return "";
+  return `<p><strong>Special assistance:</strong> ${esc(formatSpecialAssistance(data.specialAssistance))}</p>`;
+}
+
+function specialAssistanceEmailText(data: BookingDocumentData) {
+  if (!hasSpecialAssistance(data.specialAssistance)) return "";
+  return `Special assistance: ${formatSpecialAssistance(data.specialAssistance)}\n`;
+}
 
 function esc(value: string) {
   return value
@@ -43,6 +57,7 @@ export function eTicketEmail(data: BookingDocumentData) {
     <p><strong>Booking Reference:</strong> ${esc(data.bookingRef)}<br/>
     <strong>Route:</strong> ${esc(route)}<br/>
     <strong>Departure:</strong> ${esc(formatFlightDateTime(data.flight.departureAt))} ${esc(airportTzAbbr(data.flight.origin, data.flight.departureAt))}</p>
+    ${specialAssistanceEmailHtml(data)}
     <p><a href="${travelUrl}">View travel document online</a></p>
     ${
       data.invoice
@@ -59,6 +74,7 @@ Thank you for your payment. Your travel document for booking ${data.bookingRef} 
 Booking Reference: ${data.bookingRef}
 Route: ${route}
 Departure: ${formatFlightDateTime(data.flight.departureAt)} ${airportTzAbbr(data.flight.origin, data.flight.departureAt)}
+${specialAssistanceEmailText(data)}
 
 Travel document: ${travelUrl}
 ${data.invoice ? "Your tax invoice / receipt is emailed separately by our accounts team.\n" : ""}
@@ -147,6 +163,7 @@ export function bankTransferEmail(data: BookingDocumentData) {
     <strong>Route:</strong> ${esc(route)}<br/>
     <strong>Departure:</strong> ${esc(formatFlightDateTime(data.flight.departureAt))} ${esc(airportTzAbbr(data.flight.origin, data.flight.departureAt))}<br/>
     <strong>Amount Due:</strong> ${esc(formatAud(amount))}</p>
+    ${specialAssistanceEmailHtml(data)}
     <p>Please transfer the total amount using the reference:<br/><strong>${esc(reference)}</strong></p>
     <p><a href="${invoiceUrl}">View Airfare Invoice &amp; bank details</a></p>
     <h2 style="font-size:14px;letter-spacing:0.12em;text-transform:uppercase;color:#2563EB;border-bottom:1px solid #E2E8F0;padding-bottom:6px;margin-top:24px">Transaction instructions</h2>
@@ -167,7 +184,7 @@ Your ${brand.issuingAgent} booking ${data.bookingRef} is Pending Payment.
 Route: ${route}
 Departure: ${formatFlightDateTime(data.flight.departureAt)} ${airportTzAbbr(data.flight.origin, data.flight.departureAt)}
 Amount Due: ${formatAud(amount)}
-Payment reference: ${reference}
+${specialAssistanceEmailText(data)}Payment reference: ${reference}
 
 After transferring, email a payment screenshot to ${brand.paymentProofEmail} so we can confirm your booking.
 

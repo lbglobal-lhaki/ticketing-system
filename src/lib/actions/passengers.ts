@@ -11,6 +11,7 @@ import {
   seatedCountFromMix,
   type TravellerDraft,
 } from "@/lib/booking/passengers";
+import { specialAssistanceToJson } from "@/lib/booking/specialAssistance";
 import { prisma } from "@/lib/db";
 import {
   failFromUnknown,
@@ -130,6 +131,9 @@ export async function savePassengerDetailsAction(
         unitAdultFareCents,
         quotedPriceCents,
         travellersDraft: travellers as unknown as Prisma.InputJsonValue,
+        specialAssistance: specialAssistanceToJson(
+          formData,
+        ) as Prisma.InputJsonValue,
         privacyAccepted: true,
       },
     });

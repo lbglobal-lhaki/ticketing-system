@@ -15,6 +15,7 @@ import { DateTimePicker } from "@/components/ui/DateTimePicker";
 import { formatAud } from "@/lib/pricing";
 import { EXTRA_BAG_AUD, extraBaggageCentsForBags } from "@/lib/pricing/baggage";
 import { childFareCents, infantFareCents, formatDateOfBirth } from "@/lib/booking/passengers";
+import { SpecialAssistanceFields } from "@/components/SpecialAssistanceFields";
 
 export type EditablePassenger = {
   fullName: string;
@@ -40,6 +41,7 @@ export type EditableBooking = {
   nationality: string;
   seatsBooked: number;
   extraBaggageKg: number;
+  specialAssistance?: unknown;
   fareReleaseName: string;
   amountPaidCents: number;
   status: string;
@@ -271,6 +273,20 @@ export function BookingEditModal({
             fieldErrors={sticky.fieldErrors}
             description="Infants get a ticket at 10% of the adult fare but no seat. Date of birth is required — under 2 years on the departure date."
           />
+
+          <div className="space-y-2">
+            <p className="text-xs uppercase tracking-[0.12em] text-muted">
+              Special assistance
+            </p>
+            <p className="text-sm text-muted">
+              Optional. Wheelchair, language help, or any other needs for this
+              party.
+            </p>
+            <SpecialAssistanceFields
+              initial={booking.specialAssistance}
+              fieldClass={fieldClass}
+            />
+          </div>
 
           <p className="text-sm text-muted">
             Seats (adults + children):{" "}

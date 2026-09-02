@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "PriceQuote" ADD COLUMN IF NOT EXISTS "specialAssistance" JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE "Booking" ADD COLUMN IF NOT EXISTS "specialAssistance" JSONB NOT NULL DEFAULT '{}';

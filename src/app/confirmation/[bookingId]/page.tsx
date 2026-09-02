@@ -7,6 +7,10 @@ import { prisma } from "@/lib/db";
 import { airportLabel, formatFlightTime } from "@/lib/format";
 import { formatAud } from "@/lib/pricing";
 import { getBankTransferDetails } from "@/lib/payments/bank";
+import {
+  formatSpecialAssistance,
+  hasSpecialAssistance,
+} from "@/lib/booking/specialAssistance";
 
 // Re-emailing the invoice generates a PDF attachment via headless Chromium,
 // which can take longer than the platform default.
@@ -205,6 +209,12 @@ export default async function ConfirmationPage({
                   </li>
                 ))}
               </ul>
+            ) : null}
+            {hasSpecialAssistance(booking.specialAssistance) ? (
+              <p>
+                <span className="text-muted">Special assistance</span>{" "}
+                {formatSpecialAssistance(booking.specialAssistance)}
+              </p>
             ) : null}
             {seatFeeCents > 0 ? (
               <p>

@@ -42,6 +42,7 @@ import {
   partyFareCents,
   type TravellerDetail,
 } from "@/lib/booking/passengers";
+import { specialAssistanceToJson } from "@/lib/booking/specialAssistance";
 import { parseDateTimeLocal, parseFlightDateTime } from "@/lib/datetime";
 import { getCurrentFareRelease } from "@/lib/fares/current";
 import {
@@ -651,6 +652,7 @@ export async function createWalkInBookingAction(
           fareProductCode,
           fareProductName,
           extraBaggageKg: data.extraBaggageKg,
+          specialAssistance: specialAssistanceToJson(formData),
           passengerName: data.passengerName,
           email: data.email,
           passengerPhone: data.passengerPhone || "",
@@ -1308,6 +1310,7 @@ export async function updateBookingAction(
           seatsBooked,
           extraBaggageKg: data.extraBaggageKg,
           fareReleaseName: data.fareReleaseName || booking.fareReleaseName,
+          specialAssistance: specialAssistanceToJson(formData),
           amountPaidCents,
           ...(holdExpiresAt ? { holdExpiresAt } : {}),
         },

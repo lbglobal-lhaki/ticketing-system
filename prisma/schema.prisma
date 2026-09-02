@@ -204,6 +204,8 @@ model PriceQuote {
   unitAdultFareCents     Int         @default(0)
   /// Draft travellers collected on the passengers step (JSON array).
   travellersDraft        Json        @default("[]")
+  /// Party-level special assistance notes (wheelchair, language, other).
+  specialAssistance      Json        @default("{}")
   privacyAccepted        Boolean     @default(false)
   /// Soft inventory hold for quote TTL (seats already decremented when true)
   inventoryHeld          Boolean     @default(false)
@@ -244,6 +246,8 @@ model Booking {
   /// Extra checked bags purchased at booking time (piece count) — admin-priced,
   /// charge lives on the invoice's extraBaggageCents line.
   extraBaggageKg      Int            @default(0)
+  /// Party-level special assistance notes (wheelchair, language, other).
+  specialAssistance   Json           @default("{}")
   paymentMethod       PaymentMethod?
   source              BookingSource  @default(online)
   status              BookingStatus  @default(pending_payment)

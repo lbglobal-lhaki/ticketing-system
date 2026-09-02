@@ -19,6 +19,10 @@ import type {
   BookingDocumentPassenger,
 } from "@/lib/documents/templates";
 import { formatDateOfBirthDisplay, passengerTypeLabel } from "@/lib/booking/passengers";
+import {
+  formatSpecialAssistance,
+  hasSpecialAssistance,
+} from "@/lib/booking/specialAssistance";
 
 /**
  * E-ticket / itinerary / receipt, laid out to match the approved reference
@@ -526,6 +530,12 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
     </div>
 
     ${
+      hasSpecialAssistance(data.specialAssistance)
+        ? `<p class="tk-assist"><strong>Special assistance:</strong> ${esc(formatSpecialAssistance(data.specialAssistance))}</p>`
+        : ""
+    }
+
+    ${
       assets.banner
         ? `<img class="tk-banner" src="${assets.banner}" alt="Chartered Flight ${esc(cityName(data.flight.origin))} ⇄ ${esc(cityName(data.flight.destination))}" />`
         : `<div class="tk-banner tk-banner-fallback">
@@ -865,6 +875,14 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
     }
     .pax-box span { font-weight: 700; color: #111; }
     .pax-box b { font-weight: 400; color: #111; }
+    .tk-assist {
+      width: 130.8mm;
+      margin-top: 3mm;
+      font-size: 13px;
+      line-height: 1.4;
+      color: #111;
+    }
+    .tk-assist strong { font-weight: 700; }
 
     .tk-banner { display: block; width: 100%; height: auto; margin-top: 4.3mm; }
     .tk-banner-fallback {
