@@ -207,6 +207,15 @@ export async function deleteCargoSubmissionAction(formData: FormData) {
             },
             tx,
           );
+
+          // Give the payload back so the space is sellable again.
+          if (cargo.flightId && cargo.weightKg > 0) {
+            await tx.$executeRaw`
+              UPDATE "Flight"
+              SET "cargoBookedKg" = GREATEST(0, "cargoBookedKg" - ${cargo.weightKg})
+              WHERE "id" = ${cargo.flightId}
+            `;
+          }
         }
 
         // Cascades cargo.emailNotices via the CargoEmailNotice.cargoId FK.

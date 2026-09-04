@@ -79,6 +79,16 @@ export const flightFormSchema = z.object({
     .transform((v) => v.toUpperCase()),
   departureAt: z.string().min(1, "Departure date/time required"),
   arrivalAt: z.string().min(1, "Arrival date/time required"),
+  /**
+   * Structural payload for this sector (kg), shared by passengers and cargo.
+   * Paro departures lift less than Perth ones, hence per flight.
+   */
+  cargoPayloadKg: z.coerce
+    .number()
+    .int("Use a whole number of kilograms")
+    .min(0)
+    .max(200_000)
+    .default(13_000),
 });
 
 /**

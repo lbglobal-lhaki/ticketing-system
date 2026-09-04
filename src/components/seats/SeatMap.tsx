@@ -3,10 +3,12 @@
 import {
   A320NEO_GRAPHIC,
   A320NEO_SEATS,
+  FREE_SEAT_RATES,
   seatFeeCents,
   seatFeeLabel,
   type SeatCabin,
   type SeatHotspot,
+  type SeatRates,
 } from "@/lib/seats/catalog";
 import { formatAud } from "@/lib/pricing";
 
@@ -16,12 +18,14 @@ export function SeatMap({
   selectedId,
   onSelect,
   disabled,
+  rates = FREE_SEAT_RATES,
 }: {
   cabin: SeatCabin;
   taken: Set<string>;
   selectedId?: string;
   onSelect: (seat: SeatHotspot) => void;
   disabled?: boolean;
+  rates?: SeatRates;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -38,14 +42,14 @@ export function SeatMap({
         const isCabin = seat.cabin === cabin;
         const isTaken = taken.has(seat.id);
         const isSelected = selectedId === seat.id;
-        const fee = isCabin ? seatFeeCents(seat, cabin) : 0;
+        const fee = isCabin ? seatFeeCents(seat, cabin, rates) : 0;
         const title = isTaken
           ? `${seat.id} unavailable`
           : !isCabin
             ? `${seat.id} is ${seat.cabin} class`
-            : `${seat.id} · ${seatFeeLabel(seat, cabin)}${
-                fee > 0 ? ` · ${formatAud(fee)}` : ""
-              }`;
+            : fee > 0
+              ? `${seat.id} · ${seatFeeLabel(seat, cabin, rates)} · ${formatAud(fee)}`
+              : seat.id;
         return (
           <button
             key={seat.id}

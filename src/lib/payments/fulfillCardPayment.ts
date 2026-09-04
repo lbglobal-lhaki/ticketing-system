@@ -9,6 +9,7 @@ import {
   retrievePaymentIntent,
 } from "@/lib/payments/stripe";
 import { quoteSeatFeeFromQuote, seatsSelectionComplete, travellersFromDraft } from "@/lib/seats/selection";
+import { getSeatRates } from "@/lib/settings";
 
 export type CardFulfillmentResult =
   | {
@@ -147,7 +148,7 @@ export async function fulfillCardPayment(input: {
   }
 
   const fareCents = quotePartyFareCents(quote);
-  const seatFeeCents = quoteSeatFeeFromQuote(quote);
+  const seatFeeCents = quoteSeatFeeFromQuote(quote, await getSeatRates());
   if (
     !seatsSelectionComplete(
       travellersFromDraft(quote.travellersDraft),

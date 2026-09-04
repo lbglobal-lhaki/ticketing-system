@@ -18,6 +18,7 @@ import { getSystemAnalytics } from "@/lib/analytics/systemAnalytics";
 import { expireStaleHoldsForAdminLoad } from "@/lib/booking/expireHolds";
 import { prisma } from "@/lib/db";
 import { listAllCharterFareProductsAdmin } from "@/lib/fares/charter";
+import { getSiteSettings } from "@/lib/settings";
 import { adminLoginSchema } from "@/lib/validation";
 
 // Walk-in confirmations and invoice resends generate PDF attachments via
@@ -41,6 +42,7 @@ function parseTab(
   | "bookings"
   | "invoices"
   | "cargo"
+  | "settings"
   | "deleted"
   | undefined {
   if (
@@ -51,6 +53,7 @@ function parseTab(
     value === "bookings" ||
     value === "invoices" ||
     value === "cargo" ||
+    value === "settings" ||
     value === "deleted"
   ) {
     return value;
@@ -181,6 +184,7 @@ export default async function AdminPage({
     deletedRecords,
     analytics,
     charterFares,
+    settings,
   ] = await Promise.all([
       prisma.flight.findMany({
         orderBy: [{ active: "desc" }, { departureAt: "asc" }],
@@ -216,6 +220,17 @@ export default async function AdminPage({
       prisma.cargoSubmission.findMany({
         orderBy: { createdAt: "desc" },
         take: 100,
+        include: {
+          flight: {
+            select: {
+              airline: true,
+              flightNumber: true,
+              origin: true,
+              destination: true,
+              departureAt: true,
+            },
+          },
+        },
       }),
       prisma.deletedRecord.findMany({
         orderBy: { deletedAt: "desc" },
@@ -233,6 +248,7 @@ export default async function AdminPage({
       }),
       getSystemAnalytics(),
       listAllCharterFareProductsAdmin(),
+      getSiteSettings(),
     ]);
 
   const SAVED_MESSAGES: Record<string, string> = {
@@ -274,6 +290,7 @@ export default async function AdminPage({
     "cargo-created": "Cargo enquiry created.",
     "cargo-deleted": "Cargo enquiry deleted — logged in the Deleted tab.",
     "cargo-bulk-deleted": "Cargo enquiries deleted — logged in the Deleted tab.",
+    "settings-updated": "Pricing and capacity settings saved.",
     "cargo-paid": "Cargo marked as paid.",
     "cargo-unpaid": "Cargo marked as unpaid.",
     "deleted-record-purged":
@@ -331,6 +348,7 @@ export default async function AdminPage({
           >
           <AdminDashboard
             initialTab={initialTab}
+            settings={settings}
             savedMessage={savedMessage}
             errorMessage={
               params.error ? decodeURIComponent(params.error) : null
@@ -386,6 +404,8 @@ export default async function AdminPage({
               arrivalAt: f.arrivalAt.toISOString(),
               totalSeats: f.totalSeats,
               remainingSeats: f.remainingSeats,
+              cargoPayloadKg: f.cargoPayloadKg,
+              cargoBookedKg: f.cargoBookedKg,
               active: f.active,
               returnLegFlightId: f.returnLegFlightId,
               fareReleases: f.fareReleases.map((r) => ({
@@ -527,6 +547,12 @@ export default async function AdminPage({
                 email: row.email,
                 phone: row.phone,
                 answers,
+                weightKg: row.weightKg,
+                pieces: row.pieces,
+                quotedCents: row.quotedCents,
+                flightLabel: row.flight
+                  ? `${row.flight.airline} ${row.flight.flightNumber} · ${row.flight.origin}→${row.flight.destination} · ${row.flight.departureAt.toISOString().slice(0, 10)}`
+                  : null,
                 notes: row.notes,
                 googleResponseId: row.googleResponseId,
                 submittedAt: row.submittedAt?.toISOString() ?? null,

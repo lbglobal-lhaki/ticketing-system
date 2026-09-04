@@ -77,6 +77,7 @@ export default async function SeatSelectionPage({
                 travellers={travellers}
                 takenOutbound={takenOutbound}
                 takenReturn={takenReturn}
+                rates={state.seatRates}
                 outboundLabel={`${airportCity(q.flight.origin)} → ${airportCity(q.flight.destination)}`}
                 returnLabel={
                   q.returnFlight

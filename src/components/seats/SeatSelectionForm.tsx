@@ -5,12 +5,13 @@ import { saveSeatSelectionAction } from "@/lib/actions/seats";
 import { SeatMap } from "@/components/seats/SeatMap";
 import { SubmitButton } from "@/components/SubmitButton";
 import {
-  EXIT_ROW_CENTS,
-  WINDOW_SEAT_CENTS,
+  FREE_SEAT_RATES,
   getSeat,
   seatFeeCents,
+  seatRatesAreFree,
   type SeatCabin,
   type SeatHotspot,
+  type SeatRates,
 } from "@/lib/seats/catalog";
 import { quoteSeatFeeCents, seatedTravellers } from "@/lib/seats/selection";
 import type { TravellerDraft } from "@/lib/booking/passengers";
@@ -26,6 +27,8 @@ type SeatSelectionFormProps = {
   takenReturn: string[];
   outboundLabel: string;
   returnLabel?: string;
+  /** Admin-set surcharges. All-zero (the default) hides every price. */
+  rates?: SeatRates;
 };
 
 export function SeatSelectionForm({
@@ -37,6 +40,7 @@ export function SeatSelectionForm({
   takenReturn,
   outboundLabel,
   returnLabel,
+  rates = FREE_SEAT_RATES,
 }: SeatSelectionFormProps) {
   const [rows, setRows] = useState(initial);
   const [active, setActive] = useState(0);
@@ -60,7 +64,12 @@ export function SeatSelectionForm({
     return set;
   }, [leg, takenOutbound, takenReturn, rows, selectedId]);
 
-  const feeTotal = quoteSeatFeeCents(rows, cabin, roundTrip);
+  const seatsAreFree = seatRatesAreFree(rates);
+  const feeTotal = quoteSeatFeeCents(rows, cabin, roundTrip, rates);
+  const selectedSeat = selectedId ? getSeat(selectedId) : undefined;
+  const selectedSeatFee = selectedSeat
+    ? seatFeeCents(selectedSeat, cabin, rates)
+    : 0;
 
   function pick(seat: SeatHotspot) {
     if (!current || seatedIndex < 0) return;
@@ -97,8 +106,9 @@ export function SeatSelectionForm({
           Choose your seats
         </h2>
         <p className="mt-2 text-sm text-muted">
-          Tap a seat on the Drukair A320neo map. Window seats and exit-row seats
-          have an extra charge; other {cabin} seats are included.
+          {seatsAreFree
+            ? `Tap a seat on the Drukair A320neo map. Every ${cabin} seat is included in your fare.`
+            : "Tap a seat on the Drukair A320neo map. Some seats carry an extra charge, shown as you select."}
         </p>
       </div>
 
@@ -157,9 +167,7 @@ export function SeatSelectionForm({
         {current ? travellerDisplayName(current) : "Passenger"} ·{" "}
         {leg === "outbound" ? outboundLabel : returnLabel || "Return"}
         {selectedId ? ` · ${selectedId}` : ""}
-        {selectedId && getSeat(selectedId)
-          ? ` · ${formatAud(seatFeeCents(getSeat(selectedId)!, cabin))}`
-          : ""}
+        {selectedSeatFee > 0 ? ` · ${formatAud(selectedSeatFee)}` : ""}
       </p>
 
       <SeatMap
@@ -167,23 +175,35 @@ export function SeatSelectionForm({
         taken={taken}
         selectedId={selectedId}
         onSelect={pick}
+        rates={rates}
       />
 
       <ul className="space-y-1 text-xs text-muted">
-        <li>Window (A, F) · {formatAud(WINDOW_SEAT_CENTS)} extra in economy</li>
-        <li>
-          Exit row (12, 14) · {formatAud(EXIT_ROW_CENTS)} extra in economy
-        </li>
+        {rates.windowCents > 0 ? (
+          <li>Window (A, F) · {formatAud(rates.windowCents)} extra in economy</li>
+        ) : null}
+        {rates.exitRowCents > 0 ? (
+          <li>
+            Exit row (12, 14) · {formatAud(rates.exitRowCents)} extra in economy
+          </li>
+        ) : null}
+        {rates.standardCents > 0 ? (
+          <li>
+            Standard seat · {formatAud(rates.standardCents)} extra in economy
+          </li>
+        ) : null}
         <li>Dark overlay · already taken</li>
         <li>Business bookings select rows 1–5; economy selects rows 6–26</li>
       </ul>
 
-      <div className="flex items-end justify-between gap-4 border-t border-line pt-4">
-        <p className="text-sm text-muted">Seat extras</p>
-        <p className="font-[family-name:var(--font-syne)] text-2xl font-semibold">
-          {formatAud(feeTotal)}
-        </p>
-      </div>
+      {seatsAreFree ? null : (
+        <div className="flex items-end justify-between gap-4 border-t border-line pt-4">
+          <p className="text-sm text-muted">Seat extras</p>
+          <p className="font-[family-name:var(--font-syne)] text-2xl font-semibold">
+            {formatAud(feeTotal)}
+          </p>
+        </div>
+      )}
 
       {state?.error ? (
         <p className="text-sm text-red-700" role="alert">

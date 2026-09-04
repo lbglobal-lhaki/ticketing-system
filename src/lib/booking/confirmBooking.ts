@@ -8,6 +8,7 @@ import {
   retryOnUniqueConflict,
 } from "@/lib/booking/documentIds";
 import { prisma } from "@/lib/db";
+import { getSeatRates } from "@/lib/settings";
 import {
   buildRouteLabel,
   computeInvoiceTotals,
@@ -381,6 +382,9 @@ export async function confirmBooking(input: {
     return { ok: false as const, error: hold.error };
   }
 
+  // Read outside the transaction so the surcharge table isn't part of it.
+  const seatRates = await getSeatRates();
+
   try {
     const result = await retryOnUniqueConflict(() =>
       prisma.$transaction(
@@ -472,7 +476,12 @@ export async function confirmBooking(input: {
           takenReturn,
         });
         if (seatError) throw new Error(seatError);
-        const otherChargesCents = quoteSeatFeeCents(draftList, cabin, roundTrip);
+        const otherChargesCents = quoteSeatFeeCents(
+          draftList,
+          cabin,
+          roundTrip,
+          seatRates,
+        );
         const gstFields = catalogueGstInvoiceFields(quote);
         const totals = computeInvoiceTotals({
           airfareCents: fareCents,
@@ -561,7 +570,7 @@ export async function confirmBooking(input: {
               passengerType: d.passengerType || type,
               dateOfBirth,
               priceCents,
-              ...passengerSeatFields(d, cabin, roundTrip),
+              ...passengerSeatFields(d, cabin, roundTrip, seatRates),
             });
           } else if (i === 0) {
             travellers.push({
@@ -573,7 +582,7 @@ export async function confirmBooking(input: {
               passengerType: "adult",
               dateOfBirth: null,
               priceCents: 0,
-              ...passengerSeatFields(draftList[0], cabin, roundTrip),
+              ...passengerSeatFields(draftList[0], cabin, roundTrip, seatRates),
             });
           } else {
             travellers.push({

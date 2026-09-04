@@ -8,6 +8,7 @@ export function SiteHeader({ cartCount = 0 }: { cartCount?: number }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const onCart = pathname === "/cart";
+  const onCargo = pathname === "/cargo" || pathname.startsWith("/cargo/");
   const onAdmin = pathname.startsWith("/admin");
   const adminHref = onAdmin
     ? `/admin?${(() => {
@@ -41,6 +42,16 @@ export function SiteHeader({ cartCount = 0 }: { cartCount?: number }) {
             }`}
           >
             Search
+          </Link>
+          <Link
+            href="/cargo"
+            className={`hidden min-h-11 items-center rounded-full px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 sm:inline-flex ${
+              onCargo
+                ? "bg-[linear-gradient(135deg,rgba(37,99,235,0.12),rgba(220,38,38,0.08))] font-semibold text-accent"
+                : "text-muted hover:text-foreground"
+            }`}
+          >
+            Cargo
           </Link>
           <Link
             href={adminHref}

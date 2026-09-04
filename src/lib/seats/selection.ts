@@ -1,8 +1,10 @@
 import { allocatesSeat, type TravellerDraft } from "@/lib/booking/passengers";
 import {
+  FREE_SEAT_RATES,
   getSeat,
   seatFeeCents,
   type SeatCabin,
+  type SeatRates,
 } from "@/lib/seats/catalog";
 
 export function parseCabinClass(raw: string | null | undefined): SeatCabin {
@@ -28,6 +30,7 @@ export function passengerSeatFields(
   t: TravellerDraft | undefined,
   cabin: SeatCabin,
   roundTrip: boolean,
+  rates: SeatRates = FREE_SEAT_RATES,
 ) {
   if (!t || !allocatesSeat(t.passengerType)) {
     return { seatOutbound: "", seatReturn: "", seatFeeCents: 0 };
@@ -37,11 +40,11 @@ export function passengerSeatFields(
   let cents = 0;
   if (outbound) {
     const seat = getSeat(outbound);
-    if (seat) cents += seatFeeCents(seat, cabin);
+    if (seat) cents += seatFeeCents(seat, cabin, rates);
   }
   if (roundTrip && back) {
     const seat = getSeat(back);
-    if (seat) cents += seatFeeCents(seat, cabin);
+    if (seat) cents += seatFeeCents(seat, cabin, rates);
   }
   return {
     seatOutbound: outbound,
@@ -54,23 +57,29 @@ export function quoteSeatFeeCents(
   draft: TravellerDraft[],
   cabin: SeatCabin,
   roundTrip: boolean,
+  rates: SeatRates = FREE_SEAT_RATES,
 ) {
   return seatedTravellers(draft).reduce(
-    (sum, t) => sum + passengerSeatFields(t, cabin, roundTrip).seatFeeCents,
+    (sum, t) =>
+      sum + passengerSeatFields(t, cabin, roundTrip, rates).seatFeeCents,
     0,
   );
 }
 
-export function quoteSeatFeeFromQuote(quote: {
-  travellersDraft: unknown;
-  fareRelease?: { cabinClass?: string | null } | null;
-  tripType?: string | null;
-  returnFlightId?: string | null;
-}) {
+export function quoteSeatFeeFromQuote(
+  quote: {
+    travellersDraft: unknown;
+    fareRelease?: { cabinClass?: string | null } | null;
+    tripType?: string | null;
+    returnFlightId?: string | null;
+  },
+  rates: SeatRates = FREE_SEAT_RATES,
+) {
   return quoteSeatFeeCents(
     travellersFromDraft(quote.travellersDraft),
     parseCabinClass(quote.fareRelease?.cabinClass),
     quoteIsRoundTrip(quote),
+    rates,
   );
 }
 

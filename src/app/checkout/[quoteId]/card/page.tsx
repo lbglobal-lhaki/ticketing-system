@@ -60,7 +60,7 @@ export default async function CardCheckoutPage({
       Math.min(9, Math.max(1, state.maxSeats + (state.quote.heldSeats || 0))),
     );
     const fareCents = quotePartyFareCents(state.quote);
-    const seatFeeCents = quoteSeatFeeFromQuote(state.quote);
+    const seatFeeCents = quoteSeatFeeFromQuote(state.quote, state.seatRates);
     const fee = calculateCardServiceFee(fareCents + seatFeeCents, {
       includeGst: exclusiveGstAppliesToFare(state.quote),
     });
@@ -93,7 +93,7 @@ export default async function CardCheckoutPage({
   }
 
   const partyFareCents = quotePartyFareCents(state.quote);
-  const seatFeeCents = quoteSeatFeeFromQuote(state.quote);
+  const seatFeeCents = quoteSeatFeeFromQuote(state.quote, state.seatRates);
 
   return (
     <CheckoutShell

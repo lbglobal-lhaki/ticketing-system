@@ -51,6 +51,7 @@ export async function createFlightAction(
     departureAt: formData.get("departureAt"),
     arrivalAt: formData.get("arrivalAt"),
     cabinClass: formData.get("cabinClass"),
+    cargoPayloadKg: formData.get("cargoPayloadKg") ?? undefined,
   });
 
   if (!parsed.success) {
@@ -111,6 +112,7 @@ export async function createFlightAction(
       currency: "AUD",
       totalSeats: totals.totalSeats,
       remainingSeats: totals.remainingSeats,
+      cargoPayloadKg: data.cargoPayloadKg,
       active: true,
       returnLegFlightId,
       fareReleases: {
@@ -150,6 +152,7 @@ export async function updateFlightAction(
     departureAt: formData.get("departureAt"),
     arrivalAt: formData.get("arrivalAt"),
     cabinClass: formData.get("cabinClass"),
+    cargoPayloadKg: formData.get("cargoPayloadKg") ?? undefined,
   });
 
   if (!parsed.success) {
@@ -288,6 +291,7 @@ export async function updateFlightAction(
         arrivalAt,
         totalSeats: totals.totalSeats,
         remainingSeats: totals.remainingSeats,
+        cargoPayloadKg: data.cargoPayloadKg,
         // Preserve hidden/removed status — editing must not republish a flight.
         active: existingFlight.active,
         returnLegFlightId,

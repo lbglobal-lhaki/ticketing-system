@@ -62,7 +62,7 @@ export default async function BankCheckoutPage({
 
   const brand = getBrand();
   const partyFareCents = quotePartyFareCents(state.quote);
-  const seatFeeCents = quoteSeatFeeFromQuote(state.quote);
+  const seatFeeCents = quoteSeatFeeFromQuote(state.quote, state.seatRates);
   const gstCents = exclusiveGstCents(
     partyFareCents + seatFeeCents,
     exclusiveGstAppliesToFare(state.quote),

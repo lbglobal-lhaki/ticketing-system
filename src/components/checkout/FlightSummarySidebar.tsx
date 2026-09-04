@@ -51,7 +51,7 @@ export function FlightSummarySidebar({
   const children = isParty ? Math.max(0, quote.childCount || 0) : 0;
   const infants = isParty ? Math.max(0, quote.infantCount || 0) : 0;
   const totalCents = quotePartyFareCents(quote);
-  const seatFeeCents = quoteSeatFeeFromQuote(quote);
+  const seatFeeCents = quoteSeatFeeFromQuote(quote, state.seatRates);
   const includeGst = exclusiveGstAppliesToFare(quote);
   const gstCents = exclusiveGstCents(totalCents + seatFeeCents, includeGst);
   const dueCents = totalCents + seatFeeCents + gstCents;

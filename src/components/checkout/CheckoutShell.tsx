@@ -47,7 +47,7 @@ export function QuoteSummaryCard({
   title: string;
 }) {
   const { quote, isRound } = state;
-  const seatFeeCents = quoteSeatFeeFromQuote(quote);
+  const seatFeeCents = quoteSeatFeeFromQuote(quote, state.seatRates);
 
   return (
     <aside className="min-w-0 rounded-2xl border border-line bg-surface/85 p-5 backdrop-blur-sm sm:rounded-none sm:p-8">

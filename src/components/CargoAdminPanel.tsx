@@ -19,6 +19,7 @@ import { Spinner } from "@/components/Spinner";
 import { ListFilterBar, NoMatches } from "@/components/admin/ListFilterBar";
 import { SegmentedField } from "@/components/admin/SegmentedField";
 import { FieldError, labeledControlClass } from "@/components/forms/FieldError";
+import { formatAud } from "@/lib/pricing";
 import { useStickyAction } from "@/components/forms/useStickyAction";
 
 export type AdminCargoRow = {
@@ -31,6 +32,12 @@ export type AdminCargoRow = {
   email: string | null;
   phone: string | null;
   answers: Record<string, string | number | boolean | string[]>;
+  /** Chargeable weight held against the flight's payload. */
+  weightKg: number;
+  pieces: number;
+  quotedCents: number;
+  /** Departure this cargo is booked onto, when it came from the website. */
+  flightLabel: string | null;
   notes: string | null;
   googleResponseId: string | null;
   submittedAt: string | null;
@@ -400,10 +407,26 @@ export function CargoAdminPanel({
                     {row.email ? ` · ${row.email}` : ""}
                     {row.phone ? ` · ${row.phone}` : ""}
                   </p>
+                  {row.flightLabel ? (
+                    <p className="text-sm font-medium text-foreground">
+                      {row.flightLabel}
+                      {row.weightKg > 0 ? ` · ${row.weightKg} kg` : ""}
+                      {row.pieces > 0
+                        ? ` · ${row.pieces} package${row.pieces === 1 ? "" : "s"}`
+                        : ""}
+                    </p>
+                  ) : null}
                   <p className="text-sm text-muted">
                     {Object.keys(row.answers).length} field
                     {Object.keys(row.answers).length === 1 ? "" : "s"}
-                    {row.googleResponseId ? " · Google Form" : " · Admin"}
+                    {row.flightLabel
+                      ? " · Website"
+                      : row.googleResponseId
+                        ? " · Google Form"
+                        : " · Admin"}
+                    {row.quotedCents > 0
+                      ? ` · ${formatAud(row.quotedCents)}`
+                      : ""}
                     {row.paid && row.paidAt
                       ? ` · Paid ${new Date(row.paidAt).toLocaleDateString("en-AU")}`
                       : ""}

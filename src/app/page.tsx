@@ -1,3 +1,4 @@
+import { ServiceTabs } from "@/components/ServiceTabs";
 import {
   renderFlightSearch,
   type FlightSearchParams,
@@ -9,5 +10,10 @@ export default async function HomePage({
   searchParams: Promise<FlightSearchParams>;
 }) {
   const raw = await searchParams;
-  return renderFlightSearch(raw);
+  return (
+    <>
+      <ServiceTabs active="flights" />
+      {await renderFlightSearch(raw)}
+    </>
+  );
 }

@@ -98,6 +98,14 @@ model Flight {
   /// Sum of every cabin's fare-release seat pools (whole aircraft).
   totalSeats     Int
   remainingSeats Int
+  /// Structural payload for this departure (kg). Passengers and cargo share
+  /// it: every seated passenger is costed at `SiteSetting.passengerPayloadKg`
+  /// (default 100 kg incl. checked + cabin baggage), and whatever is left is
+  /// sellable as cargo. Paro departures carry less than Perth ones, so this is
+  /// set per flight rather than globally.
+  cargoPayloadKg Int        @default(13000)
+  /// Cargo weight already committed on this departure (kg).
+  cargoBookedKg  Int        @default(0)
   active         Boolean    @default(true)
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
@@ -117,6 +125,7 @@ model Flight {
   returnQuotes   PriceQuote[]  @relation("ReturnQuotes")
   bookings       Booking[]     @relation("OutboundBookings")
   returnBookings Booking[]     @relation("ReturnBookings")
+  cargoBookings  CargoSubmission[]
 
   @@index([origin, destination, departureAt])
   @@index([active])
@@ -415,7 +424,10 @@ model CharterFareProduct {
   @@index([active])
 }
 
-/// Google Form cargo enquiry — ingested via /api/cargo/submit.
+/// Cargo booking taken on the public /cargo page (older rows came from the
+/// retired Google Form ingest). `answers` keeps the full question → answer map
+/// so the cargo PDF and sender/receiver emails keep working unchanged; the
+/// columns below are the structured fields the booking flow needs.
 model CargoSubmission {
   id               String                @id @default(cuid())
   /// Auto-assigned public cargo / parcel reference (e.g. CGO-20260801-A3F91C).
@@ -427,8 +439,18 @@ model CargoSubmission {
   submitterName    String?
   email            String?
   phone            String?
+  /// Departure this cargo is booked onto — payload is shared with passengers.
+  flightId         String?
+  flight           Flight?               @relation(fields: [flightId], references: [id], onDelete: SetNull)
+  /// Chargeable weight (kg). Counts against `Flight.cargoBookedKg`.
+  weightKg         Int                   @default(0)
+  /// Number of packages / pieces.
+  pieces           Int                   @default(0)
+  /// Quoted amount at booking time (cents), from the admin cargo rate.
+  quotedCents      Int                   @default(0)
   /// Full map of form question title → answer
   answers          Json
+  /// Legacy — set only on rows ingested from the retired Google Form.
   googleResponseId String?               @unique
   notes            String?
   submittedAt      DateTime?
@@ -442,6 +464,28 @@ model CargoSubmission {
   @@index([createdAt])
   @@index([email])
   @@index([parcelNumber])
+  @@index([flightId])
+}
+
+/// Single-row admin settings. Seat surcharges default to 0 so seat selection
+/// is free until ops price it; payload defaults match the A320neo charter.
+model SiteSetting {
+  id                  String   @id @default("default")
+  /// Economy window seat (A / F) surcharge in cents. 0 = free.
+  seatWindowCents     Int      @default(0)
+  /// Economy exit-row / extra-legroom surcharge in cents. 0 = free.
+  seatExitRowCents    Int      @default(0)
+  /// Every other economy seat, in cents. 0 = free.
+  seatStandardCents   Int      @default(0)
+  /// Cargo price per kg in cents. 0 = quote offline.
+  cargoRatePerKgCents Int      @default(0)
+  /// Floor applied to a cargo quote in cents (ignored when 0).
+  cargoMinChargeCents Int      @default(0)
+  /// Payload assumed for new flights (kg).
+  defaultPayloadKg    Int      @default(13000)
+  /// Weight budget per seated passenger — body + checked + cabin baggage (kg).
+  passengerPayloadKg  Int      @default(100)
+  updatedAt           DateTime @updatedAt
 }
 
 /// Admin-controlled cargo email draft / send record (not auto-sent).

@@ -35,10 +35,15 @@ import {
   type AdminCharterFare,
 } from "@/components/CharterFaresAdmin";
 import {
+  SettingsAdminPanel,
+  type AdminSiteSettings,
+} from "@/components/SettingsAdminPanel";
+import {
   CargoAdminPanel,
   type AdminCargoRow,
 } from "@/components/CargoAdminPanel";
 import { SystemAnalyticsSection } from "@/components/SystemAnalyticsSection";
+import { flightPayloadFromRow, formatKg } from "@/lib/cargo/capacity";
 import { MoneyInput } from "@/components/MoneyInput";
 import {
   PassengerGroupFields,
@@ -132,6 +137,9 @@ type FlightRow = {
   arrivalAt: string;
   totalSeats: number;
   remainingSeats: number;
+  /** Payload shared between passengers and cargo on this sector (kg). */
+  cargoPayloadKg: number;
+  cargoBookedKg: number;
   active: boolean;
   returnLegFlightId: string | null;
   fareReleases: SavedFareRow[];
@@ -198,6 +206,7 @@ type Tab =
   | "bookings"
   | "invoices"
   | "cargo"
+  | "settings"
   | "deleted";
 
 const TABS: { id: Tab; label: string }[] = [
@@ -208,6 +217,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "bookings", label: "Bookings" },
   { id: "invoices", label: "Invoices" },
   { id: "cargo", label: "Cargo" },
+  { id: "settings", label: "Pricing & capacity" },
   { id: "deleted", label: "Deleted" },
 ];
 
@@ -220,7 +230,7 @@ const NAV_GROUPS: { label: string; ids: Tab[] }[] = [
   { label: "Overview", ids: ["analytics"] },
   { label: "Inventory", ids: ["flights", "form", "fares"] },
   { label: "Sales", ids: ["bookings", "invoices"] },
-  { label: "Operations", ids: ["cargo", "deleted"] },
+  { label: "Operations", ids: ["cargo", "settings", "deleted"] },
 ];
 
 /** Page heading + one-line explainer per section. */
@@ -254,7 +264,12 @@ const PAGE_META: Record<Tab, { title: string; description: string }> = {
   },
   cargo: {
     title: "Cargo",
-    description: "Freight enquiries from the website.",
+    description: "Freight bookings taken on the website cargo page.",
+  },
+  settings: {
+    title: "Pricing & capacity",
+    description:
+      "Seat surcharges, cargo rates, and the payload passengers and freight share.",
   },
   deleted: {
     title: "Deleted",
@@ -602,6 +617,7 @@ export function AdminDashboard({
   deletedRecords,
   analytics,
   charterFares,
+  settings,
   initialTab,
   savedMessage,
   errorMessage,
@@ -613,6 +629,7 @@ export function AdminDashboard({
   deletedRecords: AdminDeletedRecordRow[];
   analytics: SystemAnalytics;
   charterFares: AdminCharterFare[];
+  settings: AdminSiteSettings;
   initialTab?: Tab;
   savedMessage?: string | null;
   errorMessage?: string | null;
@@ -630,6 +647,10 @@ export function AdminDashboard({
   const createFlightSticky = useStickyAction(createFlightAction);
   const updateFlightSticky = useStickyAction(updateFlightAction);
   const [partnerFlightId, setPartnerFlightId] = useState("");
+  const [payloadKg, setPayloadKg] = useState(String(settings.defaultPayloadKg));
+  const payloadSeatCap = Math.floor(
+    (Number(payloadKg) || 0) / Math.max(1, settings.passengerPayloadKg),
+  );
   const [bulkPriceCabin, setBulkPriceCabin] = useState<CabinClass>("business");
   const [bulkTierName, setBulkTierName] = useState(
     () => BUSINESS_FARE_TEMPLATE[0]!.name,
@@ -1198,6 +1219,7 @@ export function AdminDashboard({
   function openAdd() {
     setEditingId(null);
     setPartnerFlightId("");
+    setPayloadKg(String(settings.defaultPayloadKg));
     setFareRows(defaultFareRows());
     selectTab("form");
   }
@@ -1208,6 +1230,7 @@ export function AdminDashboard({
       // Sync fare rows before the form mounts so uncontrolled MoneyInputs
       // get the real saved prices (not stale zeros from the previous flight).
       setPartnerFlightId(flight.returnLegFlightId ?? "");
+      setPayloadKg(String(flight.cargoPayloadKg));
       setFareRows(
         flight.fareReleases.length > 0
           ? withUids(
@@ -1563,6 +1586,21 @@ export function AdminDashboard({
                           ? " (all cabins combined)"
                           : ""}
                       </p>
+                      {(() => {
+                        const payload = flightPayloadFromRow(
+                          f,
+                          settings.passengerPayloadKg,
+                        );
+                        return (
+                          <p className="text-sm text-muted">
+                            {formatKg(payload.availableKg)} cargo space left of{" "}
+                            {formatKg(payload.payloadKg)}
+                            {payload.payloadLimited
+                              ? ` · payload caps this flight at ${payload.seatsLeftByPayload} more passenger${payload.seatsLeftByPayload === 1 ? "" : "s"}`
+                              : ""}
+                          </p>
+                        );
+                      })()}
                     </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
@@ -1849,6 +1887,48 @@ export function AdminDashboard({
                   : ""
               }
             />
+            </FormSection>
+
+            <FormSection
+              title="Payload"
+              description="Passengers and cargo share this weight. Each seated passenger is costed at the per-passenger weight set in Pricing & capacity, and the rest is sellable as cargo — so this is also what caps the passenger count on the sector."
+            >
+              <label className="space-y-1 text-sm">
+                <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
+                  Payload (kg)
+                </span>
+                <input
+                  name="cargoPayloadKg"
+                  type="number"
+                  min={0}
+                  max={200000}
+                  step={100}
+                  required
+                  value={payloadKg}
+                  onChange={(e) => setPayloadKg(e.target.value)}
+                  data-field-key="cargoPayloadKg"
+                  aria-invalid={
+                    flightSticky.fieldErrors.cargoPayloadKg ? true : undefined
+                  }
+                  className={labeledControlClass(
+                    fieldClass,
+                    flightSticky.fieldErrors.cargoPayloadKg,
+                  )}
+                />
+                <FieldError error={flightSticky.fieldErrors.cargoPayloadKg} />
+              </label>
+              <div className="rounded-card border border-line bg-background p-4 text-sm text-muted">
+                <p className="font-medium text-foreground">
+                  Room for {payloadSeatCap} passengers
+                </p>
+                <p className="mt-1">
+                  At {settings.passengerPayloadKg} kg each. Paro sectors
+                  typically lift less than Perth ones.
+                  {editing && editing.cargoBookedKg > 0
+                    ? ` ${editing.cargoBookedKg} kg of cargo is already booked on this flight.`
+                    : ""}
+                </p>
+              </div>
             </FormSection>
 
             <FormSection
@@ -2964,6 +3044,8 @@ export function AdminDashboard({
       {tab === "invoices" && <InvoiceAdminPanel invoices={invoices} />}
 
       {tab === "cargo" && <CargoAdminPanel submissions={cargoSubmissions} />}
+
+      {tab === "settings" && <SettingsAdminPanel settings={settings} />}
 
       {tab === "deleted" && (
         <DeletedRecordsPanel records={deletedRecords} />
