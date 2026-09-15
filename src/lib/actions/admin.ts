@@ -52,6 +52,7 @@ export async function createFlightAction(
     arrivalAt: formData.get("arrivalAt"),
     cabinClass: formData.get("cabinClass"),
     cargoPayloadKg: formData.get("cargoPayloadKg") ?? undefined,
+    pricingSource: formData.get("pricingSource") || "charter",
   });
 
   if (!parsed.success) {
@@ -113,6 +114,7 @@ export async function createFlightAction(
       totalSeats: totals.totalSeats,
       remainingSeats: totals.remainingSeats,
       cargoPayloadKg: data.cargoPayloadKg,
+      pricingSource: data.pricingSource,
       active: true,
       returnLegFlightId,
       fareReleases: {
@@ -132,6 +134,7 @@ export async function createFlightAction(
 
   revalidatePath("/admin");
   revalidatePath("/flights");
+  revalidatePath("/");
   redirect("/admin?tab=flights&saved=added");
 }
 
@@ -153,6 +156,7 @@ export async function updateFlightAction(
     arrivalAt: formData.get("arrivalAt"),
     cabinClass: formData.get("cabinClass"),
     cargoPayloadKg: formData.get("cargoPayloadKg") ?? undefined,
+    pricingSource: formData.get("pricingSource") || "charter",
   });
 
   if (!parsed.success) {
@@ -292,6 +296,7 @@ export async function updateFlightAction(
         totalSeats: totals.totalSeats,
         remainingSeats: totals.remainingSeats,
         cargoPayloadKg: data.cargoPayloadKg,
+        pricingSource: data.pricingSource,
         // Preserve hidden/removed status — editing must not republish a flight.
         active: existingFlight.active,
         returnLegFlightId,
@@ -301,6 +306,7 @@ export async function updateFlightAction(
 
   revalidatePath("/admin");
   revalidatePath("/flights");
+  revalidatePath("/");
   redirect("/admin?tab=flights&saved=updated");
 }
 
@@ -337,6 +343,7 @@ export async function updateFarePriceAction(formData: FormData) {
 
   revalidatePath("/admin");
   revalidatePath("/flights");
+  revalidatePath("/");
   redirect("/admin?tab=flights&saved=price");
 }
 
@@ -397,6 +404,7 @@ export async function bulkUpdateFareTierPriceAction(formData: FormData) {
 
   revalidatePath("/admin");
   revalidatePath("/flights");
+  revalidatePath("/");
   redirect(
     `/admin?tab=flights&saved=bulk-price&count=${result.count}`,
   );
@@ -414,6 +422,7 @@ export async function removeFlightAction(formData: FormData) {
 
   revalidatePath("/admin");
   revalidatePath("/flights");
+  revalidatePath("/");
   redirect("/admin?tab=flights&saved=removed");
 }
 
@@ -429,6 +438,7 @@ export async function restoreFlightAction(formData: FormData) {
 
   revalidatePath("/admin");
   revalidatePath("/flights");
+  revalidatePath("/");
   redirect("/admin?tab=flights&saved=restored");
 }
 
@@ -560,6 +570,7 @@ export async function deleteFlightAction(formData: FormData) {
 
   revalidatePath("/admin");
   revalidatePath("/flights");
+  revalidatePath("/");
   redirect(
     `/admin?tab=flights&saved=${flights.length > 1 ? "flights-deleted" : "deleted"}`,
   );

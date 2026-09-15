@@ -12,6 +12,14 @@ enum CabinClass {
   business
 }
 
+/// What the customer is charged on this departure.
+/// `charter` = Saver / Flexi / … from the Charter fares tab.
+/// `ticket_types` = the one-way / round-trip prices on this flight's ticket types.
+enum FlightPricingSource {
+  charter
+  ticket_types
+}
+
 enum TripType {
   one_way
   round_trip
@@ -106,6 +114,8 @@ model Flight {
   cargoPayloadKg Int        @default(13000)
   /// Cargo weight already committed on this departure (kg).
   cargoBookedKg  Int        @default(0)
+  /// Customers pay the charter catalogue, or the ticket-type prices on this flight.
+  pricingSource  FlightPricingSource @default(charter)
   active         Boolean    @default(true)
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt

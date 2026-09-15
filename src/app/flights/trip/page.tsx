@@ -4,7 +4,7 @@ import { FareComparisonRow } from "@/components/fares/FareComparisonRow";
 import { SelectedFlightSummary } from "@/components/fares/SelectedFlightSummary";
 import { getBrand } from "@/lib/branding";
 import { prisma } from "@/lib/db";
-import { buildCharterFareProducts } from "@/lib/fares/charter";
+import { fareProductsForCustomer } from "@/lib/fares/customerPrice";
 import {
   cabinsOnFlight,
   parseCabin,
@@ -69,10 +69,13 @@ export default async function TripReviewPage({
     seatsByCabin(outbound.fareReleases)[cabinClass].remainingSeats < 1 ||
     seatsByCabin(returnFlight.fareReleases)[cabinClass].remainingSeats < 1;
 
-  const products = await buildCharterFareProducts({
+  const products = await fareProductsForCustomer({
+    pricingSource: outbound.pricingSource,
     cabinClass,
+    releases: outbound.fareReleases,
     available: !soldOut,
   });
+  const usingTicketTypes = outbound.pricingSource === "ticket_types";
 
   // Round-trip display: use stored package total (not ×2 one-way).
   const roundTripProducts = products
@@ -119,7 +122,16 @@ export default async function TripReviewPage({
             children={children}
             infants={infants}
             title="Choose your round-trip fare"
-            subtitle="Prices below are per adult · child 75% · infant 10% (no seat)"
+            subtitle={
+              usingTicketTypes
+                ? "Ticket prices for both legs · child 75% · infant 10% (no seat)"
+                : "Prices below are per adult · child 75% · infant 10% (no seat)"
+            }
+            emptyHint={
+              usingTicketTypes
+                ? "This flight has no priced ticket types for this cabin yet."
+                : "Ask admin to activate charter fares for this cabin."
+            }
           />
         </div>
       </div>

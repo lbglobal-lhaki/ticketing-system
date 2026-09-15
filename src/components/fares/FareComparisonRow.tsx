@@ -23,6 +23,7 @@ type FareComparisonRowProps = {
   infants?: number;
   title?: string;
   subtitle?: string;
+  emptyHint?: string;
 };
 
 export function FareComparisonRow({
@@ -36,6 +37,7 @@ export function FareComparisonRow({
   infants = 0,
   title = "Choose your fare",
   subtitle = "Chartered flight fares for Perth ⇄ Paro — compare rules, then select.",
+  emptyHint = "Ask admin to activate charter fares for this cabin.",
 }: FareComparisonRowProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [detailsId, setDetailsId] = useState<string | null>(null);
@@ -50,7 +52,7 @@ export function FareComparisonRow({
       <section className="rounded-2xl border border-dashed border-line bg-white px-5 py-10 text-center">
         <p className="font-semibold">No fare products available</p>
         <p className="mt-1 text-sm text-muted">
-          Ask admin to activate charter fares for this cabin.
+          {emptyHint}
         </p>
       </section>
     );

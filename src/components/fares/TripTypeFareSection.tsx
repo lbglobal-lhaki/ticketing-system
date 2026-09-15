@@ -33,6 +33,7 @@ export function TripTypeFareSection({
   adults = 1,
   children = 0,
   infants = 0,
+  pricingSource = "charter",
 }: {
   outbound: Leg;
   pairedReturn: Leg | null;
@@ -42,8 +43,10 @@ export function TripTypeFareSection({
   adults?: number;
   children?: number;
   infants?: number;
+  pricingSource?: string;
 }) {
   const canRoundTrip = Boolean(pairedReturn && pairedReturn.remainingSeats > 0);
+  const usingTicketTypes = pricingSource === "ticket_types";
   const [tripType, setTripType] = useState<"one_way" | "round_trip">(
     canRoundTrip ? "round_trip" : "one_way",
   );
@@ -119,8 +122,17 @@ export function TripTypeFareSection({
         title={isRoundTrip ? "Choose your round-trip fare" : "Choose your fare"}
         subtitle={
           isRoundTrip
-            ? "Adult package for both legs · child 75% · infant 10% (no seat)"
-            : "Adult fare per seat · child 75% · infant 10% (no seat)"
+            ? usingTicketTypes
+              ? "Ticket prices for both legs · child 75% · infant 10% (no seat)"
+              : "Adult package for both legs · child 75% · infant 10% (no seat)"
+            : usingTicketTypes
+              ? "Ticket prices on this flight · child 75% · infant 10% (no seat)"
+              : "Adult fare per seat · child 75% · infant 10% (no seat)"
+        }
+        emptyHint={
+          usingTicketTypes
+            ? "This flight has no priced ticket types for this cabin yet."
+            : "Ask admin to activate charter fares for this cabin."
         }
       />
     </div>

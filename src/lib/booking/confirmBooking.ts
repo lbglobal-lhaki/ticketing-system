@@ -17,6 +17,7 @@ import {
   defaultInvoiceIdentity,
 } from "@/lib/documents/invoiceFields";
 import { getCurrentFareRelease } from "@/lib/fares/current";
+import { matchingReturnRelease } from "@/lib/fares/ticketTypes";
 import {
   cabinLabel,
   cabinsOnFlight,
@@ -61,7 +62,7 @@ export async function createPriceQuote(input: {
   flightId: string;
   returnFlightId?: string;
   sessionId: string;
-  /** Selected charter fare product (Saver / Flexi / …) — locks catalogue price. */
+  /** Selected charter fare product, or ticket-type id when the flight sells ticket prices. */
   fareProductId?: string;
   /** Cabin to book. Ignored when a fare product is given — that carries its own. */
   cabinClass?: string;
@@ -88,20 +89,40 @@ export async function createPriceQuote(input: {
   /*
    * One flight now sells both cabins, so the cabin has to be resolved before a
    * fare release can be picked — otherwise a business tier could be handed to
-   * an economy booking simply because it sorts first. The selected charter
-   * fare product is cabin-specific and is the authority; `input.cabinClass` is
-   * the fallback for the few paths that start checkout without one.
+   * an economy booking simply because it sorts first.
+   *
+   * Price source is per flight: ticket_types charges the selected ticket type
+   * (fareProductId is a FareRelease id). Charter charges the catalogue product
+   * and still decrements the current inventory bucket.
    */
-  const product = input.fareProductId
-    ? await prisma.charterFareProduct.findFirst({
-        where: { id: input.fareProductId, active: true },
-      })
-    : null;
-  if (input.fareProductId && !product) {
+  const usingTicketTypes = flight.pricingSource === "ticket_types";
+  const ticketRelease =
+    usingTicketTypes && input.fareProductId
+      ? (flight.fareReleases.find(
+          (r) => r.id === input.fareProductId && r.active,
+        ) ?? null)
+      : null;
+  if (usingTicketTypes && input.fareProductId && !ticketRelease) {
+    return { ok: false as const, error: "Selected ticket type is unavailable" };
+  }
+  if (ticketRelease && ticketRelease.remainingSeats < 1) {
+    return { ok: false as const, error: "Selected ticket type is sold out" };
+  }
+
+  const product =
+    !usingTicketTypes && input.fareProductId
+      ? await prisma.charterFareProduct.findFirst({
+          where: { id: input.fareProductId, active: true },
+        })
+      : null;
+  if (!usingTicketTypes && input.fareProductId && !product) {
     return { ok: false as const, error: "Selected fare product is unavailable" };
   }
   const cabinClass = parseCabin(
-    product?.cabinClass ?? input.cabinClass ?? "economy",
+    ticketRelease?.cabinClass ??
+      product?.cabinClass ??
+      input.cabinClass ??
+      "economy",
   );
 
   const outboundCabins = cabinsOnFlight(flight.fareReleases);
@@ -119,9 +140,11 @@ export async function createPriceQuote(input: {
     };
   }
 
-  const outboundCurrent = getCurrentFareRelease(flight.fareReleases, cabinClass, {
-    roundTrip: isRoundTrip,
-  });
+  const outboundCurrent =
+    ticketRelease ??
+    getCurrentFareRelease(flight.fareReleases, cabinClass, {
+      roundTrip: isRoundTrip,
+    });
   if (!outboundCurrent) {
     return {
       ok: false as const,
@@ -180,10 +203,28 @@ export async function createPriceQuote(input: {
         error: `${cabinLabel(cabinClass)} class is sold out on the return flight`,
       };
     }
-    returnCurrent = getCurrentFareRelease(returnFlight.fareReleases, cabinClass, {
-      roundTrip: true,
-    });
-    if (!returnCurrent || returnCurrent.roundTripPriceCents <= 0) {
+    returnCurrent =
+      ticketRelease
+        ? matchingReturnRelease(
+            returnFlight.fareReleases,
+            ticketRelease,
+            cabinClass,
+          ) ??
+          getCurrentFareRelease(returnFlight.fareReleases, cabinClass, {
+            roundTrip: true,
+          })
+        : getCurrentFareRelease(returnFlight.fareReleases, cabinClass, {
+            roundTrip: true,
+          });
+    if (!returnCurrent) {
+      return {
+        ok: false as const,
+        error: ticketRelease
+          ? "Return flight has no matching ticket type"
+          : "Return round-trip fare is not priced yet — ask admin to set round-trip release prices",
+      };
+    }
+    if (!ticketRelease && returnCurrent.roundTripPriceCents <= 0) {
       return {
         ok: false as const,
         error:
@@ -225,6 +266,32 @@ export async function createPriceQuote(input: {
         };
       }
       outboundCents = product.priceCents;
+      returnCents = 0;
+    }
+  } else if (ticketRelease) {
+    fareProductCode = `ticket:${ticketRelease.id}`;
+    fareProductName = ticketRelease.name;
+    fareReleaseName = ticketRelease.name;
+    if (returnFlight) {
+      if (ticketRelease.roundTripPriceCents <= 0) {
+        return {
+          ok: false as const,
+          error:
+            "Selected round-trip ticket is not priced yet — ask admin to set round-trip ticket prices",
+        };
+      }
+      const split = splitRoundTripPackageCents(ticketRelease.roundTripPriceCents);
+      outboundCents = split.outboundCents;
+      returnCents = split.returnCents;
+      returnFareReleaseName = returnCurrent?.name ?? ticketRelease.name;
+    } else {
+      if (ticketRelease.priceCents <= 0) {
+        return {
+          ok: false as const,
+          error: "Selected ticket type is not priced yet",
+        };
+      }
+      outboundCents = ticketRelease.priceCents;
       returnCents = 0;
     }
   } else {

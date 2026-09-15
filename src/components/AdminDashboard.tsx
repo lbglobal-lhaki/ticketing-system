@@ -140,6 +140,7 @@ type FlightRow = {
   /** Payload shared between passengers and cargo on this sector (kg). */
   cargoPayloadKg: number;
   cargoBookedKg: number;
+  pricingSource: "charter" | "ticket_types";
   active: boolean;
   returnLegFlightId: string | null;
   fareReleases: SavedFareRow[];
@@ -648,6 +649,9 @@ export function AdminDashboard({
   const updateFlightSticky = useStickyAction(updateFlightAction);
   const [partnerFlightId, setPartnerFlightId] = useState("");
   const [payloadKg, setPayloadKg] = useState(String(settings.defaultPayloadKg));
+  const [pricingSource, setPricingSource] = useState<
+    "charter" | "ticket_types"
+  >("ticket_types");
   const payloadSeatCap = Math.floor(
     (Number(payloadKg) || 0) / Math.max(1, settings.passengerPayloadKg),
   );
@@ -1220,6 +1224,7 @@ export function AdminDashboard({
     setEditingId(null);
     setPartnerFlightId("");
     setPayloadKg(String(settings.defaultPayloadKg));
+    setPricingSource("ticket_types");
     setFareRows(defaultFareRows());
     selectTab("form");
   }
@@ -1231,6 +1236,7 @@ export function AdminDashboard({
       // get the real saved prices (not stale zeros from the previous flight).
       setPartnerFlightId(flight.returnLegFlightId ?? "");
       setPayloadKg(String(flight.cargoPayloadKg));
+      setPricingSource(flight.pricingSource ?? "charter");
       setFareRows(
         flight.fareReleases.length > 0
           ? withUids(
@@ -1561,6 +1567,11 @@ export function AdminDashboard({
                           }`}
                         >
                           {f.active ? "Live" : "Hidden"}
+                        </span>
+                        <span className="border border-line px-2 py-0.5 text-xs font-medium text-muted">
+                          {f.pricingSource === "ticket_types"
+                            ? "Sells ticket prices"
+                            : "Sells charter fares"}
                         </span>
                         {cabinSeatsOf(f).map(({ cabin, total, remaining }) => (
                           <span
@@ -1957,6 +1968,44 @@ export function AdminDashboard({
 
             </FormSection>
 
+            <FormSection
+              title="What customers pay"
+              description="Charter fares are the Saver / Flexi catalogue on the Charter fares tab. Ticket types are the one-way and round-trip prices you set on this flight."
+            >
+              <input type="hidden" name="pricingSource" value={pricingSource} />
+              <div className="sm:col-span-2">
+                <div className="inline-flex rounded-full border border-line bg-white p-1 text-sm font-medium">
+                  <button
+                    type="button"
+                    onClick={() => setPricingSource("charter")}
+                    className={`rounded-full px-4 py-2 transition ${
+                      pricingSource === "charter"
+                        ? "bg-accent-deep text-white"
+                        : "text-muted hover:text-foreground"
+                    }`}
+                  >
+                    Charter fares
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPricingSource("ticket_types")}
+                    className={`rounded-full px-4 py-2 transition ${
+                      pricingSource === "ticket_types"
+                        ? "bg-accent-deep text-white"
+                        : "text-muted hover:text-foreground"
+                    }`}
+                  >
+                    This flight&apos;s ticket types
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-muted">
+                  {pricingSource === "ticket_types"
+                    ? "The shop will show and charge the ticket prices below. Charter catalogue prices are ignored for this departure."
+                    : "The shop will show and charge the Charter fares catalogue. Ticket types below still hold seats, but their prices are not sold to customers."}
+                </p>
+              </div>
+            </FormSection>
+
             <div className="sm:col-span-2 space-y-5 rounded-card border border-line bg-surface p-5 shadow-ui-sm">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
@@ -1967,6 +2016,9 @@ export function AdminDashboard({
                     Each cabin sells its ticket types in order, top to bottom.
                     Leave a price at 0 to hold a ticket type back — it will not
                     sell until you price it.
+                    {pricingSource === "charter"
+                      ? " These prices are inventory only unless you switch What customers pay to this flight’s ticket types."
+                      : " These are the prices customers will see."}
                   </p>
                 </div>
                 <p className="text-sm text-muted">

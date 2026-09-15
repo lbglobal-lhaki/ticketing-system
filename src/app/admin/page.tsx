@@ -406,6 +406,7 @@ export default async function AdminPage({
               remainingSeats: f.remainingSeats,
               cargoPayloadKg: f.cargoPayloadKg,
               cargoBookedKg: f.cargoBookedKg,
+              pricingSource: f.pricingSource as "charter" | "ticket_types",
               active: f.active,
               returnLegFlightId: f.returnLegFlightId,
               fareReleases: f.fareReleases.map((r) => ({

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { TripTypeFareSection } from "@/components/fares/TripTypeFareSection";
 import { getBrand } from "@/lib/branding";
 import { prisma } from "@/lib/db";
-import { buildCharterFareProducts } from "@/lib/fares/charter";
+import { fareProductsForCustomer } from "@/lib/fares/customerPrice";
 import {
   cabinLabel,
   cabinsOnFlight,
@@ -63,8 +63,10 @@ export default async function FlightDetailPage({
   const cabinSeats = seatsByCabin(flight.fareReleases)[cabinClass];
   // Sold out is per cabin — a full business cabin must not hide economy seats.
   const soldOut = cabinSeats.remainingSeats < 1;
-  const products = await buildCharterFareProducts({
+  const products = await fareProductsForCustomer({
+    pricingSource: flight.pricingSource,
     cabinClass,
+    releases: flight.fareReleases,
     available: !soldOut,
   });
 
@@ -149,6 +151,7 @@ export default async function FlightDetailPage({
             adults={adults}
             children={children}
             infants={infants}
+            pricingSource={flight.pricingSource}
           />
         </div>
       </div>

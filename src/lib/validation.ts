@@ -89,6 +89,8 @@ export const flightFormSchema = z.object({
     .min(0)
     .max(200_000)
     .default(13_000),
+  /** Customers pay the Charter fares tab, or this flight's ticket-type prices. */
+  pricingSource: z.enum(["charter", "ticket_types"]).default("charter"),
 });
 
 /**
