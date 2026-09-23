@@ -190,9 +190,10 @@ export default async function AdminPage({
         orderBy: [{ active: "desc" }, { departureAt: "asc" }],
         include: { fareReleases: { orderBy: { sortOrder: "asc" } } },
       }),
+      // Full history — search / reissue must reach older bookings, not only
+      // the latest page of 50.
       prisma.booking.findMany({
         orderBy: { createdAt: "desc" },
-        take: 50,
         include: {
           flight: true,
           returnFlight: true,
@@ -202,9 +203,10 @@ export default async function AdminPage({
           passengers: { orderBy: { sortOrder: "asc" } },
         },
       }),
+      // Full history — search / reissue travel docs must reach older invoices,
+      // not only the latest page of 50.
       prisma.invoice.findMany({
         orderBy: { createdAt: "desc" },
-        take: 50,
         include: {
           booking: {
             select: {

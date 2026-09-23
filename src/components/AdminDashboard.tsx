@@ -257,11 +257,12 @@ const PAGE_META: Record<Tab, { title: string; description: string }> = {
   bookings: {
     title: "Bookings",
     description:
-      "Confirm bank transfers, edit traveller details, and book at the counter.",
+      "Full booking history — confirm bank transfers, edit travellers, and book at the counter.",
   },
   invoices: {
     title: "Invoices",
-    description: "Generate, preview and email travel documents and tax invoices.",
+    description:
+      "Full invoice history — search, generate, preview and email travel documents and tax invoices.",
   },
   cargo: {
     title: "Cargo",
