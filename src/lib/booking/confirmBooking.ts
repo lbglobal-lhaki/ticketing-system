@@ -47,6 +47,7 @@ import {
 import { specialAssistanceToJson } from "@/lib/booking/specialAssistance";
 import { catalogueGstInvoiceFields } from "@/lib/payments/fees";
 import { occupiedSeatsForFlight } from "@/lib/seats/occupancy";
+import { CUSTOMER_SEAT_SELECTION_ENABLED } from "@/lib/seats/customerSeatSelection";
 import {
   parseCabinClass,
   passengerSeatFields,
@@ -513,36 +514,38 @@ export async function confirmBooking(input: {
         const draftList = travellersFromDraft(draftRaw);
         const cabin = parseCabinClass(quote.fareRelease?.cabinClass);
         const roundTrip = quoteIsRoundTrip(quote);
-        if (!seatsSelectionComplete(draftList, roundTrip)) {
-          throw new Error("Choose seats for every adult and child before paying");
+        if (CUSTOMER_SEAT_SELECTION_ENABLED) {
+          if (!seatsSelectionComplete(draftList, roundTrip)) {
+            throw new Error("Choose seats for every adult and child before paying");
+          }
+          const takenOutbound = await occupiedSeatsForFlight(
+            {
+              flightId: quote.flightId,
+              leg: "outbound",
+              exceptQuoteId: quote.id,
+            },
+            tx,
+          );
+          const takenReturn =
+            roundTrip && quote.returnFlightId
+              ? await occupiedSeatsForFlight(
+                  {
+                    flightId: quote.returnFlightId,
+                    leg: "return",
+                    exceptQuoteId: quote.id,
+                  },
+                  tx,
+                )
+              : new Set<string>();
+          const seatError = validateSeatPicks({
+            draft: draftList,
+            cabin,
+            roundTrip,
+            takenOutbound,
+            takenReturn,
+          });
+          if (seatError) throw new Error(seatError);
         }
-        const takenOutbound = await occupiedSeatsForFlight(
-          {
-            flightId: quote.flightId,
-            leg: "outbound",
-            exceptQuoteId: quote.id,
-          },
-          tx,
-        );
-        const takenReturn =
-          roundTrip && quote.returnFlightId
-            ? await occupiedSeatsForFlight(
-                {
-                  flightId: quote.returnFlightId,
-                  leg: "return",
-                  exceptQuoteId: quote.id,
-                },
-                tx,
-              )
-            : new Set<string>();
-        const seatError = validateSeatPicks({
-          draft: draftList,
-          cabin,
-          roundTrip,
-          takenOutbound,
-          takenReturn,
-        });
-        if (seatError) throw new Error(seatError);
         const otherChargesCents = quoteSeatFeeCents(
           draftList,
           cabin,

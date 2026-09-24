@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { payWithBankTransferAction } from "@/lib/actions/payment";
 import { formatAud } from "@/lib/pricing";
+import { CUSTOMER_SEAT_SELECTION_ENABLED } from "@/lib/seats/customerSeatSelection";
 
 type BankCheckoutFormProps = {
   quoteId: string;
@@ -119,12 +120,14 @@ export function BankCheckoutForm({
             >
               Edit details
             </Link>
-            <Link
-              href={`/checkout/${quoteId}/seats`}
-              className="text-sm font-semibold text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
-            >
-              Change seats
-            </Link>
+            {CUSTOMER_SEAT_SELECTION_ENABLED ? (
+              <Link
+                href={`/checkout/${quoteId}/seats`}
+                className="text-sm font-semibold text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+              >
+                Change seats
+              </Link>
+            ) : null}
           </div>
         </div>
         <div className="mt-4 space-y-2 border-t border-line pt-4 text-sm">

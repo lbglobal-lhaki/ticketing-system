@@ -6,6 +6,7 @@ import { StripePaymentFields } from "@/components/StripePaymentFields";
 import { payWithCardAction } from "@/lib/actions/payment";
 import { calculateCardServiceFee } from "@/lib/payments/fees";
 import { formatAud } from "@/lib/pricing";
+import { CUSTOMER_SEAT_SELECTION_ENABLED } from "@/lib/seats/customerSeatSelection";
 
 const fieldClass =
   "w-full border-0 border-b border-line bg-transparent py-3 text-sm text-foreground outline-none transition focus-visible:border-accent focus-visible:shadow-[0_2px_0_0_var(--accent)]";
@@ -164,12 +165,14 @@ export function CardCheckoutForm({
             >
               Edit details
             </Link>
-            <Link
-              href={`/checkout/${quoteId}/seats`}
-              className="text-sm font-semibold text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
-            >
-              Change seats
-            </Link>
+            {CUSTOMER_SEAT_SELECTION_ENABLED ? (
+              <Link
+                href={`/checkout/${quoteId}/seats`}
+                className="text-sm font-semibold text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+              >
+                Change seats
+              </Link>
+            ) : null}
           </div>
         </div>
       </div>

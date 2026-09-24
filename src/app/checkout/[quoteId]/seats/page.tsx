@@ -7,6 +7,7 @@ import type { TravellerDraft } from "@/lib/booking/passengers";
 import { getCheckoutQuoteState } from "@/lib/checkout/loadQuote";
 import { passengerDraftFromQuote } from "@/lib/checkout/passengerDraft";
 import { occupiedSeatsForFlight } from "@/lib/seats/occupancy";
+import { CUSTOMER_SEAT_SELECTION_ENABLED } from "@/lib/seats/customerSeatSelection";
 import { parseCabinClass } from "@/lib/seats/selection";
 import { airportCity } from "@/lib/format";
 
@@ -22,6 +23,9 @@ export default async function SeatSelectionPage({
   const draft = passengerDraftFromQuote(state.quote);
   if (state.available && !draft.complete) {
     redirect(`/checkout/${quoteId}/passengers`);
+  }
+  if (!CUSTOMER_SEAT_SELECTION_ENABLED) {
+    redirect(`/checkout/${quoteId}`);
   }
 
   const q = state.quote;

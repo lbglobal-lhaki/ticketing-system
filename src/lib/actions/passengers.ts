@@ -18,6 +18,7 @@ import {
   formFail,
   type FormActionResult,
 } from "@/lib/forms/formAction";
+import { CUSTOMER_SEAT_SELECTION_ENABLED } from "@/lib/seats/customerSeatSelection";
 import { getSessionId } from "@/lib/session";
 
 function parseCount(raw: FormDataEntryValue | null, fallback: number, max: number) {
@@ -148,5 +149,9 @@ export async function savePassengerDetailsAction(
   revalidatePath(`/checkout/${quoteId}/seats`);
   revalidatePath(`/checkout/${quoteId}/card`);
   revalidatePath(`/checkout/${quoteId}/bank`);
-  redirect(`/checkout/${quoteId}/seats`);
+  redirect(
+    CUSTOMER_SEAT_SELECTION_ENABLED
+      ? `/checkout/${quoteId}/seats`
+      : `/checkout/${quoteId}`,
+  );
 }

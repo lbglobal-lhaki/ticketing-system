@@ -18,6 +18,7 @@ import {
   getBankTransferDetails,
   isBankTransferConfigured,
 } from "@/lib/payments/bank";
+import { CUSTOMER_SEAT_SELECTION_ENABLED } from "@/lib/seats/customerSeatSelection";
 import {
   quoteSeatFeeFromQuote,
   seatsSelectionComplete,
@@ -42,6 +43,7 @@ export default async function BankCheckoutPage({
     redirect(`/checkout/${quoteId}/passengers`);
   }
   if (
+    CUSTOMER_SEAT_SELECTION_ENABLED &&
     state.available &&
     !seatsSelectionComplete(
       travellersFromDraft(state.quote.travellersDraft),

@@ -12,6 +12,7 @@ import { getCheckoutQuoteState } from "@/lib/checkout/loadQuote";
 import { passengerDraftFromQuote } from "@/lib/checkout/passengerDraft";
 import { calculateCardServiceFee, exclusiveGstAppliesToFare } from "@/lib/payments/fees";
 import { createPaymentIntent, getStripePublicConfig } from "@/lib/payments/stripe";
+import { CUSTOMER_SEAT_SELECTION_ENABLED } from "@/lib/seats/customerSeatSelection";
 import {
   quoteSeatFeeFromQuote,
   seatsSelectionComplete,
@@ -37,6 +38,7 @@ export default async function CardCheckoutPage({
     redirect(`/checkout/${quoteId}/passengers`);
   }
   if (
+    CUSTOMER_SEAT_SELECTION_ENABLED &&
     state.available &&
     !seatsSelectionComplete(
       travellersFromDraft(state.quote.travellersDraft),

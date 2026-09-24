@@ -8,6 +8,7 @@ import {
   refundPaymentIntent,
   retrievePaymentIntent,
 } from "@/lib/payments/stripe";
+import { CUSTOMER_SEAT_SELECTION_ENABLED } from "@/lib/seats/customerSeatSelection";
 import { quoteSeatFeeFromQuote, seatsSelectionComplete, travellersFromDraft } from "@/lib/seats/selection";
 import { getSeatRates } from "@/lib/settings";
 
@@ -150,6 +151,7 @@ export async function fulfillCardPayment(input: {
   const fareCents = quotePartyFareCents(quote);
   const seatFeeCents = quoteSeatFeeFromQuote(quote, await getSeatRates());
   if (
+    CUSTOMER_SEAT_SELECTION_ENABLED &&
     !seatsSelectionComplete(
       travellersFromDraft(quote.travellersDraft),
       quote.tripType === "round_trip" && Boolean(quote.returnFlightId),

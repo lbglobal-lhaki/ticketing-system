@@ -21,6 +21,7 @@ import { formatAud } from "@/lib/pricing";
 import { SubmitButton } from "@/components/SubmitButton";
 import { DateTimePicker } from "@/components/ui/DateTimePicker";
 import { SpecialAssistanceFields } from "@/components/SpecialAssistanceFields";
+import { CUSTOMER_SEAT_SELECTION_ENABLED } from "@/lib/seats/customerSeatSelection";
 
 const fieldClass =
   "mt-1.5 w-full rounded-lg border border-line bg-white px-3.5 py-3 text-sm text-foreground outline-none transition focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/35";
@@ -410,7 +411,9 @@ export function PassengerDetailsForm({
           pendingLabel="Saving…"
           className="btn-cta min-h-12 px-10 text-sm disabled:cursor-not-allowed disabled:opacity-70"
         >
-          Continue to seat selection
+          {CUSTOMER_SEAT_SELECTION_ENABLED
+            ? "Continue to seat selection"
+            : "Continue to payment"}
         </SubmitButton>
       </div>
     </form>
