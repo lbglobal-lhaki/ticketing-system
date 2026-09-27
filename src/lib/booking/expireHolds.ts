@@ -42,7 +42,15 @@ ${brand.reservationsTeam}`;
   return { subject, html, text };
 }
 
-/** Expire unpaid bank-transfer holds past holdExpiresAt; restore inventory; email customer. */
+/**
+ * Customer "seat hold released" email. Off — ops often extend the invoice
+ * due date, and this mail still went out at the original 48h hold and
+ * alarmed clients. Inventory expiry still runs when the hold (or a later
+ * invoice due date) has actually passed.
+ */
+export const HOLD_EXPIRED_CUSTOMER_EMAIL_ENABLED = false;
+
+/** Expire unpaid bank-transfer holds past holdExpiresAt; restore inventory. */
 export async function expireStaleBankHolds() {
   const now = new Date();
   const stale = await prisma.booking.findMany({
@@ -71,6 +79,17 @@ export async function expireStaleBankHolds() {
           !current.holdExpiresAt ||
           current.holdExpiresAt > now
         ) {
+          return null;
+        }
+
+        // Invoice due date is what ops extend. If that is still in the
+        // future, keep the seats and move the hold to match.
+        const dueAt = current.invoice?.dueAt ?? null;
+        if (dueAt && dueAt > now) {
+          await tx.booking.update({
+            where: { id: current.id },
+            data: { holdExpiresAt: dueAt },
+          });
           return null;
         }
 
@@ -110,16 +129,18 @@ export async function expireStaleBankHolds() {
         continue;
       }
 
-      const data = await loadBookingDocumentData(booking.id);
-      if (data) {
-        const mail = holdExpiredEmail(data);
-        await sendEmail({
-          to: data.email,
-          subject: mail.subject,
-          html: mail.html,
-          text: mail.text,
-          mailbox: "ticketing",
-        });
+      if (HOLD_EXPIRED_CUSTOMER_EMAIL_ENABLED) {
+        const data = await loadBookingDocumentData(booking.id);
+        if (data) {
+          const mail = holdExpiredEmail(data);
+          await sendEmail({
+            to: data.email,
+            subject: mail.subject,
+            html: mail.html,
+            text: mail.text,
+            mailbox: "ticketing",
+          });
+        }
       }
 
       results.push({ bookingId: row.id, ok: true });

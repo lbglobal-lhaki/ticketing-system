@@ -292,7 +292,16 @@ async function persistInvoiceDocument(formData: FormData) {
 
   const existing = await prisma.invoice.findUnique({
     where: { id: parsed.data.id },
-    include: { booking: { select: { bookingRef: true, extraBaggageKg: true } } },
+    include: {
+      booking: {
+        select: {
+          bookingRef: true,
+          extraBaggageKg: true,
+          status: true,
+          paymentMethod: true,
+        },
+      },
+    },
   });
   if (!existing) return { ok: false as const, error: "Invoice not found" };
 
@@ -395,6 +404,11 @@ async function persistInvoiceDocument(formData: FormData) {
       amountPaidCents: totals.amountCents,
       serviceFeeCents,
       extraBaggageKg,
+      ...(dueAt &&
+      existing.booking.status === "pending_payment" &&
+      existing.booking.paymentMethod === "bank_transfer"
+        ? { holdExpiresAt: dueAt }
+        : {}),
     },
   });
 

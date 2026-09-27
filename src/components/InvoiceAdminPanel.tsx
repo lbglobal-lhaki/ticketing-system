@@ -983,7 +983,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                         label="Invoice due date"
                         defaultValue={dueInputValue(active.dueAt)}
                         placeholder="No due date"
-                        helper="Optional. Independent of the booking seat hold."
+                        helper="Optional. For unpaid bank transfers, this also extends the seat hold so the 48-hour release does not fire early."
                       />
                       <GstModeFields
                         defaultMode={resolveGstMode(active)}
