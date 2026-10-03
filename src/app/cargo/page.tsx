@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { ServiceTabs } from "@/components/ServiceTabs";
 import {
   CargoBookingForm,
@@ -112,6 +113,14 @@ export default async function CargoPage() {
             <p className="mt-2 text-sm text-muted">
               Choose a departure, tell us what you are sending, then fill
               sender and receiver details. The price you see is what you pay.
+              Booking is subject to the{" "}
+              <Link
+                href="/cargo/terms"
+                className="font-medium text-accent underline-offset-2 hover:underline"
+              >
+                Cargo Customer Terms &amp; Conditions
+              </Link>
+              .
             </p>
           </div>
 

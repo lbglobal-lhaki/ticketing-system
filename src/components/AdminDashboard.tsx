@@ -268,7 +268,7 @@ const PAGE_META: Record<Tab, { title: string; description: string }> = {
   cargo: {
     title: "Cargo",
     description:
-      "Sell cargo types with prices, and manage the bookings customers place.",
+      "Cargo rates, bookings, and the cargo document plus invoice for each parcel.",
   },
   settings: {
     title: "Pricing & capacity",
@@ -1133,6 +1133,7 @@ export function AdminDashboard({
     params.delete("error");
     params.delete("ref");
     params.delete("focus");
+    if (next !== "cargo") params.delete("section");
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }

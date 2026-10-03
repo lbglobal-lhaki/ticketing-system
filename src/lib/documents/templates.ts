@@ -99,6 +99,8 @@ export type BookingDocumentData = {
     customerEmail?: string | null;
     stripePaymentIntentId?: string | null;
     notes?: string | null;
+    /** Temporary hook so cargo can reuse this invoice until its own template lands. */
+    primaryLineName?: string | null;
   } | null;
 };
 
@@ -122,6 +124,14 @@ export function invoicePdfOptions(data: BookingDocumentData): HtmlToPdfOptions {
     }),
     margin: pdfPageMargin(),
   };
+}
+
+/**
+ * Cargo invoice/receipt paints its own header, rates table and contact
+ * footer in the page body so Chromium must not add a second chrome band.
+ */
+export function cargoInvoicePdfOptions(): HtmlToPdfOptions {
+  return {};
 }
 
 /**

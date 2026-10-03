@@ -50,8 +50,12 @@ export async function GET(
     };
 
     const html = renderCargoDocumentHtml(data);
+    const url = new URL(request.url);
     const wantHtml =
-      new URL(request.url).searchParams.get("format") === "html";
+      url.searchParams.get("format") === "html" ||
+      (url.searchParams.has("preview") &&
+        url.searchParams.get("download") !== "1");
+    const isDownload = url.searchParams.get("download") === "1";
 
     if (wantHtml) {
       return new NextResponse(html, {
@@ -68,7 +72,7 @@ export async function GET(
       return new NextResponse(new Uint8Array(pdf), {
         headers: {
           "Content-Type": "application/pdf",
-          "Content-Disposition": `inline; filename="Cargo-${ref}.pdf"`,
+          "Content-Disposition": `${isDownload ? "attachment" : "inline"}; filename="Cargo-${ref}.pdf"`,
           "Cache-Control": "private, no-store",
         },
       });

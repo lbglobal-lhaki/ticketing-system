@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { SubmitButton } from "@/components/SubmitButton";
+import { CargoTermsAcceptance } from "@/components/cargo/CargoTermsAcceptance";
 import { FieldError, labeledControlClass } from "@/components/forms/FieldError";
 import { useStickyAction } from "@/components/forms/useStickyAction";
 import { submitCargoBookingAction } from "@/lib/actions/cargoBooking";
@@ -637,24 +638,10 @@ export function CargoBookingForm({
           </Field>
         ) : null}
 
-        <div className="sm:col-span-2">
-          <label className="flex items-start gap-3 rounded-lg border border-line px-3.5 py-3 text-sm text-foreground">
-            <input
-              type="checkbox"
-              name="termsAccepted"
-              required
-              data-field-key="termsAccepted"
-              aria-invalid={err("termsAccepted") ? true : undefined}
-              className={checkboxClass}
-            />
-            <span>
-              I accept the cargo terms and conditions and confirm the details
-              above are correct.
-              <span className="text-accent-red"> *</span>
-            </span>
-          </label>
-          <FieldError error={err("termsAccepted")} />
-        </div>
+        <CargoTermsAcceptance
+          error={err("termsAccepted")}
+          checkboxClass={checkboxClass}
+        />
       </Section>
 
       {sticky.formError ? (

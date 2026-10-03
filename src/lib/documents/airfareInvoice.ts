@@ -170,7 +170,7 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
     }
   } else {
     itemRows.push({
-      name: "Airfare",
+      name: invoice.primaryLineName?.trim() || "Airfare",
       qty: lines.airfareCents > 0 ? Math.max(1, data.seatsBooked) : 0,
       unitCents:
         lines.airfareCents > 0 && data.seatsBooked > 0

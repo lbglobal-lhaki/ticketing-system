@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   createCargoSubmissionAction,
   deleteCargoSubmissionAction,
@@ -48,6 +49,24 @@ export type AdminCargoRow = {
 
 type AnswerPair = { key: string; value: string };
 type Mode = "closed" | "view" | "edit" | "create" | "emails";
+type CargoSection = "bookings" | "documents";
+type CargoDocTab = "declaration" | "invoice";
+
+function cargoDocUrl(
+  id: string,
+  tab: CargoDocTab,
+  opts?: { preview?: number; download?: boolean },
+) {
+  const base =
+    tab === "invoice"
+      ? `/documents/cargo/${id}/invoice`
+      : `/documents/cargo/${id}`;
+  const q = new URLSearchParams();
+  if (opts?.preview) q.set("preview", String(opts.preview));
+  if (opts?.download) q.set("download", "1");
+  const qs = q.toString();
+  return qs ? `${base}?${qs}` : base;
+}
 
 const fieldClass =
   "w-full min-w-0 border-0 border-b border-line bg-transparent py-2 text-sm text-foreground outline-none transition focus:border-accent";
@@ -154,12 +173,20 @@ export function CargoAdminPanel({
   submissions: AdminCargoRow[];
   rates: { cargoRatePerKgCents: number; cargoMinChargeCents: number };
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const section: CargoSection =
+    searchParams.get("section") === "documents" ? "documents" : "bookings";
+
   const [pending, startTransition] = useTransition();
   const [mode, setMode] = useState<Mode>("closed");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | AdminCargoRow["status"]>("all");
   const [pairs, setPairs] = useState<AnswerPair[]>(DEFAULT_FIELDS);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [docTab, setDocTab] = useState<CargoDocTab>("declaration");
+  const [previewBust, setPreviewBust] = useState(0);
   // Which row + action is in flight (e.g. "abc123:delete") — lets a specific
   // row's button show its own spinner instead of every row dimming the same way.
   const [pendingKey, setPendingKey] = useState<string | null>(null);
@@ -229,13 +256,26 @@ export function CargoAdminPanel({
 
   function closeModal() {
     setMode("closed");
-    setActiveId(null);
     setLocalError(null);
   }
 
-  function openPreview(id: string) {
-    // Prefer PDF; route falls back to HTML if Chromium fails in local/dev.
-    window.open(`/documents/cargo/${id}`, "_blank", "noopener,noreferrer");
+  function setSection(next: CargoSection) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", "cargo");
+    if (next === "documents") params.set("section", "documents");
+    else params.delete("section");
+    params.delete("saved");
+    params.delete("error");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
+  function openDocuments(id: string, tab: CargoDocTab = "declaration") {
+    setLocalError(null);
+    setActiveId(id);
+    setDocTab(tab);
+    setPreviewBust(Date.now());
+    setMode("closed");
+    setSection("documents");
   }
 
   function handleDelete(id: string) {
@@ -279,8 +319,61 @@ export function CargoAdminPanel({
     });
   }
 
+  const selectedDoc =
+    submissions.find((s) => s.id === activeId) ?? submissions[0] ?? null;
+
   return (
-    <section className="space-y-10">
+    <section className="space-y-8">
+      <div className="inline-flex rounded-full border border-line bg-white p-1 text-sm font-medium">
+        <button
+          type="button"
+          onClick={() => setSection("bookings")}
+          className={`rounded-full px-4 py-1.5 transition ${
+            section === "bookings"
+              ? "bg-accent-deep text-white"
+              : "text-muted hover:text-foreground"
+          }`}
+        >
+          Bookings
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (!activeId && submissions[0]) setActiveId(submissions[0].id);
+            setSection("documents");
+          }}
+          className={`rounded-full px-4 py-1.5 transition ${
+            section === "documents"
+              ? "bg-accent-deep text-white"
+              : "text-muted hover:text-foreground"
+          }`}
+        >
+          Documents
+        </button>
+      </div>
+
+      {section === "documents" ? (
+        <CargoDocumentsWorkspace
+          submissions={submissions}
+          selected={selectedDoc}
+          docTab={docTab}
+          previewBust={previewBust}
+          onSelect={(id) => {
+            setActiveId(id);
+            setPreviewBust(Date.now());
+          }}
+          onDocTab={(tab) => {
+            setDocTab(tab);
+            setPreviewBust(Date.now());
+          }}
+          onReload={() => setPreviewBust(Date.now())}
+          onViewEnquiry={(id) => {
+            setSection("bookings");
+            openView(id);
+          }}
+        />
+      ) : (
+        <>
       <CargoTypesAdmin rates={rates} />
 
       <div className="space-y-5">
@@ -459,9 +552,9 @@ export function CargoAdminPanel({
                   <button
                     type="button"
                     className={btnClass}
-                    onClick={() => openPreview(row.id)}
+                    onClick={() => openDocuments(row.id)}
                   >
-                    PDF
+                    Documents
                   </button>
                   <button
                     type="button"
@@ -510,6 +603,8 @@ export function CargoAdminPanel({
         </>
       )}
       </div>
+        </>
+      )}
 
       {mode === "emails" && active && (
         <div
@@ -544,6 +639,13 @@ export function CargoAdminPanel({
                   onClick={() => openView(active.id)}
                 >
                   View enquiry
+                </button>
+                <button
+                  type="button"
+                  className={btnClass}
+                  onClick={() => openDocuments(active.id)}
+                >
+                  Documents
                 </button>
                 <button
                   type="button"
@@ -625,9 +727,9 @@ export function CargoAdminPanel({
                   <button
                     type="button"
                     className={btnClass}
-                    onClick={() => openPreview(active.id)}
+                    onClick={() => openDocuments(active.id)}
                   >
-                    Preview PDF
+                    Documents
                   </button>
                   <button
                     type="button"
@@ -877,9 +979,9 @@ export function CargoAdminPanel({
                     <button
                       type="button"
                       className={btnClass}
-                      onClick={() => openPreview(active.id)}
+                      onClick={() => openDocuments(active.id)}
                     >
-                      Preview PDF
+                      Documents
                     </button>
                   )}
                   <button
@@ -896,5 +998,195 @@ export function CargoAdminPanel({
         </div>
       )}
     </section>
+  );
+}
+
+function CargoDocumentsWorkspace({
+  submissions,
+  selected,
+  docTab,
+  previewBust,
+  onSelect,
+  onDocTab,
+  onReload,
+  onViewEnquiry,
+}: {
+  submissions: AdminCargoRow[];
+  selected: AdminCargoRow | null;
+  docTab: CargoDocTab;
+  previewBust: number;
+  onSelect: (id: string) => void;
+  onDocTab: (tab: CargoDocTab) => void;
+  onReload: () => void;
+  onViewEnquiry: (id: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const visible = useMemo(() => {
+    const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return submissions;
+    return submissions.filter((s) => {
+      const hay = [
+        s.parcelNumber,
+        s.submitterName ?? "",
+        s.email ?? "",
+        s.flightLabel ?? "",
+        s.productName,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return tokens.every((t) => hay.includes(t));
+    });
+  }, [query, submissions]);
+
+  if (submissions.length === 0) {
+    return (
+      <p className="border border-dashed border-line bg-white/60 px-4 py-10 text-center text-sm text-muted">
+        No cargo bookings yet — documents and invoices appear here once a
+        parcel is created.
+      </p>
+    );
+  }
+
+  return (
+    <div className="grid gap-5 lg:grid-cols-[minmax(16rem,20rem)_1fr]">
+      <div className="space-y-3">
+        <ListFilterBar
+          query={query}
+          onQueryChange={setQuery}
+          placeholder="Search parcel or sender…"
+          resultCount={visible.length}
+          totalCount={submissions.length}
+          itemLabel="parcel"
+        />
+        {visible.length === 0 ? (
+          <NoMatches
+            label="No parcels match that search."
+            onReset={() => setQuery("")}
+          />
+        ) : (
+          <ul className="max-h-[70vh] space-y-2 overflow-y-auto pr-1">
+            {visible.map((row) => {
+              const on = selected?.id === row.id;
+              return (
+                <li key={row.id}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(row.id)}
+                    className={`w-full rounded-card border px-3.5 py-3 text-left transition ${
+                      on
+                        ? "border-accent bg-accent/5"
+                        : "border-line bg-white hover:border-accent/40"
+                    }`}
+                  >
+                    <p className="font-mono text-sm font-semibold tracking-wide">
+                      {row.parcelNumber}
+                    </p>
+                    <p className="mt-0.5 truncate text-sm text-foreground">
+                      {row.submitterName || row.email || "Untitled"}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted">
+                      {row.quotedCents > 0 ? formatAud(row.quotedCents) : "No quote"}
+                      {row.paid ? " · Paid" : " · Unpaid"}
+                    </p>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      {selected ? (
+        <div className="overflow-hidden rounded-card border border-line bg-white shadow-ui-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-4 py-4 sm:px-5">
+            <div className="min-w-0">
+              <h2 className="font-[family-name:var(--font-syne)] text-lg font-semibold">
+                {selected.parcelNumber}
+              </h2>
+              <p className="mt-0.5 truncate text-sm text-muted">
+                {selected.submitterName || selected.email || "Untitled enquiry"}
+                {selected.quotedCents > 0
+                  ? ` · ${formatAud(selected.quotedCents)}`
+                  : ""}
+              </p>
+            </div>
+            <button
+              type="button"
+              className={btnClass}
+              onClick={() => onViewEnquiry(selected.id)}
+            >
+              View enquiry
+            </button>
+          </div>
+
+          <div className="flex gap-2 overflow-x-auto border-b border-line px-4 py-3 sm:px-5">
+            <button
+              type="button"
+              onClick={() => onDocTab("declaration")}
+              className={`px-3 py-2 text-sm font-semibold transition ${
+                docTab === "declaration"
+                  ? "bg-accent-deep text-white"
+                  : "border border-line text-muted hover:border-accent hover:text-foreground"
+              }`}
+            >
+              Cargo document
+            </button>
+            <button
+              type="button"
+              onClick={() => onDocTab("invoice")}
+              className={`px-3 py-2 text-sm font-semibold transition ${
+                docTab === "invoice"
+                  ? "bg-accent-deep text-white"
+                  : "border border-line text-muted hover:border-accent hover:text-foreground"
+              }`}
+            >
+              Invoice
+            </button>
+          </div>
+
+          <p className="px-4 pt-3 text-xs text-muted sm:px-5">
+            {docTab === "invoice"
+              ? "Uses the current airfare invoice template filled with this cargo booking. We will swap in a cargo-specific invoice soon."
+              : "Cargo declaration for drop-off and clearance."}
+          </p>
+
+          <div className="flex flex-wrap gap-2 px-4 py-3 sm:px-5">
+            <a
+              href={cargoDocUrl(selected.id, docTab, { preview: previewBust })}
+              target="_blank"
+              rel="noreferrer"
+              className={btnClass}
+            >
+              Open full page
+            </a>
+            <a
+              href={cargoDocUrl(selected.id, docTab, { download: true })}
+              download
+              className={btnClass}
+            >
+              Download PDF
+            </a>
+            <button
+              type="button"
+              onClick={onReload}
+              className="text-sm font-medium text-accent-deep hover:underline"
+            >
+              Reload preview
+            </button>
+          </div>
+
+          <iframe
+            key={`${selected.id}-${docTab}-${previewBust}`}
+            title={
+              docTab === "invoice"
+                ? "Cargo invoice preview"
+                : "Cargo document preview"
+            }
+            src={cargoDocUrl(selected.id, docTab, { preview: previewBust })}
+            className="h-[70svh] w-full border-t border-line bg-white"
+          />
+        </div>
+      ) : null}
+    </div>
   );
 }
