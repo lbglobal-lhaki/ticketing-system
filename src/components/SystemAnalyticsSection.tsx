@@ -1,7 +1,10 @@
 "use client";
 
+import { DonutChart, SEAT_CHART } from "@/components/analytics/DonutChart";
+import { FlightSeatInventory } from "@/components/analytics/FlightSeatInventory";
 import type { SystemAnalytics } from "@/lib/analytics/systemAnalytics";
 import { formatAud } from "@/lib/pricing";
+import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import {
   StatCard as UiStatCard,
   type StatTone,
@@ -26,10 +29,11 @@ export function SystemAnalyticsSection({
   analytics: SystemAnalytics;
 }) {
   const { flights, bookings, sales, payments, cargo } = analytics;
+  const economy = flights.economy;
+  const business = flights.business;
 
   return (
     <section className="space-y-8">
-      {/* Hero row — the four numbers ops actually check on arrival. */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           statTone="green"
@@ -61,31 +65,72 @@ export function SystemAnalyticsSection({
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="accent-top relative rounded-card border border-line bg-surface p-5 shadow-ui-sm">
-          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-accent-deep">
-            Flights & seats
-          </h3>
-          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <dt className="text-muted">Total flights</dt>
-              <dd className="font-semibold">{flights.total}</dd>
-            </div>
-            <div>
-              <dt className="text-muted">Seats remaining</dt>
-              <dd className="font-semibold">{flights.seatsRemaining}</dd>
-            </div>
-            <div>
-              <dt className="text-muted">Seats sold (capacity)</dt>
-              <dd className="font-semibold">{flights.seatsSold}</dd>
-            </div>
-            <div>
-              <dt className="text-muted">Upcoming departures</dt>
-              <dd className="font-semibold">{flights.upcoming}</dd>
-            </div>
-          </dl>
-        </div>
+      <Card>
+        <CardHeader
+          title="Cabin mix — upcoming flights"
+          description="Live seat pool across every departure still on sale. Booked is already held or ticketed."
+        />
+        <CardBody>
+          <div className="grid gap-8 sm:grid-cols-3">
+            <DonutChart
+              variant="donut"
+              title="Economy seats"
+              centerValue={String(economy.remainingSeats)}
+              centerLabel="open"
+              slices={[
+                {
+                  label: "Booked",
+                  value: economy.bookedSeats,
+                  color: SEAT_CHART.economyBooked,
+                },
+                {
+                  label: "Available",
+                  value: economy.remainingSeats,
+                  color: SEAT_CHART.economyOpen,
+                },
+              ]}
+            />
+            <DonutChart
+              variant="donut"
+              title="Business seats"
+              centerValue={String(business.remainingSeats)}
+              centerLabel="open"
+              slices={[
+                {
+                  label: "Booked",
+                  value: business.bookedSeats,
+                  color: SEAT_CHART.businessBooked,
+                },
+                {
+                  label: "Available",
+                  value: business.remainingSeats,
+                  color: SEAT_CHART.businessOpen,
+                },
+              ]}
+            />
+            <DonutChart
+              variant="pie"
+              title="Booked cabin mix"
+              slices={[
+                {
+                  label: "Economy booked",
+                  value: economy.bookedSeats,
+                  color: SEAT_CHART.economyBooked,
+                },
+                {
+                  label: "Business booked",
+                  value: business.bookedSeats,
+                  color: SEAT_CHART.businessBooked,
+                },
+              ]}
+            />
+          </div>
+        </CardBody>
+      </Card>
 
+      <FlightSeatInventory flights={analytics.flightInventory} />
+
+      <div className="grid gap-6 lg:grid-cols-2">
         <div className="accent-top relative rounded-card border border-line bg-surface p-5 shadow-ui-sm">
           <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-accent-deep">
             Bookings
@@ -165,9 +210,7 @@ export function SystemAnalyticsSection({
             </div>
           </dl>
         </div>
-      </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
         <div className="accent-top relative rounded-card border border-line bg-surface p-5 shadow-ui-sm">
           <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-accent-deep">
             Recent bookings
@@ -191,51 +234,6 @@ export function SystemAnalyticsSection({
                   </div>
                   <p className="shrink-0 font-semibold">
                     {formatAud(b.amountPaidCents)}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="accent-top relative rounded-card border border-line bg-surface p-5 shadow-ui-sm">
-          <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-accent-deep">
-            Upcoming flights
-          </h3>
-          {analytics.upcomingFlights.length === 0 ? (
-            <p className="mt-4 text-sm text-muted">No upcoming flights.</p>
-          ) : (
-            <ul className="mt-4 divide-y divide-line">
-              {analytics.upcomingFlights.map((f) => (
-                <li
-                  key={f.id}
-                  className="flex items-start justify-between gap-3 py-3 text-sm"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium text-foreground">
-                      {f.flightNumber} · {f.route}
-                    </p>
-                    <p className="text-muted">
-                      {new Date(f.departureAt).toLocaleString("en-AU", {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                        timeZone: "UTC",
-                        hour12: false,
-                      })}
-                    </p>
-                    {f.cabins.length > 0 ? (
-                      <p className="text-muted">
-                        {f.cabins
-                          .map(
-                            (c) =>
-                              `${c.cabinClass === "business" ? "Business" : "Economy"} ${c.remainingSeats}/${c.totalSeats}`,
-                          )
-                          .join(" · ")}
-                      </p>
-                    ) : null}
-                  </div>
-                  <p className="shrink-0 text-muted">
-                    {f.remainingSeats}/{f.totalSeats} seats
                   </p>
                 </li>
               ))}

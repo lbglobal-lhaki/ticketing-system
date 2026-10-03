@@ -1,5 +1,55 @@
 import { prisma } from "@/lib/db";
-import { cabinsOnFlight, seatsByCabin } from "@/lib/fares/templates";
+import { airportCity } from "@/lib/format";
+import { seatsByCabin } from "@/lib/fares/templates";
+
+export type CabinInventory = {
+  cabinClass: "economy" | "business";
+  totalSeats: number;
+  remainingSeats: number;
+  bookedSeats: number;
+};
+
+export type FlightInventoryRow = {
+  id: string;
+  airline: string;
+  flightNumber: string;
+  origin: string;
+  destination: string;
+  route: string;
+  departureAt: string;
+  active: boolean;
+  upcoming: boolean;
+  totalSeats: number;
+  remainingSeats: number;
+  bookedSeats: number;
+  loadFactorPct: number;
+  cabins: CabinInventory[];
+};
+
+function cabinInventory(
+  cabinClass: "economy" | "business",
+  seats: { totalSeats: number; remainingSeats: number },
+): CabinInventory {
+  const totalSeats = Math.max(0, seats.totalSeats);
+  const remainingSeats = Math.max(0, seats.remainingSeats);
+  return {
+    cabinClass,
+    totalSeats,
+    remainingSeats,
+    bookedSeats: Math.max(0, totalSeats - remainingSeats),
+  };
+}
+
+function sumCabins(rows: CabinInventory[]) {
+  return rows.reduce(
+    (acc, row) => ({
+      totalSeats: acc.totalSeats + row.totalSeats,
+      remainingSeats: acc.remainingSeats + row.remainingSeats,
+      bookedSeats: acc.bookedSeats + row.bookedSeats,
+    }),
+    { totalSeats: 0, remainingSeats: 0, bookedSeats: 0 },
+  );
+}
 
 export type SystemAnalytics = {
   generatedAt: string;
@@ -10,7 +60,10 @@ export type SystemAnalytics = {
     seatsRemaining: number;
     seatsSold: number;
     upcoming: number;
+    economy: Omit<CabinInventory, "cabinClass">;
+    business: Omit<CabinInventory, "cabinClass">;
   };
+  flightInventory: FlightInventoryRow[];
   bookings: {
     total: number;
     confirmed: number;
@@ -87,7 +140,7 @@ export async function getSystemAnalytics(): Promise<SystemAnalytics> {
     cargoGroups,
     cargoPaidGroups,
     recentBookings,
-    upcomingFlights,
+    allFlights,
   ] = await Promise.all([
     prisma.flight.groupBy({
       by: ["active"],
@@ -164,17 +217,17 @@ export async function getSystemAnalytics(): Promise<SystemAnalytics> {
       },
     }),
     prisma.flight.findMany({
-      where: { active: true, departureAt: { gte: now } },
       orderBy: { departureAt: "asc" },
-      take: 6,
       select: {
         id: true,
+        airline: true,
         flightNumber: true,
         origin: true,
         destination: true,
         departureAt: true,
         remainingSeats: true,
         totalSeats: true,
+        active: true,
         fareReleases: {
           select: { cabinClass: true, totalSeats: true, remainingSeats: true },
         },
@@ -239,6 +292,44 @@ export async function getSystemAnalytics(): Promise<SystemAnalytics> {
   const revenueCents = revenueConfirmed._sum.amountPaidCents ?? 0;
   const confirmedCount = revenueConfirmed._count._all || 0;
 
+  const flightInventory: FlightInventoryRow[] = allFlights.map((f) => {
+    const byCabin = seatsByCabin(f.fareReleases);
+    const cabins: CabinInventory[] = (["business", "economy"] as const).map(
+      (cabin) => cabinInventory(cabin, byCabin[cabin]),
+    );
+    const cabinTotals = sumCabins(cabins);
+    const totalSeats = cabinTotals.totalSeats || f.totalSeats;
+    const remainingSeats = cabinTotals.totalSeats
+      ? cabinTotals.remainingSeats
+      : f.remainingSeats;
+    const bookedSeats = Math.max(0, totalSeats - remainingSeats);
+    return {
+      id: f.id,
+      airline: f.airline,
+      flightNumber: f.flightNumber,
+      origin: f.origin,
+      destination: f.destination,
+      route: `${airportCity(f.origin)} → ${airportCity(f.destination)}`,
+      departureAt: f.departureAt.toISOString(),
+      active: f.active,
+      upcoming: f.active && f.departureAt.getTime() >= now.getTime(),
+      totalSeats,
+      remainingSeats,
+      bookedSeats,
+      loadFactorPct:
+        totalSeats > 0 ? Math.round((bookedSeats / totalSeats) * 100) : 0,
+      cabins,
+    };
+  });
+
+  const sellable = flightInventory.filter((f) => f.upcoming);
+  const economyMix = sumCabins(
+    sellable.flatMap((f) => f.cabins.filter((c) => c.cabinClass === "economy")),
+  );
+  const businessMix = sumCabins(
+    sellable.flatMap((f) => f.cabins.filter((c) => c.cabinClass === "business")),
+  );
+
   return {
     generatedAt: now.toISOString(),
     flights: {
@@ -248,7 +339,10 @@ export async function getSystemAnalytics(): Promise<SystemAnalytics> {
       seatsRemaining,
       seatsSold,
       upcoming: upcomingCount,
+      economy: economyMix,
+      business: businessMix,
     },
+    flightInventory,
     bookings: {
       total: bookingTotal,
       confirmed,
@@ -290,17 +384,17 @@ export async function getSystemAnalytics(): Promise<SystemAnalytics> {
       createdAt: b.createdAt.toISOString(),
       route: `${b.flight.origin} → ${b.flight.destination}`,
     })),
-    upcomingFlights: upcomingFlights.map((f) => ({
-      id: f.id,
-      flightNumber: f.flightNumber,
-      route: `${f.origin} → ${f.destination}`,
-      departureAt: f.departureAt.toISOString(),
-      remainingSeats: f.remainingSeats,
-      totalSeats: f.totalSeats,
-      cabins: cabinsOnFlight(f.fareReleases).map((cabin) => ({
-        cabinClass: cabin,
-        ...seatsByCabin(f.fareReleases)[cabin],
+    upcomingFlights: flightInventory
+      .filter((f) => f.upcoming)
+      .slice(0, 6)
+      .map((f) => ({
+        id: f.id,
+        flightNumber: `${f.airline} ${f.flightNumber}`.trim(),
+        route: f.route,
+        departureAt: f.departureAt,
+        remainingSeats: f.remainingSeats,
+        totalSeats: f.totalSeats,
+        cabins: f.cabins,
       })),
-    })),
   };
 }

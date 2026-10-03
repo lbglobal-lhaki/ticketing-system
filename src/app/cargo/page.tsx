@@ -8,12 +8,13 @@ import { flightPayloadFromRow, formatKg } from "@/lib/cargo/capacity";
 import { formatFlightDate } from "@/lib/datetime";
 import { prisma } from "@/lib/db";
 import { airportCity } from "@/lib/format";
+import { getCargoShopRates } from "@/lib/cargo/products";
 import { getSiteSettings } from "@/lib/settings";
 
 export const metadata: Metadata = {
   title: "Air cargo booking",
   description:
-    "Book air cargo on our Perth–Paro charter. Space is confirmed against a specific departure, so you know it is on the aircraft before you drop off.",
+    "Book and pay for air cargo on our Perth–Paro charter. Confirm the weight on a real departure and lock the freight charge.",
 };
 
 export const dynamic = "force-dynamic";
@@ -28,13 +29,16 @@ const HIGHLIGHTS = [
     body: "Sender, receiver, contents and compliance in a single pass. We generate the cargo declaration for you.",
   },
   {
-    title: "A parcel number straight away",
-    body: "Quote your parcel number at drop-off and in any email. Our cargo team confirms pricing from there.",
+    title: "Pay the listed freight rate",
+    body: "Enter the weight and the freight charge is locked on the booking. Type of goods, packaging and the rest stay on the enquiry.",
   },
 ];
 
 export default async function CargoPage() {
-  const settings = await getSiteSettings();
+  const [settings, rates] = await Promise.all([
+    getSiteSettings(),
+    getCargoShopRates(),
+  ]);
 
   const now = new Date();
   const flights = await prisma.flight.findMany({
@@ -106,17 +110,13 @@ export default async function CargoPage() {
               Cargo booking form
             </h2>
             <p className="mt-2 text-sm text-muted">
-              Six short steps. Fields marked with an asterisk are required, and
-              nothing is submitted until you press the button at the bottom.
+              Choose a departure, tell us what you are sending, then fill
+              sender and receiver details. The price you see is what you pay.
             </p>
           </div>
 
           <div className="mt-6 max-w-3xl">
-            <CargoBookingForm
-              flights={options}
-              ratePerKgCents={settings.cargoRatePerKgCents}
-              minChargeCents={settings.cargoMinChargeCents}
-            />
+            <CargoBookingForm flights={options} rates={rates} />
           </div>
         </div>
       </main>

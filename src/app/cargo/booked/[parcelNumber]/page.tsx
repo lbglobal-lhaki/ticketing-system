@@ -6,6 +6,7 @@ import { formatKg } from "@/lib/cargo/capacity";
 import { formatFlightDateTime } from "@/lib/datetime";
 import { prisma } from "@/lib/db";
 import { airportCity } from "@/lib/format";
+import { getBankTransferDetails } from "@/lib/payments/bank";
 import { formatAud } from "@/lib/pricing";
 
 export const dynamic = "force-dynamic";
@@ -46,16 +47,31 @@ export default async function CargoBookedPage({
     },
     { label: "Packages", value: String(cargo.pieces || shipment.packages) },
     { label: "Weight", value: formatKg(cargo.weightKg) },
+    {
+      label: "Type of goods",
+      value:
+        String(
+          (cargo.answers as CargoAnswers)?.["Tick all that apply"] ?? "",
+        ).trim() ||
+        cargo.productName ||
+        "—",
+    },
     { label: "Sender", value: shipment.sender.name },
     { label: "Receiver", value: shipment.receiver.name },
   ];
 
   if (cargo.quotedCents > 0) {
     rows.push({
-      label: "Estimated charge",
+      label: cargo.paid ? "Paid" : "Amount due",
       value: formatAud(cargo.quotedCents),
     });
   }
+
+  const paymentMethod = String(
+    (cargo.answers as CargoAnswers)?.["Payment Method"] ?? "",
+  );
+  const wantsBank = /bank/i.test(paymentMethod) && !cargo.paid;
+  const bank = wantsBank ? getBankTransferDetails() : null;
 
   return (
     <>
@@ -70,9 +86,10 @@ export default async function CargoBookedPage({
               Your cargo is booked on this flight
             </h1>
             <p className="mt-2 text-sm text-muted">
-              Keep this parcel number — quote it at drop-off and in any email
-              about the shipment. Our cargo team will confirm pricing and
-              drop-off details shortly.
+              Keep this parcel number — quote it at drop-off and when you pay.
+              {cargo.quotedCents > 0 && !cargo.paid
+                ? " The freight charge below is locked on this booking."
+                : ""}
             </p>
 
             <div className="mt-6 rounded-xl border border-line bg-background px-5 py-4">
@@ -97,6 +114,39 @@ export default async function CargoBookedPage({
                 </div>
               ))}
             </dl>
+
+            {bank ? (
+              <div className="mt-6 rounded-xl border border-line bg-background px-5 py-4 text-sm">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                  Pay by bank transfer
+                </p>
+                <p className="mt-2 text-muted">
+                  Transfer {formatAud(cargo.quotedCents)} and use{" "}
+                  <span className="font-medium text-foreground">
+                    {cargo.parcelNumber}
+                  </span>{" "}
+                  as the reference.
+                </p>
+                <dl className="mt-3 space-y-1.5">
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-muted">Account name</dt>
+                    <dd className="font-medium">{bank.accountName}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-muted">BSB</dt>
+                    <dd className="font-medium">{bank.bsb}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-muted">Account number</dt>
+                    <dd className="font-medium">{bank.accountNumber}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-muted">Bank</dt>
+                    <dd className="font-medium">{bank.bankName}</dd>
+                  </div>
+                </dl>
+              </div>
+            ) : null}
 
             <div className="mt-8 flex flex-wrap gap-3">
               <Link href="/cargo" className="btn-cta min-h-11 px-6 text-sm">

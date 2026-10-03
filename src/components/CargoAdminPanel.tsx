@@ -19,6 +19,7 @@ import { Spinner } from "@/components/Spinner";
 import { ListFilterBar, NoMatches } from "@/components/admin/ListFilterBar";
 import { SegmentedField } from "@/components/admin/SegmentedField";
 import { FieldError, labeledControlClass } from "@/components/forms/FieldError";
+import { CargoTypesAdmin } from "@/components/CargoTypesAdmin";
 import { formatAud } from "@/lib/pricing";
 import { useStickyAction } from "@/components/forms/useStickyAction";
 
@@ -36,6 +37,7 @@ export type AdminCargoRow = {
   weightKg: number;
   pieces: number;
   quotedCents: number;
+  productName: string;
   /** Departure this cargo is booked onto, when it came from the website. */
   flightLabel: string | null;
   notes: string | null;
@@ -147,8 +149,10 @@ function AnswerFieldsEditor({
 
 export function CargoAdminPanel({
   submissions,
+  rates,
 }: {
   submissions: AdminCargoRow[];
+  rates: { cargoRatePerKgCents: number; cargoMinChargeCents: number };
 }) {
   const [pending, startTransition] = useTransition();
   const [mode, setMode] = useState<Mode>("closed");
@@ -178,6 +182,7 @@ export function CargoAdminPanel({
         s.email ?? "",
         s.phone ?? "",
         s.notes ?? "",
+        s.productName,
         ...Object.entries(s.answers).map(
           ([key, value]) => `${key} ${formatCargoAnswer(value)}`,
         ),
@@ -275,12 +280,15 @@ export function CargoAdminPanel({
   }
 
   return (
-    <section className="space-y-5">
+    <section className="space-y-10">
+      <CargoTypesAdmin rates={rates} />
+
+      <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="max-w-2xl text-sm text-muted">
-            Google Form submissions and manual entries. Each enquiry gets an
-            auto-assigned parcel number. Use Emails for sender/receiver notices.
+            Customer cargo purchases and manual entries. Each booking gets a
+            parcel number. Use Emails for sender/receiver notices.
           </p>
         </div>
         <button
@@ -320,8 +328,8 @@ export function CargoAdminPanel({
         }
         resultCount={filtered.length}
         totalCount={submissions.length}
-        itemLabel="enquiry"
-        itemLabelPlural="enquiries"
+        itemLabel="booking"
+        itemLabelPlural="bookings"
       />
 
       {localError && (
@@ -332,7 +340,7 @@ export function CargoAdminPanel({
 
       <BulkSelectBar
         count={bulk.selected.size}
-        itemLabel="enquiry"
+        itemLabel="booking"
         pending={pending}
         onDelete={handleBulkDelete}
         onClear={bulk.clear}
@@ -340,12 +348,11 @@ export function CargoAdminPanel({
 
       {submissions.length === 0 ? (
         <p className="border border-dashed border-line bg-white/60 px-4 py-8 text-center text-sm text-muted">
-          No cargo submissions yet. Add one manually or wait for a Google Form
-          response.
+          No cargo bookings yet. Customers buy from the website, or add one here.
         </p>
       ) : filtered.length === 0 ? (
         <NoMatches
-          label="No cargo enquiries match that search."
+          label="No cargo bookings match that search."
           onReset={() => {
             setQuery("");
             setFilter("all");
@@ -424,6 +431,7 @@ export function CargoAdminPanel({
                       : row.googleResponseId
                         ? " · Google Form"
                         : " · Admin"}
+                    {row.productName ? ` · ${row.productName}` : ""}
                     {row.quotedCents > 0
                       ? ` · ${formatAud(row.quotedCents)}`
                       : ""}
@@ -501,6 +509,7 @@ export function CargoAdminPanel({
           </ul>
         </>
       )}
+      </div>
 
       {mode === "emails" && active && (
         <div

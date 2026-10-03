@@ -13,7 +13,7 @@ import {
   CARGO_PAYMENT_METHODS,
   CARGO_RESTRICTED,
 } from "@/lib/cargo/bookingForm";
-import { formatKg } from "@/lib/cargo/capacity";
+import { cargoQuoteCents, formatKg } from "@/lib/cargo/capacity";
 import { formatAud } from "@/lib/pricing";
 
 export type CargoFlightOption = {
@@ -124,12 +124,10 @@ function CheckGroup({
 
 export function CargoBookingForm({
   flights,
-  ratePerKgCents,
-  minChargeCents,
+  rates,
 }: {
   flights: CargoFlightOption[];
-  ratePerKgCents: number;
-  minChargeCents: number;
+  rates: { cargoRatePerKgCents: number; cargoMinChargeCents: number };
 }) {
   const sticky = useStickyAction(submitCargoBookingAction);
   const err = (key: string) => sticky.fieldErrors[key];
@@ -145,10 +143,22 @@ export function CargoBookingForm({
 
   const weightKg = Number(weight) || 0;
   const overCapacity = Boolean(flight && weightKg > flight.availableKg);
-  const quoteCents =
-    ratePerKgCents > 0 && weightKg > 0
-      ? Math.max(weightKg * ratePerKgCents, minChargeCents)
-      : 0;
+  const quoteCents = weightKg > 0 ? cargoQuoteCents(weightKg, rates) : 0;
+  const priced = rates.cargoRatePerKgCents > 0;
+
+  if (!priced) {
+    return (
+      <div className="rounded-2xl border border-line bg-white p-8 text-center">
+        <h2 className="font-[family-name:var(--font-syne)] text-lg font-bold text-accent-deep">
+          Cargo is not on sale yet
+        </h2>
+        <p className="mx-auto mt-2 max-w-md text-sm text-muted">
+          Freight rates are being set. Email us and we will take the booking
+          once the price is live.
+        </p>
+      </div>
+    );
+  }
 
   if (flights.length === 0) {
     return (
@@ -276,13 +286,18 @@ export function CargoBookingForm({
         ) : null}
 
         {quoteCents > 0 ? (
-          <p className="rounded-lg border border-line bg-background px-3.5 py-2.5 text-xs text-muted sm:col-span-2">
-            Estimated freight charge{" "}
-            <span className="font-semibold text-foreground">
+          <p className="rounded-lg border border-line bg-background px-3.5 py-2.5 text-sm text-foreground sm:col-span-2">
+            Freight charge:{" "}
+            <span className="font-[family-name:var(--font-syne)] text-lg font-bold text-accent-deep">
               {formatAud(quoteCents)}
-            </span>{" "}
-            at {formatAud(ratePerKgCents)} per kg. We confirm the final amount
-            once the shipment is weighed at drop-off.
+            </span>
+            <span className="mt-1 block text-xs text-muted">
+              {formatAud(rates.cargoRatePerKgCents)} per kg
+              {rates.cargoMinChargeCents > 0
+                ? ` · minimum ${formatAud(rates.cargoMinChargeCents)}`
+                : ""}
+              . This is the amount due on this booking.
+            </span>
           </p>
         ) : null}
 
@@ -314,6 +329,12 @@ export function CargoBookingForm({
           />
         </Field>
 
+        <div className="sm:col-span-2">
+          <p className="text-sm font-medium text-foreground">Type of goods</p>
+          <p className="text-xs text-muted">Tick all that apply.</p>
+          <CheckGroup name="classification" options={CARGO_CLASSIFICATIONS} />
+        </div>
+
         <Field
           label="Description of goods"
           required
@@ -332,13 +353,6 @@ export function CargoBookingForm({
             placeholder="e.g. 3 cartons of handwoven textiles and 1 carton of packaged tea"
           />
         </Field>
-
-        <div className="sm:col-span-2">
-          <p className="text-sm font-medium text-foreground">
-            Cargo type — tick all that apply
-          </p>
-          <CheckGroup name="classification" options={CARGO_CLASSIFICATIONS} columns={3} />
-        </div>
 
         <Field label="Packaging type" error={err("packaging")}>
           <select
@@ -555,9 +569,23 @@ export function CargoBookingForm({
 
       <Section
         step={6}
-        title="Payment and confirmation"
-        description="We invoice once the cargo is weighed and accepted at drop-off."
+        title="Payment"
+        description="The freight charge is locked when you submit. Pay by bank transfer or at drop-off — admin marks the booking paid once the money is in."
       >
+        {quoteCents > 0 ? (
+          <div className="rounded-xl border border-line bg-background px-4 py-3 sm:col-span-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              Amount due
+            </p>
+            <p className="mt-1 font-[family-name:var(--font-syne)] text-2xl font-bold text-accent-deep">
+              {formatAud(quoteCents)}
+            </p>
+            {weightKg > 0 ? (
+              <p className="mt-1 text-xs text-muted">{weightKg} kg</p>
+            ) : null}
+          </div>
+        ) : null}
+
         <Field label="Preferred payment method" required error={err("paymentMethod")}>
           <select
             name="paymentMethod"
@@ -644,11 +672,11 @@ export function CargoBookingForm({
           pendingLabel="Submitting…"
           className="btn-cta min-h-12 w-full px-10 text-sm disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
         >
-          Submit cargo booking
+          Confirm and book cargo
         </SubmitButton>
         <p className="text-center text-xs text-muted">
-          You will get a parcel number straight away. Our cargo team confirms
-          pricing and drop-off details by email.
+          You get a parcel number straight away. Quote it at drop-off and when
+          you pay.
         </p>
       </div>
     </form>

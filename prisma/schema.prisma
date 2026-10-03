@@ -456,8 +456,13 @@ model CargoSubmission {
   weightKg         Int                   @default(0)
   /// Number of packages / pieces.
   pieces           Int                   @default(0)
-  /// Quoted amount at booking time (cents), from the admin cargo rate.
+  /// Quoted amount at booking time (cents), from the chosen cargo type.
   quotedCents      Int                   @default(0)
+  /// Catalogue type the customer bought. Null on older enquiry-only rows.
+  cargoProductId   String?
+  cargoProduct     CargoProduct?         @relation(fields: [cargoProductId], references: [id], onDelete: SetNull)
+  /// Snapshot of the type name at booking time.
+  productName      String                @default("")
   /// Full map of form question title → answer
   answers          Json
   /// Legacy — set only on rows ingested from the retired Google Form.
@@ -475,6 +480,29 @@ model CargoSubmission {
   @@index([email])
   @@index([parcelNumber])
   @@index([flightId])
+  @@index([cargoProductId])
+}
+
+/// Admin-priced cargo types sold on /cargo (Personal effects, Documents, …).
+model CargoProduct {
+  id              String   @id @default(cuid())
+  name            String
+  slug            String   @unique
+  description     String   @default("")
+  /// Per-kilogram charge (cents). 0 = not sold by weight.
+  ratePerKgCents  Int      @default(0)
+  /// Floor applied to the weight charge (cents).
+  minChargeCents  Int      @default(0)
+  /// Flat handling fee added after the weight/min charge (cents).
+  handlingCents   Int      @default(0)
+  sortOrder       Int      @default(0)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  bookings        CargoSubmission[]
+
+  @@index([active, sortOrder])
 }
 
 /// Single-row admin settings. Seat surcharges default to 0 so seat selection

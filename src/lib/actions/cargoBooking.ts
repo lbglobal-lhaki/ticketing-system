@@ -7,11 +7,7 @@ import {
   buildCargoAnswers,
   cargoBookingFromForm,
 } from "@/lib/cargo/bookingForm";
-import {
-  cargoQuoteCents,
-  flightPayloadFromRow,
-  formatKg,
-} from "@/lib/cargo/capacity";
+import { cargoQuoteCents, flightPayloadFromRow, formatKg } from "@/lib/cargo/capacity";
 import { allocateCargoParcelNumber } from "@/lib/cargo/parcelNumber";
 import { formatFlightDateTime } from "@/lib/datetime";
 import { prisma } from "@/lib/db";
@@ -22,6 +18,7 @@ import {
   zodFieldErrors,
   type FormActionResult,
 } from "@/lib/forms/formAction";
+import { getCargoShopRates } from "@/lib/cargo/products";
 import { getSiteSettings } from "@/lib/settings";
 
 /**
@@ -44,7 +41,10 @@ export async function submitCargoBookingAction(
 
   let parcelNumber = "";
   try {
-    const settings = await getSiteSettings();
+    const [settings, rates] = await Promise.all([
+      getSiteSettings(),
+      getCargoShopRates(),
+    ]);
     const flight = await prisma.flight.findFirst({
       where: { id: input.flightId, active: true },
     });
@@ -52,6 +52,10 @@ export async function submitCargoBookingAction(
       return formFail("That flight is no longer available", {
         flightId: "Choose another departure",
       });
+    }
+
+    if (rates.cargoRatePerKgCents <= 0) {
+      return formFail("Cargo is not on sale right now. Please email us.");
     }
 
     const payload = flightPayloadFromRow(flight, settings.passengerPayloadKg);
@@ -75,7 +79,7 @@ export async function submitCargoBookingAction(
     });
 
     parcelNumber = await allocateCargoParcelNumber();
-    const quotedCents = cargoQuoteCents(input.weightKg, settings);
+    const quotedCents = cargoQuoteCents(input.weightKg, rates);
 
     await prisma.$transaction(async (tx) => {
       // Re-check under the same guard we validated with — another booking may
@@ -103,6 +107,7 @@ export async function submitCargoBookingAction(
           weightKg: input.weightKg,
           pieces: input.pieces,
           quotedCents,
+          productName: "",
           answers: answers as Prisma.InputJsonValue,
           submitterName: input.senderName,
           email: input.senderEmail,

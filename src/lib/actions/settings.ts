@@ -78,3 +78,47 @@ export async function updateSiteSettingsAction(
   revalidatePath("/cargo");
   redirect("/admin?tab=settings&saved=settings-updated");
 }
+
+/** Cargo tab — one rate for every booking. Type of goods lives on the enquiry. */
+export async function updateCargoRatesAction(
+  _prev: FormActionResult | null,
+  formData: FormData,
+): Promise<FormActionResult> {
+  await requireAdmin();
+
+  const parsed = z
+    .object({
+      cargoRatePerKgAud: aud(1_000),
+      cargoMinChargeAud: aud(100_000),
+    })
+    .safeParse({
+      cargoRatePerKgAud: formData.get("cargoRatePerKgAud") || 0,
+      cargoMinChargeAud: formData.get("cargoMinChargeAud") || 0,
+    });
+  if (!parsed.success) {
+    return formFail(
+      parsed.error.issues[0]?.message ?? "Please fix the highlighted fields",
+      zodFieldErrors(parsed.error),
+    );
+  }
+
+  const data = {
+    cargoRatePerKgCents: cents(parsed.data.cargoRatePerKgAud),
+    cargoMinChargeCents: cents(parsed.data.cargoMinChargeAud),
+  };
+
+  try {
+    await prisma.siteSetting.upsert({
+      where: { id: SITE_SETTING_ID },
+      update: data,
+      create: { id: SITE_SETTING_ID, ...data },
+    });
+  } catch (error) {
+    console.error("updateCargoRatesAction", error);
+    return failFromUnknown(error, "Could not save cargo rates");
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/cargo");
+  redirect("/admin?tab=cargo&saved=cargo-rates-updated");
+}

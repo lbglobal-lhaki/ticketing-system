@@ -205,7 +205,7 @@ export function SettingsAdminPanel({
 
       <Card
         title="Cargo rates"
-        description="Shown as an estimate on the public cargo booking form and stored against each booking. Leave the rate at $0.00 to keep quoting offline — no prices appear to customers."
+        description="The one freight rate customers pay on the cargo page. Type of goods is collected on the enquiry, not as separate products."
       >
         <MoneyField
           name="cargoRatePerKgAud"

@@ -17,6 +17,7 @@ import {
 import { getSystemAnalytics } from "@/lib/analytics/systemAnalytics";
 import { expireStaleHoldsForAdminLoad } from "@/lib/booking/expireHolds";
 import { prisma } from "@/lib/db";
+import { getCargoShopRates } from "@/lib/cargo/products";
 import { listAllCharterFareProductsAdmin } from "@/lib/fares/charter";
 import { getSiteSettings } from "@/lib/settings";
 import { adminLoginSchema } from "@/lib/validation";
@@ -185,6 +186,7 @@ export default async function AdminPage({
     analytics,
     charterFares,
     settings,
+    cargoRates,
   ] = await Promise.all([
       prisma.flight.findMany({
         orderBy: [{ active: "desc" }, { departureAt: "asc" }],
@@ -251,6 +253,7 @@ export default async function AdminPage({
       getSystemAnalytics(),
       listAllCharterFareProductsAdmin(),
       getSiteSettings(),
+      getCargoShopRates(),
     ]);
 
   const SAVED_MESSAGES: Record<string, string> = {
@@ -289,9 +292,10 @@ export default async function AdminPage({
       "Walk-in booking created. Edit and send documents from the Invoices tab when ready.",
     "fare-updated": "Charter fare product saved.",
     "cargo-updated": "Cargo submission updated.",
-    "cargo-created": "Cargo enquiry created.",
-    "cargo-deleted": "Cargo enquiry deleted — logged in the Deleted tab.",
-    "cargo-bulk-deleted": "Cargo enquiries deleted — logged in the Deleted tab.",
+    "cargo-created": "Cargo booking created.",
+    "cargo-deleted": "Cargo booking deleted — logged in the Deleted tab.",
+    "cargo-bulk-deleted": "Cargo bookings deleted — logged in the Deleted tab.",
+    "cargo-rates-updated": "Cargo price saved — customers pay this rate.",
     "settings-updated": "Pricing and capacity settings saved.",
     "cargo-paid": "Cargo marked as paid.",
     "cargo-unpaid": "Cargo marked as unpaid.",
@@ -530,6 +534,7 @@ export default async function AdminPage({
               deletedBy: row.deletedBy,
               snapshot: null,
             }))}
+            cargoRates={cargoRates}
             cargoSubmissions={cargoSubmissions.map((row) => {
               const answers =
                 row.answers &&
@@ -553,6 +558,7 @@ export default async function AdminPage({
                 weightKg: row.weightKg,
                 pieces: row.pieces,
                 quotedCents: row.quotedCents,
+                productName: row.productName,
                 flightLabel: row.flight
                   ? `${row.flight.airline} ${row.flight.flightNumber} · ${row.flight.origin}→${row.flight.destination} · ${row.flight.departureAt.toISOString().slice(0, 10)}`
                   : null,

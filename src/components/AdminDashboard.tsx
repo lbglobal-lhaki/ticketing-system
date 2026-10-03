@@ -238,7 +238,8 @@ const NAV_GROUPS: { label: string; ids: Tab[] }[] = [
 const PAGE_META: Record<Tab, { title: string; description: string }> = {
   analytics: {
     title: "Overview",
-    description: "How the charter is selling right now.",
+    description:
+      "How the charter is selling — seats booked and still open, by flight and cabin.",
   },
   flights: {
     title: "Flights",
@@ -266,7 +267,8 @@ const PAGE_META: Record<Tab, { title: string; description: string }> = {
   },
   cargo: {
     title: "Cargo",
-    description: "Freight bookings taken on the website cargo page.",
+    description:
+      "Sell cargo types with prices, and manage the bookings customers place.",
   },
   settings: {
     title: "Pricing & capacity",
@@ -616,6 +618,7 @@ export function AdminDashboard({
   bookings,
   invoices,
   cargoSubmissions,
+  cargoRates,
   deletedRecords,
   analytics,
   charterFares,
@@ -628,6 +631,7 @@ export function AdminDashboard({
   bookings: BookingRow[];
   invoices: InvoiceRow[];
   cargoSubmissions: AdminCargoRow[];
+  cargoRates: { cargoRatePerKgCents: number; cargoMinChargeCents: number };
   deletedRecords: AdminDeletedRecordRow[];
   analytics: SystemAnalytics;
   charterFares: AdminCharterFare[];
@@ -3096,7 +3100,12 @@ export function AdminDashboard({
 
       {tab === "invoices" && <InvoiceAdminPanel invoices={invoices} />}
 
-      {tab === "cargo" && <CargoAdminPanel submissions={cargoSubmissions} />}
+      {tab === "cargo" && (
+        <CargoAdminPanel
+          submissions={cargoSubmissions}
+          rates={cargoRates}
+        />
+      )}
 
       {tab === "settings" && <SettingsAdminPanel settings={settings} />}
 
