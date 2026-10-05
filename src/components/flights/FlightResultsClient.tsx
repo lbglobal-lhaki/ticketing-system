@@ -251,14 +251,17 @@ export function FlightResultsClient({
               return (
                 <span
                   key={cabin}
-                  className={`inline-flex items-center justify-center gap-1.5 rounded-t-lg border py-2.5 text-xs font-bold uppercase tracking-[0.1em] ${CABIN_COLUMN_CLASS} ${
+                  className={`inline-flex cursor-default select-none items-center justify-center gap-1.5 rounded-t-lg border py-2.5 text-xs font-bold uppercase tracking-[0.1em] ${CABIN_COLUMN_CLASS} ${
                     active
-                      ? "border-accent-deep bg-accent-deep text-white"
+                      ? "border-accent-deep bg-[image:var(--grad-cta)] text-white"
                       : "border-accent-deep/70 bg-white text-accent-deep"
                   }`}
                 >
                   {cabin === "economy" ? "Economy" : "Business"}
-                  <InfoDot />
+                  <CabinInfo
+                    cabin={cabin === "economy" ? "Economy" : "Business"}
+                    searched={active}
+                  />
                 </span>
               );
             })}
@@ -359,10 +362,34 @@ function TravelNotice() {
   );
 }
 
-function InfoDot() {
+function CabinInfo({ cabin, searched }: { cabin: string; searched: boolean }) {
+  const [open, setOpen] = useState(false);
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 15h-2v-6h2v6Zm0-8h-2V7h2v2Z" />
-    </svg>
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        aria-label={`About the ${cabin} column`}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onBlur={() => setOpen(false)}
+        className="inline-flex cursor-help rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 15h-2v-6h2v6Zm0-8h-2V7h2v2Z" />
+        </svg>
+      </button>
+      {open ? (
+        <span
+          role="tooltip"
+          className="absolute right-0 top-full z-30 mt-2 w-60 rounded-lg border border-line bg-white px-3 py-2.5 text-left text-xs font-medium normal-case leading-relaxed tracking-normal text-foreground shadow-[0_12px_32px_rgba(15,23,42,0.16)]"
+        >
+          Prices in this column are {cabin} class fares in AUD. Click a price
+          on a flight to book that cabin.
+          {searched ? " Highlighted because it's the cabin you searched." : ""}
+        </span>
+      ) : null}
+    </span>
   );
 }
