@@ -23,7 +23,10 @@ import {
   markBookingUnpaidAction,
   reactivateBookingAction,
 } from "@/lib/actions/walkIn";
-import { BookingEditModal } from "@/components/BookingEditModal";
+import {
+  BookingEditModal,
+  type BookingEditFlight,
+} from "@/components/BookingEditModal";
 import { SpecialAssistanceFields } from "@/components/SpecialAssistanceFields";
 import {
   DeletedRecordsPanel,
@@ -166,6 +169,8 @@ type BookingRow = {
   bookingRef: string;
   ticketNumber: string;
   tripType: TripType;
+  flightId: string;
+  returnFlightId: string | null;
   passengerName: string;
   email: string;
   passengerPhone: string;
@@ -1012,6 +1017,27 @@ export function AdminDashboard({
         .map((f) => flightOption(f, { showSeats: true })),
     ],
     [flights],
+  );
+
+  // Flights a booking can be moved onto; its current legs stay listed even
+  // when they're full or hidden so the pickers can show them.
+  const bookingEditFlightOptions = useMemo<BookingEditFlight[]>(
+    () =>
+      flights
+        .filter(
+          (f) =>
+            (f.active && f.remainingSeats > 0) ||
+            f.id === editingBooking?.flightId ||
+            f.id === editingBooking?.returnFlightId,
+        )
+        .map((f) => ({
+          id: f.id,
+          origin: f.origin,
+          destination: f.destination,
+          departureAt: f.departureAt,
+          option: flightOption(f, { showSeats: true }),
+        })),
+    [flights, editingBooking?.flightId, editingBooking?.returnFlightId],
   );
 
   const partnerFlightOptions = useMemo<ComboboxOption[]>(
@@ -3136,12 +3162,16 @@ export function AdminDashboard({
             paymentMethod: editingBooking.paymentMethod,
             holdExpiresAt: editingBooking.holdExpiresAt,
             passengers: editingBooking.passengers ?? [],
+            flightId: editingBooking.flightId,
+            returnFlightId: editingBooking.returnFlightId,
+            cabinClass: editingBooking.flight.cabinClass,
             flightLabel: `${editingBooking.flight.flightNumber} ${editingBooking.flight.origin}→${editingBooking.flight.destination}${
               editingBooking.returnFlight
                 ? ` · ${editingBooking.returnFlight.flightNumber} ${editingBooking.returnFlight.origin}→${editingBooking.returnFlight.destination}`
                 : ""
             }`,
           }}
+          flightOptions={bookingEditFlightOptions}
           onClose={() => setEditingBookingId(null)}
         />
       )}

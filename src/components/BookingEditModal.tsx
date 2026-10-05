@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Combobox, type ComboboxOption } from "@/components/admin/Combobox";
 import { MoneyInput } from "@/components/MoneyInput";
 import {
   PassengerGroupFields,
@@ -48,7 +49,25 @@ export type EditableBooking = {
   paymentMethod: string | null;
   holdExpiresAt: string | null;
   flightLabel: string;
+  flightId: string;
+  returnFlightId: string | null;
+  cabinClass: "economy" | "business";
   passengers: EditablePassenger[];
+};
+
+/** A flight the booking can be moved onto. */
+export type BookingEditFlight = {
+  id: string;
+  origin: string;
+  destination: string;
+  departureAt: string;
+  option: ComboboxOption;
+};
+
+const NO_RETURN_OPTION: ComboboxOption = {
+  value: "",
+  label: "No return flight — one-way",
+  keywords: "none one way single remove",
 };
 
 const fieldClass =
@@ -76,13 +95,36 @@ function splitCompanions(passengers: EditablePassenger[]) {
 
 export function BookingEditModal({
   booking,
+  flightOptions,
   onClose,
 }: {
   booking: EditableBooking;
+  flightOptions: BookingEditFlight[];
   onClose: () => void;
 }) {
   const canEditSeats =
     booking.status === "pending_payment" || booking.status === "confirmed";
+
+  const [outboundId, setOutboundId] = useState(booking.flightId);
+  const [returnId, setReturnId] = useState(booking.returnFlightId ?? "");
+  const sectorsChanged =
+    outboundId !== booking.flightId ||
+    returnId !== (booking.returnFlightId ?? "");
+  const outbound = flightOptions.find((f) => f.id === outboundId) ?? null;
+  const returnOptions = useMemo<ComboboxOption[]>(() => {
+    if (!outbound) return [NO_RETURN_OPTION];
+    return [
+      NO_RETURN_OPTION,
+      ...flightOptions
+        .filter(
+          (f) =>
+            f.origin === outbound.destination &&
+            f.destination === outbound.origin &&
+            f.departureAt > outbound.departureAt,
+        )
+        .map((f) => f.option),
+    ];
+  }, [flightOptions, outbound]);
 
   const initial = useMemo(
     () => splitCompanions(booking.passengers),
@@ -161,6 +203,101 @@ export function BookingEditModal({
             name="tzOffsetMinutes"
             value={new Date().getTimezoneOffset()}
           />
+
+          <div className="space-y-3 border border-line bg-white/50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              Flights on this booking
+            </p>
+            <p className="text-sm text-muted">
+              Change the travel date by picking another flight, or drop a
+              sector. The booking reference, ticket numbers and invoice number
+              stay the same.
+            </p>
+            <label className="block space-y-1 text-sm">
+              <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                Departure flight
+              </span>
+              <Combobox
+                name="editFlightId"
+                required
+                disabled={!canEditSeats}
+                value={outboundId}
+                onChange={(next) => {
+                  setOutboundId(next);
+                  if (next !== outboundId) setReturnId("");
+                }}
+                placeholder="Select a flight"
+                searchPlaceholder="Flight number, route, date…"
+                options={flightOptions.map((f) => f.option)}
+              />
+              <FieldError error={sticky.fieldErrors.editFlightId} />
+            </label>
+            <label className="block space-y-1 text-sm">
+              <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                Return flight
+              </span>
+              <Combobox
+                name="editReturnFlightId"
+                disabled={!canEditSeats}
+                value={returnId}
+                onChange={setReturnId}
+                placeholder="No return flight — one-way"
+                searchPlaceholder="Flight number, date…"
+                options={returnOptions}
+              />
+              <FieldError error={sticky.fieldErrors.editReturnFlightId} />
+            </label>
+            {canEditSeats ? (
+              <div className="flex flex-wrap gap-2">
+                {returnId ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOutboundId(returnId);
+                        setReturnId("");
+                      }}
+                      className="border border-line bg-white px-3 py-2 text-sm font-medium text-accent transition hover:border-accent"
+                    >
+                      Remove departure sector (keep return only)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReturnId("")}
+                      className="border border-line bg-white px-3 py-2 text-sm font-medium text-accent transition hover:border-accent"
+                    >
+                      Remove return sector
+                    </button>
+                  </>
+                ) : null}
+                {sectorsChanged ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOutboundId(booking.flightId);
+                      setReturnId(booking.returnFlightId ?? "");
+                    }}
+                    className="border border-line bg-white px-3 py-2 text-sm font-medium text-muted transition hover:text-foreground"
+                  >
+                    Undo flight changes
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-xs text-amber-800">
+                Reactivate this booking before changing its flights.
+              </p>
+            )}
+            {sectorsChanged ? (
+              <p className="text-xs text-amber-800" role="status">
+                On save, seats move to the new{" "}
+                {returnId ? "flights" : "flight"} and the invoice and e-ticket
+                refresh automatically — resend them from the Invoices tab. The
+                amount below is not recalculated; adjust it if the fare
+                changes.
+              </p>
+            ) : null}
+          </div>
 
           <div className="space-y-3 border border-line bg-white/50 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">

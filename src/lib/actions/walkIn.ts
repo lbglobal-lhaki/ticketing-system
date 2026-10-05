@@ -43,6 +43,7 @@ import {
   type TravellerDetail,
 } from "@/lib/booking/passengers";
 import { specialAssistanceToJson } from "@/lib/booking/specialAssistance";
+import { resolveEditedSectors } from "@/lib/booking/editSectors";
 import { parseDateTimeLocal, parseFlightDateTime } from "@/lib/datetime";
 import { getCurrentFareRelease } from "@/lib/fares/current";
 import {
@@ -1161,7 +1162,7 @@ async function syncAllBookingPassengers(
   }
 }
 
-/** Admin edit of an existing booking — passengers, baggage, amount. */
+/** Admin edit of an existing booking — flights, passengers, baggage, amount. */
 export async function updateBookingAction(
   _prev: FormActionResult | null,
   formData: FormData,
@@ -1214,6 +1215,21 @@ export async function updateBookingAction(
     ...companions.all,
   ];
 
+  // Older forms don't post the sector pickers — absent means "keep as is".
+  const postsSectors = formData.has("editFlightId");
+  const requestedFlightId = String(formData.get("editFlightId") ?? "").trim();
+  const requestedReturnId = String(formData.get("editReturnFlightId") ?? "").trim();
+  if (postsSectors && !requestedFlightId) {
+    return formFail("Choose the flight this booking travels on", {
+      editFlightId: "Choose a flight",
+    });
+  }
+  if (postsSectors && requestedReturnId && requestedReturnId === requestedFlightId) {
+    return formFail("The return flight must be different from the departure flight", {
+      editReturnFlightId: "Pick a different flight, or no return",
+    });
+  }
+
   try {
     await prisma.$transaction(async (tx) => {
       const booking = await tx.booking.findUnique({
@@ -1221,10 +1237,31 @@ export async function updateBookingAction(
         include: {
           invoice: true,
           flight: { select: { departureAt: true } },
-          passengers: { select: { passengerType: true, priceCents: true } },
+          fareRelease: { select: { cabinClass: true } },
+          passengers: {
+            select: {
+              id: true,
+              passengerType: true,
+              priceCents: true,
+              seatOutbound: true,
+              seatReturn: true,
+            },
+            orderBy: { sortOrder: "asc" },
+          },
         },
       });
       if (!booking) throw new Error("Booking not found");
+
+      const sectors = postsSectors
+        ? await resolveEditedSectors(tx, booking, {
+            flightId: requestedFlightId,
+            returnFlightId: requestedReturnId || null,
+            seatsBooked,
+          })
+        : null;
+      if (sectors) {
+        assertChildInfantAges(companions.all, sectors.departureAt);
+      }
       const extraBaggageCents = extraBaggageCentsForBags(data.extraBaggageKg);
       const previousBaggageCents =
         booking.invoice?.extraBaggageCents ??
@@ -1232,7 +1269,9 @@ export async function updateBookingAction(
       const amountPaidCents =
         Math.round(data.amountAud * 100) +
         (extraBaggageCents - previousBaggageCents);
-      assertChildInfantAges(companions.all, booking.flight.departureAt);
+      if (!sectors) {
+        assertChildInfantAges(companions.all, booking.flight.departureAt);
+      }
       const adultUnitCents =
         booking.passengers.find(
           (p) => p.passengerType === "adult" && p.priceCents > 0,
@@ -1242,7 +1281,8 @@ export async function updateBookingAction(
           ? applyCatalogueCompanionFares(allPassengers, adultUnitCents)
           : allPassengers;
 
-      const seatDelta = seatsBooked - booking.seatsBooked;
+      // A sector change already re-held every leg at the new seat count.
+      const seatDelta = sectors?.changed ? 0 : seatsBooked - booking.seatsBooked;
       if (seatDelta !== 0) {
         if (
           booking.status === "hold_expired" ||
@@ -1313,17 +1353,51 @@ export async function updateBookingAction(
           specialAssistance: specialAssistanceToJson(formData),
           amountPaidCents,
           ...(holdExpiresAt ? { holdExpiresAt } : {}),
+          ...(sectors?.changed
+            ? {
+                flightId: sectors.flightId,
+                fareReleaseId: sectors.fareReleaseId,
+                returnFlightId: sectors.returnFlightId,
+                returnFareReleaseId: sectors.returnFareReleaseId,
+                tripType: sectors.returnFlightId ? "round_trip" : "one_way",
+              }
+            : {}),
         },
       });
 
+      const roundTrip = sectors
+        ? Boolean(sectors.returnFlightId)
+        : Boolean(booking.returnFlightId);
       await syncAllBookingPassengers(
         tx,
         booking.id,
         pricedPassengers,
         booking.ticketNumber,
         booking.bookingRef,
-        Boolean(booking.returnFlightId),
+        roundTrip,
       );
+
+      if (sectors?.changed) {
+        // Seat numbers belong to a flight — carry them across only when the
+        // passenger keeps that same flight (e.g. its outbound sector dropped).
+        for (const pax of booking.passengers) {
+          const seatOn = (flightId: string | null) =>
+            !flightId
+              ? ""
+              : flightId === booking.flightId
+                ? pax.seatOutbound
+                : flightId === booking.returnFlightId
+                  ? pax.seatReturn
+                  : "";
+          await tx.bookingPassenger.updateMany({
+            where: { id: pax.id },
+            data: {
+              seatOutbound: seatOn(sectors.flightId),
+              seatReturn: seatOn(sectors.returnFlightId),
+            },
+          });
+        }
+      }
 
       if (booking.invoice) {
         // Sync customer + airfare so PDF totals (from line items) match.
@@ -1331,6 +1405,7 @@ export async function updateBookingAction(
           ...booking.invoice,
           extraBaggageCents,
         });
+        const tripType = sectors?.returnFlightId ? "round_trip" : "one_way";
         await tx.invoice.update({
           where: { id: booking.invoice.id },
           data: {
@@ -1341,6 +1416,21 @@ export async function updateBookingAction(
             fareCents: airfareCents,
             extraBaggageCents,
             amountCents: amountPaidCents,
+            ...(sectors?.changed
+              ? {
+                  routeLabel: buildRouteLabel({
+                    origin: sectors.origin,
+                    destination: sectors.destination,
+                    tripType,
+                  }),
+                  fareCalculationLine: defaultFareCalculationLine({
+                    origin: sectors.origin,
+                    destination: sectors.destination,
+                    tripType,
+                    fareCents: airfareCents,
+                  }),
+                }
+              : {}),
             pdfBlobUrl: null,
             pdfBlobPathname: null,
           },

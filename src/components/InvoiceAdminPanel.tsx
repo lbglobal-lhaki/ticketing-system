@@ -39,6 +39,8 @@ import {
   GstModeFields,
   resolveGstMode,
 } from "@/components/GstModeFields";
+import { SpecialAssistanceFields } from "@/components/SpecialAssistanceFields";
+import { passengerTypeLabel } from "@/lib/booking/passengers";
 
 export type AdminInvoiceRow = {
   id: string;
@@ -81,6 +83,18 @@ export type AdminInvoiceRow = {
   bookingRef: string;
   bookingId: string;
   cabinClass: "economy" | "business";
+  specialAssistance?: unknown;
+  /** Everyone on the booking after the primary passenger. */
+  companions: InvoiceCompanion[];
+};
+
+export type InvoiceCompanion = {
+  id: string;
+  fullName: string;
+  passportNumber: string;
+  nationality: string;
+  passengerType: "adult" | "child" | "infant";
+  ticketNumber: string;
 };
 
 type DocTab = "travel" | "airfare";
@@ -865,6 +879,72 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                           className={fieldClass}
                         />
                       </label>
+                      {active.companions.length > 0 ? (
+                        <div className="space-y-3 border-t border-line pt-3 sm:col-span-2">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                            Other passengers on this booking
+                          </p>
+                          {active.companions.map((pax, i) => (
+                            <div
+                              key={pax.id}
+                              className="grid gap-3 sm:grid-cols-3"
+                            >
+                              <input type="hidden" name="paxId" value={pax.id} />
+                              <p className="text-xs text-muted sm:col-span-3">
+                                {passengerTypeLabel(pax.passengerType)} {i + 2}
+                                {pax.ticketNumber
+                                  ? ` · ticket ${pax.ticketNumber}`
+                                  : ""}
+                              </p>
+                              <label className="block text-xs text-muted">
+                                Full name
+                                <input
+                                  name="paxName"
+                                  required
+                                  defaultValue={pax.fullName}
+                                  data-field-key={`paxName.${i}`}
+                                  aria-invalid={
+                                    fieldErrors[`paxName.${i}`] ? true : undefined
+                                  }
+                                  className={labeledControlClass(
+                                    fieldClass,
+                                    fieldErrors[`paxName.${i}`],
+                                  )}
+                                />
+                                <FieldError error={fieldErrors[`paxName.${i}`]} />
+                              </label>
+                              <label className="block text-xs text-muted">
+                                Passport number
+                                <input
+                                  name="paxPassport"
+                                  defaultValue={pax.passportNumber}
+                                  className={fieldClass}
+                                />
+                              </label>
+                              <label className="block text-xs text-muted">
+                                Nationality
+                                <input
+                                  name="paxNationality"
+                                  defaultValue={pax.nationality}
+                                  className={fieldClass}
+                                />
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="space-y-2 border-t border-line pt-3 sm:col-span-2">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+                          Special assistance
+                        </p>
+                        <p className="text-xs text-muted">
+                          Printed on every passenger&apos;s e-ticket.
+                        </p>
+                        <SpecialAssistanceFields
+                          initial={active.specialAssistance}
+                          fieldClass={fieldClass}
+                        />
+                      </div>
                   </div>
                   <div
                     className={docTab === "airfare" ? "contents" : "hidden"}

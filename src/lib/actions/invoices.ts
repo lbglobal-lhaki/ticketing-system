@@ -21,6 +21,7 @@ import { invalidateInvoicePdfBlob } from "@/lib/documents/invoiceBlob";
 import { recordDeletion } from "@/lib/audit/deletionLog";
 import { parseDateTimeLocal } from "@/lib/datetime";
 import { extraBaggageCentsForBags } from "@/lib/pricing/baggage";
+import { specialAssistanceToJson } from "@/lib/booking/specialAssistance";
 import { z } from "zod";
 import {
   bookingNeedsSeatReclaim,
@@ -299,11 +300,39 @@ async function persistInvoiceDocument(formData: FormData) {
           extraBaggageKg: true,
           status: true,
           paymentMethod: true,
+          specialAssistance: true,
+          passengers: {
+            orderBy: { sortOrder: "asc" },
+            select: {
+              id: true,
+              fullName: true,
+              passportNumber: true,
+              nationality: true,
+              passengerType: true,
+              ticketNumber: true,
+            },
+          },
         },
       },
     },
   });
   if (!existing) return { ok: false as const, error: "Invoice not found" };
+
+  const companionEdits = readCompanionEdits(formData);
+  if (!companionEdits.ok) {
+    return {
+      ok: false as const,
+      error: companionEdits.error,
+      fieldErrors: companionEdits.fieldErrors,
+    };
+  }
+  const companionIds = new Set(
+    existing.booking.passengers.slice(1).map((p) => p.id),
+  );
+  // Older modals don't post the assistance fields — absent means "keep".
+  const specialAssistance = formData.has("specialAssistanceOther")
+    ? specialAssistanceToJson(formData)
+    : undefined;
 
   const airfareCents = moneyAud(formData.get("airfareAud"));
   const airportTaxesCents = moneyAud(formData.get("airportTaxesAud"));
@@ -404,6 +433,7 @@ async function persistInvoiceDocument(formData: FormData) {
       amountPaidCents: totals.amountCents,
       serviceFeeCents,
       extraBaggageKg,
+      ...(specialAssistance !== undefined ? { specialAssistance } : {}),
       ...(dueAt &&
       existing.booking.status === "pending_payment" &&
       existing.booking.paymentMethod === "bank_transfer"
@@ -429,6 +459,30 @@ async function persistInvoiceDocument(formData: FormData) {
       },
     });
   }
+
+  for (const edit of companionEdits.value) {
+    if (!companionIds.has(edit.id)) continue;
+    await prisma.bookingPassenger.update({
+      where: { id: edit.id },
+      data: {
+        fullName: edit.fullName,
+        passportNumber: edit.passportNumber,
+        nationality: edit.nationality,
+      },
+    });
+  }
+  const editsById = new Map(companionEdits.value.map((e) => [e.id, e]));
+  const companions = existing.booking.passengers.slice(1).map((p) => {
+    const edit = editsById.get(p.id);
+    return {
+      id: p.id,
+      fullName: edit?.fullName ?? p.fullName,
+      passportNumber: edit?.passportNumber ?? p.passportNumber,
+      nationality: edit?.nationality ?? p.nationality,
+      passengerType: p.passengerType as "adult" | "child" | "infant",
+      ticketNumber: p.ticketNumber,
+    };
+  });
 
   // Don't revalidatePath("/admin") here — the invoice modal updates local
   // state + preview iframe. Full admin revalidation was reloading the whole
@@ -468,8 +522,48 @@ async function persistInvoiceDocument(formData: FormData) {
       gstOverrideCents,
       amountCents: totals.amountCents,
       dueAt: dueAt?.toISOString() ?? null,
+      companions,
+      specialAssistance:
+        specialAssistance !== undefined
+          ? specialAssistance
+          : existing.booking.specialAssistance,
     },
   };
+}
+
+/** Companion name / passport / nationality rows posted by the invoice modal. */
+function readCompanionEdits(formData: FormData):
+  | {
+      ok: true;
+      value: {
+        id: string;
+        fullName: string;
+        passportNumber: string;
+        nationality: string;
+      }[];
+    }
+  | { ok: false; error: string; fieldErrors: Record<string, string> } {
+  const ids = formData.getAll("paxId").map(String);
+  const names = formData.getAll("paxName").map((v) => String(v).trim());
+  const passports = formData.getAll("paxPassport").map((v) => String(v).trim());
+  const nationalities = formData
+    .getAll("paxNationality")
+    .map((v) => String(v).trim());
+  const fieldErrors: Record<string, string> = {};
+  const value = ids.map((id, i) => {
+    const fullName = names[i] ?? "";
+    if (fullName.length < 2) fieldErrors[`paxName.${i}`] = "Enter the passenger's name";
+    return {
+      id,
+      fullName: fullName.slice(0, 120),
+      passportNumber: (passports[i] ?? "").slice(0, 40),
+      nationality: (nationalities[i] ?? "").slice(0, 60),
+    };
+  });
+  if (Object.keys(fieldErrors).length > 0) {
+    return { ok: false, error: "Every passenger needs a name", fieldErrors };
+  }
+  return { ok: true, value };
 }
 
 /** Modal-friendly save (no redirect). */

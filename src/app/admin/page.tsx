@@ -216,7 +216,19 @@ export default async function AdminPage({
               passportNumber: true,
               nationality: true,
               extraBaggageKg: true,
+              specialAssistance: true,
               fareRelease: { select: { cabinClass: true } },
+              passengers: {
+                orderBy: { sortOrder: "asc" },
+                select: {
+                  id: true,
+                  fullName: true,
+                  passportNumber: true,
+                  nationality: true,
+                  passengerType: true,
+                  ticketNumber: true,
+                },
+              },
             },
           },
         },
@@ -431,6 +443,8 @@ export default async function AdminPage({
               bookingRef: b.bookingRef,
               ticketNumber: b.ticketNumber,
               tripType: b.tripType,
+              flightId: b.flightId,
+              returnFlightId: b.returnFlightId,
               passengerName: b.passengerName,
               email: b.email,
               passengerPhone: b.passengerPhone,
@@ -523,6 +537,16 @@ export default async function AdminPage({
               bookingId: invoice.bookingId,
               cabinClass: (invoice.booking.fareRelease?.cabinClass ??
                 "economy") as "economy" | "business",
+              specialAssistance: invoice.booking.specialAssistance,
+              // The primary passenger is edited through the customer fields.
+              companions: invoice.booking.passengers.slice(1).map((p) => ({
+                id: p.id,
+                fullName: p.fullName,
+                passportNumber: p.passportNumber,
+                nationality: p.nationality,
+                passengerType: p.passengerType as "adult" | "child" | "infant",
+                ticketNumber: p.ticketNumber,
+              })),
             }))}
             deletedRecords={deletedRecords.map((row) => ({
               id: row.id,
