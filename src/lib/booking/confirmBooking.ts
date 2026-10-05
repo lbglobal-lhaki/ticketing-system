@@ -94,29 +94,26 @@ export async function createPriceQuote(input: {
    *
    * Price source is per flight: ticket_types charges the selected ticket type
    * (fareProductId is a FareRelease id). Charter charges the catalogue product
-   * and still decrements the current inventory bucket.
+   * and still decrements the current inventory bucket. A charter flight can
+   * still book a ticket type when that cabin's catalogue has no round-trip
+   * price (the customer-facing fallback).
    */
-  const usingTicketTypes = flight.pricingSource === "ticket_types";
-  const ticketRelease =
-    usingTicketTypes && input.fareProductId
-      ? (flight.fareReleases.find(
-          (r) => r.id === input.fareProductId && r.active,
-        ) ?? null)
-      : null;
-  if (usingTicketTypes && input.fareProductId && !ticketRelease) {
-    return { ok: false as const, error: "Selected ticket type is unavailable" };
-  }
+  const ticketRelease = input.fareProductId
+    ? (flight.fareReleases.find(
+        (r) => r.id === input.fareProductId && r.active,
+      ) ?? null)
+    : null;
   if (ticketRelease && ticketRelease.remainingSeats < 1) {
     return { ok: false as const, error: "Selected ticket type is sold out" };
   }
 
   const product =
-    !usingTicketTypes && input.fareProductId
+    !ticketRelease && input.fareProductId
       ? await prisma.charterFareProduct.findFirst({
           where: { id: input.fareProductId, active: true },
         })
       : null;
-  if (!usingTicketTypes && input.fareProductId && !product) {
+  if (input.fareProductId && !ticketRelease && !product) {
     return { ok: false as const, error: "Selected fare product is unavailable" };
   }
   const cabinClass = parseCabin(

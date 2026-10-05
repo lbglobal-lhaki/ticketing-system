@@ -60,3 +60,24 @@ export function fareFooterNotes() {
 export function formatFarePrice(cents: number) {
   return formatAud(cents);
 }
+
+export function productsPricedForTrip(
+  products: FareProduct[],
+  trip: "one_way" | "round_trip",
+) {
+  return trip === "round_trip"
+    ? products.filter((p) => p.roundTripPriceCents > 0)
+    : products.filter((p) => p.priceCents > 0);
+}
+
+/** Prefer the flight's catalogue; if that trip type is unpriced, use ticket types. */
+export function fareProductsForTripType(
+  primary: FareProduct[],
+  fallback: FareProduct[],
+  trip: "one_way" | "round_trip",
+) {
+  const fromPrimary = productsPricedForTrip(primary, trip);
+  return fromPrimary.length > 0
+    ? fromPrimary
+    : productsPricedForTrip(fallback, trip);
+}

@@ -4,7 +4,10 @@ import { FareComparisonRow } from "@/components/fares/FareComparisonRow";
 import { SelectedFlightSummary } from "@/components/fares/SelectedFlightSummary";
 import { getBrand } from "@/lib/branding";
 import { prisma } from "@/lib/db";
-import { fareProductsForCustomer } from "@/lib/fares/customerPrice";
+import {
+  customerFareProductSets,
+  fareProductsForTripType,
+} from "@/lib/fares/customerPrice";
 import {
   cabinsOnFlight,
   parseCabin,
@@ -69,25 +72,27 @@ export default async function TripReviewPage({
     seatsByCabin(outbound.fareReleases)[cabinClass].remainingSeats < 1 ||
     seatsByCabin(returnFlight.fareReleases)[cabinClass].remainingSeats < 1;
 
-  const products = await fareProductsForCustomer({
+  const { primary, fallback } = await customerFareProductSets({
     pricingSource: outbound.pricingSource,
     cabinClass,
     releases: outbound.fareReleases,
     available: !soldOut,
   });
-  const usingTicketTypes = outbound.pricingSource === "ticket_types";
-
-  // Round-trip display: use stored package total (not ×2 one-way).
-  const roundTripProducts = products
-    .filter((p) => p.roundTripPriceCents > 0)
-    .map((p) => ({
-      ...p,
-      priceCents: p.roundTripPriceCents,
-      available: p.available && p.roundTripPriceCents > 0,
-      notes: p.notes
-        ? `${p.notes} · round-trip total`
-        : "Round-trip total (both legs)",
-    }));
+  const usingTicketTypes =
+    outbound.pricingSource === "ticket_types" ||
+    primary.filter((p) => p.roundTripPriceCents > 0).length === 0;
+  const roundTripProducts = fareProductsForTripType(
+    primary,
+    fallback,
+    "round_trip",
+  ).map((p) => ({
+    ...p,
+    priceCents: p.roundTripPriceCents,
+    available: p.available && p.roundTripPriceCents > 0,
+    notes: p.notes
+      ? `${p.notes} · round-trip total`
+      : "Round-trip total (both legs)",
+  }));
 
   const backQs = new URLSearchParams({
     adults: String(adults),

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { FareComparisonRow } from "@/components/fares/FareComparisonRow";
 import { SelectedFlightSummary } from "@/components/fares/SelectedFlightSummary";
+import { fareProductsForTripType } from "@/lib/fares/products";
 import type { FareProduct } from "@/lib/fares/products";
 
 type Leg = {
@@ -28,6 +29,7 @@ export function TripTypeFareSection({
   outbound,
   pairedReturn,
   products,
+  fallbackProducts = [],
   supportEmail,
   disabled,
   adults = 1,
@@ -38,6 +40,8 @@ export function TripTypeFareSection({
   outbound: Leg;
   pairedReturn: Leg | null;
   products: FareProduct[];
+  /** Used when the primary catalogue has no price for the chosen trip type. */
+  fallbackProducts?: FareProduct[];
   supportEmail: string;
   disabled?: boolean;
   adults?: number;
@@ -53,23 +57,29 @@ export function TripTypeFareSection({
 
   const isRoundTrip = tripType === "round_trip" && canRoundTrip;
 
+  const trip = isRoundTrip ? "round_trip" : "one_way";
+  const selected = fareProductsForTripType(products, fallbackProducts, trip);
+  const usingTicketCards =
+    usingTicketTypes ||
+    (pricingSource !== "ticket_types" &&
+      products.filter((p) =>
+        isRoundTrip ? p.roundTripPriceCents > 0 : p.priceCents > 0,
+      ).length === 0 &&
+      selected.length > 0);
+
   const displayedProducts = isRoundTrip
-    ? products
-        .filter((p) => p.roundTripPriceCents > 0)
-        .map((p) => ({
-          ...p,
-          priceCents: p.roundTripPriceCents,
-          available: p.available && p.roundTripPriceCents > 0,
-          notes: p.notes
-            ? `${p.notes} · round-trip total (both legs)`
-            : "Round-trip total (both legs)",
-        }))
-    : products
-        .filter((p) => p.priceCents > 0)
-        .map((p) => ({
-          ...p,
-          available: p.available && p.priceCents > 0,
-        }));
+    ? selected.map((p) => ({
+        ...p,
+        priceCents: p.roundTripPriceCents,
+        available: p.available && p.roundTripPriceCents > 0,
+        notes: p.notes
+          ? `${p.notes} · round-trip total (both legs)`
+          : "Round-trip total (both legs)",
+      }))
+    : selected.map((p) => ({
+        ...p,
+        available: p.available && p.priceCents > 0,
+      }));
 
   return (
     <div className="space-y-6">
@@ -122,15 +132,15 @@ export function TripTypeFareSection({
         title={isRoundTrip ? "Choose your round-trip fare" : "Choose your fare"}
         subtitle={
           isRoundTrip
-            ? usingTicketTypes
+            ? usingTicketCards
               ? "Ticket prices for both legs · child 75% · infant 10% (no seat)"
               : "Adult package for both legs · child 75% · infant 10% (no seat)"
-            : usingTicketTypes
+            : usingTicketCards
               ? "Ticket prices on this flight · child 75% · infant 10% (no seat)"
               : "Adult fare per seat · child 75% · infant 10% (no seat)"
         }
         emptyHint={
-          usingTicketTypes
+          usingTicketCards || usingTicketTypes
             ? "This flight has no priced ticket types for this cabin yet."
             : "Ask admin to activate charter fares for this cabin."
         }
