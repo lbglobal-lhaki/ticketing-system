@@ -103,6 +103,11 @@ export function formatStripDay(date: string) {
       weekday: "short",
       timeZone: "UTC",
     }).format(d),
+    weekdayLong: new Intl.DateTimeFormat("en-AU", {
+      weekday: "long",
+      timeZone: "UTC",
+    }).format(d),
+    dayNumber: String(d.getUTCDate()),
     dayMonth: new Intl.DateTimeFormat("en-AU", {
       day: "numeric",
       month: "short",

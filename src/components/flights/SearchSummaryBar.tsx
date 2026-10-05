@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { SearchForm } from "@/components/SearchForm";
-import { airportCity, airportLabel, type AirportOption } from "@/lib/format";
-import { formatSearchDateRange } from "@/lib/flights/results";
+import { airportCity, type AirportOption } from "@/lib/format";
+import { formatAud } from "@/lib/pricing";
 
 type SearchSummaryBarProps = {
   origin: string;
@@ -21,25 +21,32 @@ type SearchSummaryBarProps = {
   title?: string;
   airports: AirportOption[];
   searchParams?: Record<string, string>;
+  /** Cheapest fare in the current results, shown on the right of the bar. */
+  fromPriceCents?: number | null;
+  /** Dates (YYYY-MM-DD) with flights, highlighted in the date picker. */
+  flightDates?: string[];
 };
 
 function partyLabel(adults: number, children: number, infants: number) {
-  const parts = [
-    `${adults} adult${adults === 1 ? "" : "s"}`,
-    children > 0
-      ? `${children} child${children === 1 ? "" : "ren"}`
-      : null,
-    infants > 0
-      ? `${infants} infant${infants === 1 ? "" : "s"}`
-      : null,
-  ].filter(Boolean);
-  return parts.join(", ");
+  return [
+    `${adults} Adult${adults === 1 ? "" : "s"}`,
+    children > 0 ? `${children} Child${children === 1 ? "" : "ren"}` : null,
+    infants > 0 ? `${infants} Infant${infants === 1 ? "" : "s"}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
 }
 
-function buildResultsHref(
-  base: Record<string, string>,
-  allTickets: boolean,
-) {
+function barDate(iso: string) {
+  return new Intl.DateTimeFormat("en-AU", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${iso}T12:00:00.000Z`));
+}
+
+function buildResultsHref(base: Record<string, string>, allTickets: boolean) {
   const params = new URLSearchParams(base);
   if (allTickets) params.set("allTickets", "1");
   else params.delete("allTickets");
@@ -62,9 +69,10 @@ export function SearchSummaryBar({
   title,
   airports,
   searchParams,
+  fromPriceCents = null,
+  flightDates,
 }: SearchSummaryBarProps) {
   const [modifyOpen, setModifyOpen] = useState(false);
-  const cabinLabel = cabinClass === "business" ? "Business" : "Economy";
   const adultsN = Math.max(1, adults);
   const childrenN = Math.max(0, children);
   const infantsN = Math.max(0, infants);
@@ -98,121 +106,105 @@ export function SearchSummaryBar({
     returnDate,
   ]);
 
-  // Catalogue mode is unfiltered; restore prior search when leaving it.
-  const viewAllHref = "/?allTickets=1";
-  const filterByDateHref = buildResultsHref(baseParams, false);
+  const toggleHref = allTickets
+    ? buildResultsHref(baseParams, false)
+    : "/?allTickets=1";
+
+  const dates =
+    tripType === "round_trip" && returnDate
+      ? `${barDate(date)} – ${barDate(returnDate)}`
+      : barDate(date);
 
   return (
-    <section
-      className={`results-banner theme-banner relative px-3 pb-5 pt-4 sm:px-6 sm:pb-7 sm:pt-6 ${
-        modifyOpen ? "overflow-visible z-20" : "overflow-hidden"
-      }`}
-    >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-50"
-        style={{
-          backgroundImage: `
-            radial-gradient(ellipse at 12% 20%, rgba(255,255,255,0.18), transparent 42%),
-            radial-gradient(ellipse at 88% 80%, rgba(220, 38, 38,0.35), transparent 48%)
-          `,
-        }}
-      />
-      <div className="relative mx-auto w-full max-w-6xl">
+    <section className="results-banner relative z-20 px-3 pt-4 sm:px-6 sm:pt-5">
+      <div className="mx-auto w-full max-w-6xl">
         {title ? (
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/80 sm:mb-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent-deep">
             {title}
           </p>
         ) : null}
 
-        <div className="results-rise glass-panel relative z-10 overflow-visible rounded-2xl shadow-[0_16px_40px_rgba(15,23,42,0.22)]">
-          {!modifyOpen ? (
-            <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-5">
-              <div className="flex min-w-0 flex-1 flex-col gap-2 text-sm text-foreground sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5 sm:gap-y-2">
-                {allTickets ? (
-                  <>
-                    <p className="font-semibold text-foreground">
-                      All routes · All dates · All cabins
-                    </p>
-                    <span className="hidden h-4 w-px bg-line sm:block" aria-hidden />
-                    <p className="text-muted">Full ticket catalogue</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="flex min-w-0 items-center gap-2 font-semibold">
-                      <span
-                        className="inline-flex shrink-0 items-center rounded-md bg-accent/12 px-2 py-0.5 text-xs font-bold tracking-wide text-accent-deep"
-                        title={airportLabel(origin)}
-                      >
-                        {origin}
-                      </span>
-                      <span className="truncate">{airportCity(origin)}</span>
-                      <span className="shrink-0 text-accent" aria-hidden>
-                        {tripType === "round_trip" ? "⇄" : "→"}
-                      </span>
-                      <span
-                        className="inline-flex shrink-0 items-center rounded-md bg-accent/12 px-2 py-0.5 text-xs font-bold tracking-wide text-accent-deep"
-                        title={airportLabel(destination)}
-                      >
-                        {destination}
-                      </span>
-                      <span className="truncate">{airportCity(destination)}</span>
-                    </p>
-                    <span className="hidden h-4 w-px bg-line sm:block" aria-hidden />
-                    <p className="min-w-0 text-muted">
-                      <span className="font-medium text-foreground">
-                        {formatSearchDateRange(date, returnDate, tripType)}
-                      </span>
-                    </p>
-                    <span className="hidden h-4 w-px bg-line sm:block" aria-hidden />
-                    <p className="text-muted">
-                      <span className="font-medium text-foreground">
-                        {tripType === "round_trip" ? "Round trip" : "One way"}
-                      </span>
-                    </p>
-                    <span className="hidden h-4 w-px bg-line sm:block" aria-hidden />
-                    <p className="text-muted">
-                      <span className="font-medium text-foreground">
-                        {partyLabel(adultsN, childrenN, infantsN)}
-                      </span>{" "}
-                      / {cabinLabel}
-                    </p>
-                  </>
-                )}
-              </div>
-              <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-                <Link
-                  href={allTickets ? filterByDateHref : viewAllHref}
-                  className="btn-secondary inline-flex min-h-11 w-full items-center justify-center px-5 py-2 text-sm sm:w-auto"
-                >
-                  {allTickets ? "Filter by date" : "View all tickets"}
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => setModifyOpen(true)}
-                  className="btn-secondary min-h-11 w-full px-5 py-2 text-sm sm:w-auto"
-                >
-                  Modify search
-                </button>
-              </div>
+        <div className="results-rise relative overflow-hidden rounded-xl bg-accent-deep text-white shadow-[0_14px_34px_rgba(30,58,138,0.28)]">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 right-0 w-3/4 bg-[url('/documents/eticket-assets/world-map-dots.png')] bg-cover bg-center opacity-20 mix-blend-screen"
+          />
+          <div className="relative flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:gap-6 sm:px-6 sm:py-5">
+            <button
+              type="button"
+              onClick={() => setModifyOpen((v) => !v)}
+              aria-expanded={modifyOpen}
+              className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 self-start rounded-lg border border-white/80 px-5 text-sm font-semibold transition hover:bg-white hover:text-accent-deep focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white sm:self-auto"
+            >
+              {modifyOpen ? <CloseIcon /> : <SearchIcon />}
+              {modifyOpen ? "Close" : "Search"}
+            </button>
+
+            <div className="min-w-0 flex-1">
+              {allTickets ? (
+                <>
+                  <p className="text-base font-semibold sm:text-lg">
+                    All routes · All dates · All cabins
+                  </p>
+                  <p className="mt-1 text-sm text-white/80">
+                    Full ticket catalogue
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="truncate text-base font-semibold sm:text-lg">
+                    {airportCity(origin)} ({origin}) -{" "}
+                    {airportCity(destination)} ({destination})
+                  </p>
+                  <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-white/85">
+                    <span>{dates}</span>
+                    <Divider />
+                    <span>{partyLabel(adultsN, childrenN, infantsN)}</span>
+                    <Divider />
+                    <span>
+                      {tripType === "round_trip" ? "Round Trip" : "One Way"}
+                    </span>
+                    <Divider />
+                    <span>
+                      {cabinClass === "business" ? "Business" : "Economy"}
+                    </span>
+                  </p>
+                </>
+              )}
+              <Link
+                href={toggleHref}
+                className="mt-2 inline-block text-xs font-semibold text-white/80 underline-offset-4 transition hover:text-white hover:underline"
+              >
+                {allTickets ? "Back to my dates" : "View all tickets"}
+              </Link>
             </div>
-          ) : (
-            <div className="px-4 py-4 sm:px-5 sm:py-5">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-accent-deep">
-                  Modify search
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setModifyOpen(false)}
-                  className="text-sm font-medium text-muted transition hover:text-foreground"
-                >
-                  Close
-                </button>
-              </div>
+
+            <div className="shrink-0 border-t border-white/15 pt-3 text-left sm:border-0 sm:pt-0 sm:text-right">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/75">
+                Fares from
+              </p>
+              <p className="mt-0.5 font-[family-name:var(--font-syne)] text-2xl font-bold tracking-tight">
+                {fromPriceCents != null ? formatAud(fromPriceCents) : "—"}
+                <span className="ml-1.5 text-sm font-semibold text-white/75">
+                  AUD
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {modifyOpen ? (
+          <div className="results-rise relative mt-3 overflow-visible rounded-xl border border-line bg-white shadow-[0_18px_44px_rgba(15,23,42,0.14)]">
+            <div className="theme-banner rounded-t-xl px-5 py-4 sm:px-7">
+              <p className="font-[family-name:var(--font-syne)] text-xl font-semibold text-white sm:text-2xl">
+                Book a Flight
+              </p>
+            </div>
+            <div className="px-4 py-5 sm:px-7 sm:py-6">
               <SearchForm
                 variant="panel"
                 airports={airports}
+                flightDates={flightDates}
                 initialValues={{
                   origin,
                   destination,
@@ -227,9 +219,30 @@ export function SearchSummaryBar({
                 }}
               />
             </div>
-          )}
-        </div>
+          </div>
+        ) : null}
       </div>
     </section>
+  );
+}
+
+function Divider() {
+  return <span aria-hidden className="text-white/50">|</span>;
+}
+
+function SearchIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="2" />
+      <path d="m16 16 4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
   );
 }

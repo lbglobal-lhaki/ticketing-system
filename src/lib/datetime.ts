@@ -247,12 +247,21 @@ export function formatFlightDate(isoOrDate: string | Date): string {
   }).format(d);
 }
 
-export function searchWindow(date: string) {
+/**
+ * Departures to load for a search on `date`. Must span the whole results date
+ * strip (7 days before, 14 after) or its outer days read "no flights" even
+ * when one exists — and never reaches back before now, so a flight that has
+ * already left can't be offered.
+ */
+export function searchWindow(date: string, now = new Date()) {
   const dayStart = new Date(`${date}T00:00:00.000Z`);
   const dayEnd = new Date(`${date}T23:59:59.999Z`);
   const windowStart = new Date(dayStart);
-  windowStart.setUTCDate(windowStart.getUTCDate() - 1);
+  windowStart.setUTCDate(windowStart.getUTCDate() - 7);
   const windowEnd = new Date(dayEnd);
   windowEnd.setUTCDate(windowEnd.getUTCDate() + 14);
-  return { windowStart, windowEnd };
+  return {
+    windowStart: windowStart < now ? now : windowStart,
+    windowEnd,
+  };
 }

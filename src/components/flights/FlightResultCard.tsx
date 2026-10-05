@@ -1,7 +1,5 @@
 import Link from "next/link";
 import {
-  estimateCo2Kg,
-  formatCardDate,
   formatClock,
   formatDuration,
   routeCityLabel,
@@ -11,120 +9,103 @@ import {
 import { airportTzAbbr } from "@/lib/datetime";
 import { formatAud } from "@/lib/pricing";
 
+/** Width of each cabin column — the list header uses the same value. */
+export const CABIN_COLUMN_CLASS = "lg:w-[9.75rem]";
+
 type FlightResultCardProps = {
   flight: FlightResultRow;
   globalLowestFareCents: number | null;
 };
+
+function endpointDate(iso: string) {
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(iso));
+}
 
 export function FlightResultCard({
   flight,
   globalLowestFareCents,
 }: FlightResultCardProps) {
   const stopLabel = flight.stops === 0 ? "Nonstop" : `${flight.stops} Stop`;
-  const detailsHref =
-    flight.economy?.href ?? flight.business?.href ?? "#";
+  const detailsHref = flight.economy?.href ?? flight.business?.href ?? "#";
+  const lowest = (fare: CabinFare | null) =>
+    fare?.farePriced === true &&
+    globalLowestFareCents != null &&
+    fare.displayPriceCents === globalLowestFareCents;
 
   return (
-    <article className="results-card overflow-hidden rounded-2xl border border-line bg-white shadow-[0_8px_28px_rgba(15,23,42,0.07)]">
-      <div className="flex flex-col gap-5 p-4 sm:p-5 lg:flex-row lg:items-stretch lg:gap-6 lg:p-6">
-        {/* Schedule column */}
-        <div className="flex min-w-0 flex-1 flex-col justify-center">
-          <div className="mb-4 flex min-w-0 items-center gap-2.5">
-            <img
-              src="/drukair_logo.png"
-              alt=""
-              width={56}
-              height={56}
-              className="size-12 shrink-0 rounded-[12px] object-contain sm:size-14"
-            />
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <p className="min-w-0 truncate font-[family-name:var(--font-syne)] text-sm font-bold tracking-tight text-accent-deep sm:text-base">
-                  {flight.airline}{" "}
-                  <span className="font-semibold text-foreground">
-                    {flight.flightNumber}
-                  </span>
-                </p>
-                <TripBadge flight={flight} />
-              </div>
-              {flight.roundTripAvailable &&
-              flight.returnDepartureAt &&
-              flight.roleLabel !== "return" ? (
-                <p className="mt-1 text-xs text-muted">
-                  Return{" "}
-                  {flight.returnFlightNumber
-                    ? `${flight.returnFlightNumber} · `
-                    : ""}
-                  {formatCardDate(flight.returnDepartureAt)}
-                </p>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-3 sm:gap-5">
+    <article className="results-card overflow-hidden rounded-xl border border-line bg-white shadow-[0_6px_20px_rgba(15,23,42,0.05)]">
+      <div className="flex flex-col lg:flex-row lg:items-stretch">
+        <div className="min-w-0 flex-1 px-4 py-5 sm:px-6">
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(6rem,1.4fr)_minmax(0,1fr)] items-center gap-3 sm:gap-6">
             <Endpoint
               time={formatClock(flight.departureAt)}
               tz={airportTzAbbr(flight.origin, new Date(flight.departureAt))}
-              date={formatCardDate(flight.departureAt)}
-              code={flight.origin}
-              city={routeCityLabel(flight.origin)}
+              place={`${routeCityLabel(flight.origin)} (${flight.origin})`}
+              date={endpointDate(flight.departureAt)}
               align="left"
             />
 
-            <div className="flex w-[5.5rem] flex-col items-center gap-1.5 pt-1 sm:w-[9rem]">
-              <p className="text-xs font-medium text-muted">
+            <div className="flex min-w-0 flex-col items-center gap-1">
+              <p className="text-[11px] font-medium text-muted">
                 {formatDuration(flight.durationMinutes)}
               </p>
-              <div className="flex w-full items-center gap-1.5">
-                <span className="h-px flex-1 bg-line" />
-                <span className="badge-info px-2.5 py-0.5 text-[10px] sm:text-[11px]">
-                  {stopLabel}
-                </span>
-                <span className="h-px flex-1 bg-line" />
+              <div className="flex w-full items-center text-accent-deep">
+                <PlaneRight />
+                <span className="h-px flex-1 bg-accent-deep/70" />
+                <span className="mx-0.5 size-1.5 shrink-0 rounded-full bg-accent-deep" />
+                <span className="h-px flex-1 bg-accent-deep/70" />
+                <PlaneRight />
               </div>
-              <Link
-                href={detailsHref}
-                className="mt-0.5 text-xs font-semibold text-accent transition hover:text-accent-deep"
-              >
-                Flight Details
-              </Link>
+              <p className="text-xs font-semibold text-foreground">{stopLabel}</p>
+              <p className="text-[11px] font-semibold tracking-wide text-muted">
+                {flight.flightNumber}
+              </p>
             </div>
 
             <Endpoint
               time={formatClock(flight.arrivalAt)}
-              tz={airportTzAbbr(
-                flight.destination,
-                new Date(flight.arrivalAt),
-              )}
-              date={formatCardDate(flight.arrivalAt)}
-              code={flight.destination}
-              city={routeCityLabel(flight.destination)}
+              tz={airportTzAbbr(flight.destination, new Date(flight.arrivalAt))}
+              place={`${routeCityLabel(flight.destination)} (${flight.destination})`}
+              date={endpointDate(flight.arrivalAt)}
               align="right"
             />
           </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <Link
+              href={detailsHref}
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent-deep transition hover:text-accent"
+            >
+              <InfoIcon />
+              Flight Info
+            </Link>
+            <TripBadge flight={flight} />
+            {flight.roundTripAvailable &&
+            flight.returnDepartureAt &&
+            flight.roleLabel !== "return" ? (
+              <span className="text-xs text-muted">
+                Return{" "}
+                {flight.returnFlightNumber
+                  ? `${flight.returnFlightNumber} · `
+                  : ""}
+                {endpointDate(flight.returnDepartureAt)}
+              </span>
+            ) : null}
+          </div>
         </div>
 
-        {/* Cabin fare boxes */}
-        <div className="grid min-w-0 shrink-0 grid-cols-1 gap-2.5 min-[480px]:grid-cols-2 lg:w-[22rem] xl:w-[24.5rem]">
-          <CabinPriceCard
-            label="Economy"
-            fare={flight.economy}
-            durationMinutes={flight.durationMinutes}
-            isLowest={
-              flight.economy?.farePriced === true &&
-              globalLowestFareCents != null &&
-              flight.economy.displayPriceCents === globalLowestFareCents
-            }
-          />
-          <CabinPriceCard
+        <div className="grid grid-cols-2 border-t border-line lg:flex lg:border-t-0">
+          <CabinCell label="Economy" fare={flight.economy} isLowest={lowest(flight.economy)} />
+          <CabinCell
             label="Business"
             fare={flight.business}
-            durationMinutes={flight.durationMinutes}
-            isLowest={
-              flight.business?.farePriced === true &&
-              globalLowestFareCents != null &&
-              flight.business.displayPriceCents === globalLowestFareCents
-            }
+            isLowest={lowest(flight.business)}
+            className="border-l border-line"
           />
         </div>
       </div>
@@ -135,27 +116,20 @@ export function FlightResultCard({
 function TripBadge({ flight }: { flight: FlightResultRow }) {
   if (flight.roleLabel === "return") {
     return (
-      <span className="shrink-0 rounded-full bg-sky-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-sky-900">
+      <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-sky-900">
         Return
-      </span>
-    );
-  }
-  if (flight.roleLabel === "outbound" && flight.roundTripAvailable) {
-    return (
-      <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-emerald-900">
-        Round trip
       </span>
     );
   }
   if (flight.roundTripAvailable) {
     return (
-      <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-emerald-900">
+      <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-emerald-900">
         Round trip
       </span>
     );
   }
   return (
-    <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-700">
+    <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-700">
       One way
     </span>
   );
@@ -164,151 +138,120 @@ function TripBadge({ flight }: { flight: FlightResultRow }) {
 function Endpoint({
   time,
   tz,
+  place,
   date,
-  code,
-  city,
   align,
 }: {
   time: string;
   tz: string;
+  place: string;
   date: string;
-  code: string;
-  city: string;
   align: "left" | "right";
 }) {
   return (
     <div className={`min-w-0 ${align === "right" ? "text-right" : "text-left"}`}>
-      <p className="font-[family-name:var(--font-syne)] text-2xl font-bold leading-none tracking-tight text-foreground sm:text-[1.75rem]">
+      <p className="font-[family-name:var(--font-syne)] text-xl font-bold leading-none tracking-tight text-foreground sm:text-2xl">
         {time}
+        <span className="ml-1.5 align-middle text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
+          {tz}
+        </span>
       </p>
-      <p className="mt-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted">
-        {tz}
+      <p className="mt-2 truncate text-sm font-bold text-foreground" title={place}>
+        {place}
       </p>
-      <p className="mt-1 text-xs text-muted">{date}</p>
-      <p className="mt-2 font-[family-name:var(--font-syne)] text-lg font-bold tracking-tight text-foreground sm:text-xl">
-        {code}
-      </p>
-      <p className="truncate text-sm text-foreground/80" title={city}>
-        {city}
-      </p>
+      <p className="mt-0.5 text-xs font-semibold text-foreground/75">{date}</p>
     </div>
   );
 }
 
-function CabinPriceCard({
+function CabinCell({
   label,
   fare,
-  durationMinutes,
   isLowest,
+  className = "",
 }: {
   label: string;
   fare: CabinFare | null;
-  durationMinutes: number;
   isLowest: boolean;
+  className?: string;
 }) {
-  if (!fare) {
-    return (
-      <div className="relative flex min-h-[8.5rem] flex-col justify-between rounded-xl border border-line bg-white px-3.5 py-3.5">
-        <p className="text-xs font-medium text-muted">{label}</p>
-        <p className="py-4 text-center text-sm font-medium text-muted">
-          Not Available
-        </p>
-        <span aria-hidden className="h-4" />
-      </div>
-    );
-  }
+  const available = Boolean(fare && fare.farePriced && fare.remainingSeats > 0);
+  const lowSeats = available && fare!.remainingSeats <= 9;
+  const base = `relative flex min-h-[7.5rem] flex-col items-center justify-center gap-1 px-3 py-4 text-center ${CABIN_COLUMN_CLASS} ${className}`;
 
-  const soldOut = fare.remainingSeats < 1 || !fare.farePriced;
-  const co2 = estimateCo2Kg(durationMinutes, fare.cabinClass);
-  const lowSeats =
-    !soldOut && fare.remainingSeats > 0 && fare.remainingSeats <= 9;
-
-  const inner = (
-    <>
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-xs font-medium text-muted">{label}</p>
-        {lowSeats ? (
-          <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-950">
-            {fare.remainingSeats} Seat{fare.remainingSeats === 1 ? "" : "s"} Left
-          </span>
-        ) : null}
-      </div>
-
-      {soldOut ? (
-        <p className="flex flex-1 items-center justify-center text-sm font-medium text-muted">
-          {!fare.farePriced ? "Not Available" : "Not Available"}
-        </p>
-      ) : (
-        <>
-          <p className="mt-2 font-[family-name:var(--font-syne)] text-xl font-bold tracking-tight text-accent-deep sm:text-[1.35rem]">
-            {formatAud(fare.displayPriceCents)}
-          </p>
-          <p className="mt-auto inline-flex items-center gap-1.5 pt-3 text-[11px] text-muted">
-            <LeafIcon />
-            {co2} Kgs CO2e
-            <InfoIcon />
-          </p>
-        </>
-      )}
-
-      {isLowest && !soldOut ? (
-        <span
-          className="badge-promo absolute bottom-2 right-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
-          title="Lowest fare"
-        >
-          Lowest
-        </span>
-      ) : null}
-    </>
+  const mobileLabel = (
+    <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted lg:hidden">
+      {label}
+    </span>
   );
 
-  if (soldOut) {
+  if (!available) {
     return (
-      <div className="relative flex min-h-[8.5rem] flex-col rounded-xl border border-line bg-white px-3.5 py-3.5">
-        {inner}
+      <div className={`${base} bg-background/60 text-muted/70`}>
+        {mobileLabel}
+        <NoSeatIcon />
+        <span className="text-xs font-medium">No Seat</span>
       </div>
     );
   }
 
   return (
     <Link
-      href={fare.href}
-      className="relative flex min-h-[8.5rem] flex-col rounded-xl border border-line bg-white px-3.5 py-3.5 transition hover:-translate-y-0.5 hover:border-accent hover:shadow-[0_10px_24px_rgba(15,23,42,0.1)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+      href={fare!.href}
+      aria-label={`${label} from ${formatAud(fare!.displayPriceCents)}`}
+      className={`${base} transition hover:bg-accent-deep/5 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent-deep`}
     >
-      {inner}
+      {mobileLabel}
+      <span className="font-[family-name:var(--font-syne)] text-lg font-bold tracking-tight text-accent-deep">
+        {formatAud(fare!.displayPriceCents)}
+      </span>
+      <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted">
+        AUD
+      </span>
+      {lowSeats ? (
+        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-950">
+          {fare!.remainingSeats} Seat{fare!.remainingSeats === 1 ? "" : "s"} Left
+        </span>
+      ) : null}
+      {isLowest ? (
+        <span className="badge-promo px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+          Lowest
+        </span>
+      ) : null}
     </Link>
   );
 }
 
-function LeafIcon() {
+function PlaneRight() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="shrink-0">
       <path
-        d="M5 19c8 0 12-6 14-14-8 2-14 6-14 14Z"
+        d="M21 15.5v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0v5l-8 5v2l8-2.5V18l-2 1.5V21l3.5-1 3.5 1v-1.5L13 18v-5l8 2.5Z"
+        transform="rotate(90 12 12)"
+      />
+    </svg>
+  );
+}
+
+function NoSeatIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M7 4v8a2 2 0 0 0 2 2h6l3 5M7 14v6M17 12h-5"
         stroke="currentColor"
-        strokeWidth="1.75"
+        strokeWidth="1.8"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <path
-        d="M5 19c2-6 7-10 14-12"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-      />
+      <path d="M4 4l16 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
 }
 
 function InfoIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <circle cx="12" cy="12" r="8.25" stroke="currentColor" strokeWidth="1.75" />
-      <path
-        d="M12 11v5M12 8.2h.01"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-      />
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 15h-2v-6h2v6Zm0-8h-2V7h2v2Z" />
     </svg>
   );
 }

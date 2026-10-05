@@ -67,46 +67,59 @@ export function DateStrip({
   }
 
   return (
-    <div className="border-b border-line bg-[linear-gradient(180deg,#EEF2FF_0%,#F8FAFC_100%)]">
-      <div className="mx-auto flex w-full max-w-6xl items-stretch gap-2 px-3 py-3 sm:gap-3 sm:px-6">
+    <div className="mx-auto w-full max-w-6xl px-3 sm:px-6">
+      <div className="flex items-stretch rounded-xl border border-line bg-white shadow-[0_6px_20px_rgba(15,23,42,0.05)]">
         <button
           type="button"
           aria-label="Previous dates"
           disabled={!canPrev}
           onClick={() => setWindowStart((v) => Math.max(0, v - 1))}
-          className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-line/80 bg-white/80 text-lg text-muted shadow-sm transition hover:border-accent hover:text-accent disabled:opacity-30"
+          className="flex w-9 shrink-0 items-center justify-center text-2xl text-foreground transition hover:text-accent-red disabled:opacity-25 sm:w-11"
         >
           ‹
         </button>
-        <div className="grid min-w-0 flex-1 grid-flow-col gap-1.5 sm:gap-2" style={{ gridTemplateColumns: `repeat(${visible.length}, minmax(0, 1fr))` }}>
-          {visible.map((day) => {
+        <div
+          className="grid min-w-0 flex-1 grid-flow-col"
+          style={{ gridTemplateColumns: `repeat(${visible.length}, minmax(0, 1fr))` }}
+        >
+          {visible.map((day, i) => {
             const label = formatStripDay(day.date);
             const isSelected = day.date === selectedDate;
+            const hasFlights = day.lowestFareCents != null;
             return (
               <Link
                 key={day.date}
                 href={hrefFor(day.date)}
-                className={`results-rise flex min-h-16 flex-col items-center justify-center rounded-xl px-1 py-2 text-center transition sm:min-h-[4.5rem] sm:px-2 sm:py-2.5 ${
+                aria-current={isSelected ? "date" : undefined}
+                className={`relative flex min-h-[6.25rem] flex-col items-center justify-center gap-1 px-1 py-3 text-center transition ${
                   isSelected
-                    ? "bg-white text-foreground shadow-[0_8px_20px_rgba(37,99,235,0.16)] ring-1 ring-accent/25"
-                    : "bg-transparent text-foreground hover:bg-white/70"
+                    ? "z-10 -my-px rounded-lg border-2 border-accent-red bg-white"
+                    : `hover:bg-background ${i > 0 ? "border-l border-line" : ""}`
                 }`}
               >
-                <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted sm:text-[11px]">
-                  {label.weekday}
-                </span>
                 <span
-                  className={`mt-0.5 text-xs sm:text-sm ${
-                    isSelected ? "font-bold" : "font-semibold"
+                  className={`leading-none ${
+                    isSelected
+                      ? "text-xl font-bold text-accent-deep"
+                      : "text-base font-semibold text-muted"
                   }`}
                 >
-                  {label.dayMonth}
+                  {label.dayNumber}
                 </span>
-                <span className="mt-1 max-w-full truncate text-[10px] font-semibold text-accent sm:text-xs">
-                  {day.lowestFareCents != null
-                    ? formatAud(day.lowestFareCents)
-                    : "—"}
+                <span
+                  className={`text-xs sm:text-sm ${
+                    isSelected ? "font-bold text-accent-deep" : "text-muted"
+                  }`}
+                >
+                  <span className="hidden md:inline">{label.weekdayLong}</span>
+                  <span className="md:hidden">{label.weekday}</span>
                 </span>
+                <PlaneGlyph crossed={!hasFlights} />
+                {hasFlights ? (
+                  <span className="max-w-full truncate text-[10px] font-semibold text-accent-deep sm:text-xs">
+                    {formatAud(day.lowestFareCents!)}
+                  </span>
+                ) : null}
               </Link>
             );
           })}
@@ -120,11 +133,36 @@ export function DateStrip({
               Math.min(Math.max(0, dayFares.length - dayCount), v + 1),
             )
           }
-          className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-line/80 bg-white/80 text-lg text-muted shadow-sm transition hover:border-accent hover:text-accent disabled:opacity-30"
+          className="flex w-9 shrink-0 items-center justify-center text-2xl text-foreground transition hover:text-accent-red disabled:opacity-25 sm:w-11"
         >
           ›
         </button>
       </div>
     </div>
+  );
+}
+
+function PlaneGlyph({ crossed }: { crossed: boolean }) {
+  return (
+    <svg
+      width="26"
+      height="26"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-label={crossed ? "No flights" : "Flights available"}
+      className={crossed ? "text-accent-red/45" : "text-accent-red"}
+    >
+      <path
+        d="M21 15.5v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0v5l-8 5v2l8-2.5V18l-2 1.5V21l3.5-1 3.5 1v-1.5L13 18v-5l8 2.5Z"
+        fill="currentColor"
+        transform="rotate(90 12 12)"
+      />
+      {crossed ? (
+        <path d="M4 20 20 4" stroke="white" strokeWidth="3.5" strokeLinecap="round" />
+      ) : null}
+      {crossed ? (
+        <path d="M4 20 20 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      ) : null}
+    </svg>
   );
 }

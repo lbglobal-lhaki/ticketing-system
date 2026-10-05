@@ -9,7 +9,11 @@ import {
   type ReactNode,
 } from "react";
 
-const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"] as const;
+const WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] as const;
+const MONTHS = [
+  "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+  "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+] as const;
 
 function toIso(d: Date) {
   const y = d.getFullYear();
@@ -73,10 +77,14 @@ type DatePickerProps = {
   label: string;
   required?: boolean;
   min?: string;
-  /** Visual shell around the trigger (panel card vs underline field). */
-  variant?: "card" | "field";
+  /** Visual shell around the trigger (panel card, underline field, bordered box). */
+  variant?: "card" | "field" | "box";
   className?: string;
   id?: string;
+  /** Shown in the "box" trigger when no date is picked. */
+  placeholder?: string;
+  /** Dates (YYYY-MM-DD) with flights — bold in the grid, others muted. */
+  highlightDates?: string[];
 };
 
 export function DatePicker({
@@ -89,7 +97,13 @@ export function DatePicker({
   variant = "card",
   className = "",
   id,
+  placeholder,
+  highlightDates,
 }: DatePickerProps) {
+  const highlighted = useMemo(
+    () => (highlightDates?.length ? new Set(highlightDates) : null),
+    [highlightDates],
+  );
   const autoId = useId();
   const triggerId = id ?? autoId;
   const [open, setOpen] = useState(false);
@@ -132,6 +146,10 @@ export function DatePicker({
     month: "long",
     year: "numeric",
   }).format(viewMonth);
+  const yearOptions = useMemo(() => {
+    const first = Math.min(today.getFullYear(), viewMonth.getFullYear());
+    return Array.from({ length: 4 }, (_, i) => first + i);
+  }, [today, viewMonth]);
 
   function pick(day: Date) {
     if (minDate && day < minDate) return;
@@ -140,7 +158,28 @@ export function DatePicker({
   }
 
   const trigger =
-    variant === "card" ? (
+    variant === "box" ? (
+      <button
+        type="button"
+        id={triggerId}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={label}
+        onClick={() => setOpen((v) => !v)}
+        className={`flex min-h-14 w-full min-w-0 items-center gap-3 rounded-lg border bg-white px-4 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-deep/40 ${
+          open
+            ? "border-accent-deep ring-1 ring-accent-deep/30"
+            : "border-line hover:border-accent-deep/60"
+        } ${className}`}
+      >
+        <CalendarGlyph className="shrink-0 text-accent-deep" />
+        <span
+          className={value ? "font-semibold text-foreground" : "text-muted"}
+        >
+          {value ? formatDisplay(value) : (placeholder ?? label)}
+        </span>
+      </button>
+    ) : variant === "card" ? (
       <button
         type="button"
         id={triggerId}
@@ -194,20 +233,47 @@ export function DatePicker({
         <div
           role="dialog"
           aria-label={`${label} calendar`}
-          className="absolute left-1/2 top-[calc(100%+0.5rem)] z-50 w-[min(100vw-2rem,20rem)] -translate-x-1/2 overflow-hidden rounded-2xl border border-white/40 bg-white/95 p-3 shadow-[0_24px_60px_rgba(15,23,42,0.22)] backdrop-blur-xl sm:left-0 sm:translate-x-0"
+          className="absolute left-0 top-[calc(100%+0.25rem)] z-50 w-[min(100vw-2rem,19rem)] overflow-hidden rounded-lg border border-line bg-white p-3 shadow-[0_18px_44px_rgba(15,23,42,0.18)]"
         >
-          <div className="mb-3 h-[3px] rounded-full bg-[linear-gradient(90deg,#2563EB_0%,#DC2626_100%)]" />
-
-          <div className="mb-3 flex items-center justify-between gap-2 px-1">
+          <div className="mb-3 flex items-center gap-2">
             <NavButton
               label="Previous month"
               onClick={() => setViewMonth((m) => addMonths(m, -1))}
             >
               ‹
             </NavButton>
-            <p className="font-[family-name:var(--font-syne)] text-sm font-bold tracking-tight text-foreground">
-              {monthLabel}
-            </p>
+            <select
+              aria-label="Month"
+              value={viewMonth.getMonth()}
+              onChange={(e) =>
+                setViewMonth(
+                  new Date(viewMonth.getFullYear(), Number(e.target.value), 1),
+                )
+              }
+              className="min-w-0 flex-1 rounded-md border border-line bg-white px-2 py-1.5 text-sm font-semibold text-foreground outline-none focus:border-accent-deep"
+            >
+              {MONTHS.map((m, i) => (
+                <option key={m} value={i}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Year"
+              value={viewMonth.getFullYear()}
+              onChange={(e) =>
+                setViewMonth(
+                  new Date(Number(e.target.value), viewMonth.getMonth(), 1),
+                )
+              }
+              className="min-w-0 flex-1 rounded-md border border-line bg-white px-2 py-1.5 text-sm font-semibold text-foreground outline-none focus:border-accent-deep"
+            >
+              {yearOptions.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
             <NavButton
               label="Next month"
               onClick={() => setViewMonth((m) => addMonths(m, 1))}
@@ -215,25 +281,29 @@ export function DatePicker({
               ›
             </NavButton>
           </div>
+          <p className="sr-only" aria-live="polite">
+            {monthLabel}
+          </p>
 
-          <div className="mb-1 grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-7 border-b border-line pb-1">
             {WEEKDAYS.map((d) => (
               <span
                 key={d}
-                className="py-1 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-muted"
+                className="py-1 text-center text-[11px] font-bold tracking-[0.04em] text-accent-deep"
               >
                 {d}
               </span>
             ))}
           </div>
 
-          <div className="grid grid-cols-7 gap-1">
+          <div className="mt-1 grid grid-cols-7 gap-0.5">
             {days.map((day) => {
               const inMonth = day.getMonth() === viewMonth.getMonth();
               const iso = toIso(day);
               const isSelected = Boolean(selected && sameDay(day, selected));
               const isToday = sameDay(day, today);
               const disabled = Boolean(minDate && day < minDate);
+              const hasFlight = highlighted?.has(iso) ?? false;
 
               return (
                 <button
@@ -241,24 +311,20 @@ export function DatePicker({
                   type="button"
                   disabled={disabled}
                   onClick={() => pick(day)}
+                  aria-label={`${iso}${hasFlight ? " — flights available" : ""}`}
                   className={[
-                    "relative inline-flex size-9 items-center justify-center rounded-full text-sm font-semibold transition duration-200",
-                    !inMonth && !isSelected ? "text-muted/45" : "",
-                    disabled
-                      ? "cursor-not-allowed text-muted/30"
-                      : "hover:bg-[linear-gradient(135deg,rgba(37,99,235,0.12),rgba(220,38,38,0.1))] hover:text-accent-deep",
+                    "inline-flex h-9 items-center justify-center rounded-sm text-sm transition",
+                    disabled ? "cursor-not-allowed text-muted/30" : "hover:bg-accent-deep/10",
                     isSelected
-                      ? "bg-[linear-gradient(135deg,#1E3A8A_0%,#2563EB_45%,#DC2626_100%)] text-white shadow-[0_6px_16px_rgba(37,99,235,0.35)] hover:text-white"
-                      : "",
-                    isToday && !isSelected
-                      ? "ring-1 ring-accent/40 text-accent-deep"
-                      : "",
-                    inMonth && !isSelected && !disabled
-                      ? "text-foreground"
-                      : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
+                      ? "bg-accent-deep font-bold text-white hover:bg-accent-deep"
+                      : isToday
+                        ? "bg-accent/15 font-semibold text-accent-deep"
+                        : hasFlight
+                          ? "font-bold text-accent-deep"
+                          : !inMonth || highlighted
+                            ? "text-muted/55"
+                            : "text-foreground",
+                  ].join(" ")}
                 >
                   {day.getDate()}
                 </button>
@@ -266,29 +332,12 @@ export function DatePicker({
             })}
           </div>
 
-          <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-3">
-            <button
-              type="button"
-              onClick={() => {
-                const next = toIso(today);
-                if (!minDate || today >= minDate) {
-                  onChange(next);
-                  setViewMonth(startOfMonth(today));
-                  setOpen(false);
-                }
-              }}
-              className="text-xs font-semibold text-accent transition hover:text-accent-deep"
-            >
-              Today
-            </button>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="rounded-full px-3 py-1.5 text-xs font-semibold text-muted transition hover:bg-background hover:text-foreground"
-            >
-              Close
-            </button>
-          </div>
+          {highlighted ? (
+            <p className="mt-2 border-t border-line pt-2 text-[11px] text-muted">
+              <span className="font-bold text-accent-deep">Bold</span> dates
+              have flights.
+            </p>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -309,7 +358,7 @@ function NavButton({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="inline-flex size-9 items-center justify-center rounded-full border border-line bg-white text-lg text-muted shadow-sm transition hover:border-accent hover:text-accent"
+      className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-xl font-semibold text-accent-deep transition hover:bg-accent-deep/10"
     >
       {children}
     </button>

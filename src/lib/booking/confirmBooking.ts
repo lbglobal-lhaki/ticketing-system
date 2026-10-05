@@ -83,6 +83,12 @@ export async function createPriceQuote(input: {
     include: { fareReleases: { orderBy: { sortOrder: "asc" } } },
   });
   if (!flight) return { ok: false as const, error: "Outbound flight not found" };
+  if (flight.departureAt <= new Date()) {
+    return {
+      ok: false as const,
+      error: "This flight has already departed — please search for another date",
+    };
+  }
   if (flight.remainingSeats < 1) {
     return { ok: false as const, error: "Outbound flight is sold out" };
   }

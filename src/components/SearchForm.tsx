@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { DatePicker } from "@/components/DatePicker";
 import type { AirportOption } from "@/lib/format";
 import {
@@ -36,11 +36,14 @@ export function SearchForm({
   variant = "default",
   airports,
   initialValues,
+  flightDates,
 }: {
   error?: string;
   variant?: "default" | "hero" | "panel";
   airports: AirportOption[];
   initialValues?: SearchFormValues;
+  /** Departure dates (YYYY-MM-DD) that have flights — bolded in the calendar. */
+  flightDates?: string[];
 }) {
   const [tripType, setTripType] = useState<"one_way" | "round_trip">(
     initialValues?.tripType ?? "one_way",
@@ -131,225 +134,145 @@ export function SearchForm({
 
   if (isPanel) {
     return (
-      <form id="search" action="/" method="get" className="relative z-40 space-y-4 overflow-visible">
-        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line">
-          <div className="flex gap-5" role="tablist" aria-label="Trip type">
-            {(
-              [
-                ["round_trip", "Return"],
-                ["one_way", "One-way"],
-              ] as const
-            ).map(([value, label]) => {
-              const active = tripType === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setTripType(value)}
-                  className={`relative pb-3 text-sm font-semibold transition ${
-                    active
-                      ? "text-accent-deep"
-                      : "text-muted hover:text-foreground"
+      <form id="search" action="/" method="get" className="relative z-40 space-y-5 overflow-visible">
+        <div className="flex flex-wrap gap-6" role="radiogroup" aria-label="Trip type">
+          {(
+            [
+              ["one_way", "One Way"],
+              ["round_trip", "Round Trip"],
+            ] as const
+          ).map(([value, label]) => {
+            const active = tripType === value;
+            return (
+              <label
+                key={value}
+                className="inline-flex cursor-pointer items-center gap-2.5 text-base font-semibold text-foreground"
+              >
+                <input
+                  type="radio"
+                  name="tripType"
+                  value={value}
+                  checked={active}
+                  onChange={() => setTripType(value)}
+                  className="peer sr-only"
+                />
+                <span
+                  aria-hidden
+                  className={`inline-flex size-5 items-center justify-center rounded-full border-2 transition peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-2 ${
+                    active ? "border-accent-deep" : "border-accent-deep/60"
                   }`}
                 >
-                  {label}
                   {active ? (
-                    <span className="absolute inset-x-0 bottom-0 h-[3px] rounded-full bg-accent" />
+                    <span className="size-2.5 rounded-full bg-accent-deep" />
                   ) : null}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <input type="hidden" name="tripType" value={tripType} />
-
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-          {/* From / To — centered copy with padding clear of swap control */}
-          <div className="relative grid grid-cols-1 overflow-hidden rounded-2xl border border-line bg-white sm:grid-cols-2">
-            <label className="relative flex min-h-[5.5rem] min-w-0 cursor-pointer flex-col items-center justify-center px-4 py-3 pb-7 text-center focus-within:bg-[linear-gradient(180deg,rgba(37,99,235,0.05),transparent)] sm:border-r sm:border-line sm:pb-3 sm:pr-10">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                From
-              </span>
-              <div className="mt-1 flex max-w-full min-w-0 items-center justify-center gap-2">
-                {origin ? (
-                  <span className="shrink-0 rounded-md bg-accent/12 px-2 py-0.5 text-xs font-bold tracking-wide text-accent-deep">
-                    {origin}
-                  </span>
-                ) : null}
-                <span className="truncate text-sm font-semibold text-foreground">
-                  {originAirport?.city ?? "Select city"}
                 </span>
-              </div>
-              <select
+                {label}
+              </label>
+            );
+          })}
+        </div>
+
+        <div className="grid gap-6 rounded-xl border border-line p-4 sm:p-6 lg:grid-cols-3">
+          <div className="min-w-0 space-y-2">
+            <p className="text-sm font-semibold text-accent-deep">
+              Select your Flight
+            </p>
+            <div className="relative space-y-3">
+              <AirportBox
                 name="origin"
-                required
+                label="From"
+                icon={<TakeoffIcon />}
                 value={origin}
-                aria-label="Origin"
-                onChange={(e) => {
-                  const next = e.target.value;
+                options={airports}
+                onChange={(next) => {
                   setOrigin(next);
                   if (next === destination) {
-                    const fallback =
-                      airports.find((a) => a.code !== next)?.code ?? "";
-                    setDestination(fallback);
+                    setDestination(
+                      airports.find((a) => a.code !== next)?.code ?? "",
+                    );
                   }
                 }}
-                className="absolute inset-0 z-[1] cursor-pointer opacity-0"
-              >
-                {airports.map((airport) => (
-                  <option key={airport.code} value={airport.code}>
-                    {airport.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <button
-              type="button"
-              onClick={swapAirports}
-              aria-label="Swap origin and destination"
-              className="absolute left-1/2 top-1/2 z-20 inline-flex size-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-line bg-white text-accent-deep shadow-sm transition hover:border-accent hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
-            >
-              <SwapIcon />
-            </button>
-
-            <label className="relative flex min-h-[5.5rem] min-w-0 cursor-pointer flex-col items-center justify-center border-t border-line px-4 py-3 pt-7 text-center focus-within:bg-[linear-gradient(0deg,rgba(37,99,235,0.05),transparent)] sm:border-t-0 sm:pt-3 sm:pl-10">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                To
-              </span>
-              <div className="mt-1 flex max-w-full min-w-0 items-center justify-center gap-2">
-                {destination ? (
-                  <span className="shrink-0 rounded-md bg-accent/12 px-2 py-0.5 text-xs font-bold tracking-wide text-accent-deep">
-                    {destination}
-                  </span>
-                ) : null}
-                <span className="truncate text-sm font-semibold text-foreground">
-                  {destinationAirport?.city ?? "Select city"}
-                </span>
-              </div>
-              <select
+                display={originAirport}
+              />
+              <AirportBox
                 name="destination"
-                required
+                label="To"
+                icon={<LandingIcon />}
                 value={destination}
-                aria-label="Destination"
-                onChange={(e) => setDestination(e.target.value)}
-                className="absolute inset-0 z-[1] cursor-pointer opacity-0"
+                options={destinationOptions}
+                onChange={setDestination}
+                display={destinationAirport}
+              />
+              <button
+                type="button"
+                onClick={swapAirports}
+                aria-label="Swap origin and destination"
+                className="absolute right-3 top-1/2 z-10 inline-flex size-9 -translate-y-1/2 items-center justify-center rounded-md border border-accent-deep/70 bg-white text-accent-deep shadow-sm transition hover:bg-accent-deep hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
               >
-                {destinationOptions.map((airport) => (
-                  <option key={airport.code} value={airport.code}>
-                    {airport.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <SwapVerticalIcon />
+              </button>
+            </div>
           </div>
 
-          {/* Dates — custom themed calendar */}
-          <div
-            className={`grid overflow-visible rounded-2xl border border-line bg-white ${
-              tripType === "round_trip"
-                ? "grid-cols-1 sm:grid-cols-2"
-                : "grid-cols-1"
-            }`}
-          >
-            <DatePicker
-              name="date"
-              label="Depart"
-              required
-              value={departDate}
-              onChange={setDepartDate}
-              variant="card"
-            />
-            {tripType === "round_trip" ? (
-              <div className="border-t border-line sm:border-l sm:border-t-0">
+          <div className="min-w-0 space-y-2">
+            <p className="text-sm font-semibold text-accent-deep">
+              Select your Date
+            </p>
+            <div className="space-y-3">
+              <DatePicker
+                name="date"
+                label="Departure date"
+                placeholder="Select Departure Date"
+                required
+                value={departDate}
+                onChange={setDepartDate}
+                highlightDates={flightDates}
+                variant="box"
+              />
+              {tripType === "round_trip" ? (
                 <DatePicker
                   name="returnDate"
-                  label="Return"
+                  label="Return date"
+                  placeholder="Select Return Date"
                   required
                   value={returnDate}
                   min={departDate}
                   onChange={setReturnDate}
-                  variant="card"
+                  variant="box"
                 />
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        {/* Passengers / Class — expands in-flow so it is never clipped */}
-        <div ref={paxRef} className="relative z-30">
-          <button
-            type="button"
-            onClick={() => setPaxOpen((v) => !v)}
-            aria-expanded={paxOpen}
-            className={`flex w-full items-center justify-between rounded-2xl border bg-white px-4 py-3 text-left transition ${
-              paxOpen
-                ? "border-accent ring-1 ring-accent/30"
-                : "border-line hover:border-accent/50"
-            }`}
-          >
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                Passengers / Class
-              </p>
-              <p className="mt-1 text-sm font-semibold text-foreground">
-                {paxSummary} / {cabinLabel}
-              </p>
+              ) : null}
             </div>
-            <span
-              className={`text-muted transition ${paxOpen ? "rotate-180" : ""}`}
-              aria-hidden
+          </div>
+
+          <div ref={paxRef} className="relative min-w-0 space-y-2 self-start">
+            <p className="text-sm font-semibold text-accent-deep">
+              Select your Passenger
+            </p>
+            <button
+              type="button"
+              onClick={() => setPaxOpen((v) => !v)}
+              aria-expanded={paxOpen}
+              className={`flex min-h-14 w-full items-center gap-3 rounded-lg border bg-white px-4 text-left text-sm font-semibold text-foreground transition ${
+                paxOpen
+                  ? "border-accent-deep ring-1 ring-accent-deep/30"
+                  : "border-line hover:border-accent-deep/60"
+              }`}
             >
-              ▾
-            </span>
-          </button>
+              <PersonIcon />
+              <span className="min-w-0 flex-1 truncate">
+                {paxSummary} · {cabinLabel}
+              </span>
+              <span
+                aria-hidden
+                className={`text-xs text-muted transition ${paxOpen ? "rotate-180" : ""}`}
+              >
+                ▼
+              </span>
+            </button>
 
-          {paxOpen ? (
-            <div className="mt-2 rounded-2xl border border-line bg-white shadow-[0_18px_50px_rgba(15, 23, 42,0.16)]">
-              <div className="grid gap-0 sm:grid-cols-2">
-                <div className="space-y-3 border-b border-line p-4 sm:border-b-0 sm:border-r">
-                  <p className="text-sm font-bold text-accent-deep">Class</p>
-                  {(
-                    [
-                      ["economy", "Economy"],
-                      ["business", "Business"],
-                    ] as const
-                  ).map(([value, label]) => {
-                    const active = cabinClass === value;
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => setCabinClass(value)}
-                        className={`flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left text-sm font-semibold transition ${
-                          active
-                            ? "border-accent bg-accent/8 text-accent-deep"
-                            : "border-line text-foreground hover:border-accent/40"
-                        }`}
-                      >
-                        <span
-                          className={`inline-flex size-4 shrink-0 items-center justify-center rounded-full border ${
-                            active
-                              ? "border-accent bg-accent"
-                              : "border-line bg-white"
-                          }`}
-                        >
-                          {active ? (
-                            <span className="size-1.5 rounded-full bg-white" />
-                          ) : null}
-                        </span>
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-
+            {paxOpen ? (
+              <div className="absolute inset-x-0 top-full z-50 mt-2 min-w-[18rem] rounded-xl border border-line bg-white shadow-[0_18px_50px_rgba(15,23,42,0.18)] lg:left-auto lg:w-[20rem]">
                 <div className="space-y-1 p-4">
-                  <p className="mb-2 text-sm font-bold text-accent-deep">
-                    Passengers
-                  </p>
                   <PaxStepper
                     label="Adult"
                     hint={ADULT_AGE_HINT}
@@ -374,23 +297,52 @@ export function SearchForm({
                     max={9}
                     onChange={setInfants}
                   />
-                  <p className="pt-3 text-xs text-muted">
-                    Seats needed: {seated} (adults + children). Infants do not
-                    take a seat.
+                  <p className="pt-2 text-xs text-muted">
+                    Infants do not take a seat.
                   </p>
                 </div>
+                <div className="border-t border-line p-4">
+                  <p className="mb-2 text-sm font-semibold text-accent-deep">
+                    Class
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(
+                      [
+                        ["economy", "Economy"],
+                        ["business", "Business"],
+                      ] as const
+                    ).map(([value, label]) => {
+                      const active = cabinClass === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setCabinClass(value)}
+                          aria-pressed={active}
+                          className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition ${
+                            active
+                              ? "border-accent-deep bg-accent-deep text-white"
+                              : "border-line text-foreground hover:border-accent-deep/50"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="flex justify-end border-t border-line px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setPaxOpen(false)}
+                    className="rounded-lg bg-accent-deep px-5 py-2 text-sm font-semibold text-white transition hover:bg-accent"
+                  >
+                    Done
+                  </button>
+                </div>
               </div>
-              <div className="flex justify-end border-t border-line px-4 py-3">
-                <button
-                  type="button"
-                  onClick={() => setPaxOpen(false)}
-                  className="btn-cta px-6 py-2.5 text-sm"
-                >
-                  Confirm
-                </button>
-              </div>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
 
         <input type="hidden" name="adults" value={String(adults)} />
@@ -408,9 +360,9 @@ export function SearchForm({
           <button
             type="submit"
             disabled={airports.length < 2}
-            className="btn-cta inline-flex min-h-12 px-8 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-12 items-center justify-center rounded-lg bg-accent-deep px-12 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(30,58,138,0.25)] transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Search flights
+            Search Flight
           </button>
         </div>
       </form>
@@ -622,11 +574,76 @@ function PaxStepper({
   );
 }
 
-function SwapIcon() {
+function AirportBox({
+  name,
+  label,
+  icon,
+  value,
+  options,
+  onChange,
+  display,
+}: {
+  name: string;
+  label: string;
+  icon: ReactNode;
+  value: string;
+  options: AirportOption[];
+  onChange: (code: string) => void;
+  display?: AirportOption;
+}) {
+  return (
+    <label className="relative flex min-h-14 cursor-pointer items-center gap-3 rounded-lg border border-line bg-white pl-4 pr-14 text-sm font-semibold text-foreground transition focus-within:border-accent-deep focus-within:ring-1 focus-within:ring-accent-deep/30 hover:border-accent-deep/60">
+      <span className="text-accent-deep">{icon}</span>
+      <span className="min-w-0 truncate">
+        {display ? `${display.city} (${display.code})` : `Select ${label.toLowerCase()}`}
+      </span>
+      <select
+        name={name}
+        required
+        value={value}
+        aria-label={label}
+        onChange={(e) => onChange(e.target.value)}
+        className="absolute inset-0 cursor-pointer opacity-0"
+      >
+        {options.map((airport) => (
+          <option key={airport.code} value={airport.code}>
+            {airport.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function TakeoffIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M2.5 19h19v2h-19v-2Zm19.57-9.36c-.21-.8-1.04-1.28-1.84-1.06L14.92 10l-6.9-6.43-1.93.51 4.14 7.17-4.97 1.33-1.97-1.54-1.45.39 2.59 4.49L21 11.49c.81-.23 1.28-1.05 1.07-1.85Z" />
+    </svg>
+  );
+}
+
+function LandingIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M2.5 19h19v2h-19v-2Zm7.18-5.73 4.35 1.16 5.31 1.42c.8.21 1.62-.26 1.84-1.06.21-.8-.26-1.62-1.06-1.84l-5.31-1.42-2.76-9.02L10.12 2v8.28L5.15 8.95l-.93-2.32-1.45-.39v5.17l1.6.43 5.31 1.43Z" />
+    </svg>
+  );
+}
+
+function PersonIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="text-accent-deep">
+      <path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.1 0-8 2.1-8 5v2h16v-2c0-2.9-3.9-5-8-5Z" />
+    </svg>
+  );
+}
+
+function SwapVerticalIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
-        d="M7 7h11l-2.5-2.5M17 17H6l2.5 2.5"
+        d="M8 4v15m0 0-3.5-3.5M8 19l3.5-3.5M16 20V5m0 0-3.5 3.5M16 5l3.5 3.5"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"

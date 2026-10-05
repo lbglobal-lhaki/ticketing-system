@@ -263,13 +263,10 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
 
   /** Full catalogue — every active flight, route, cabin, and date. */
   if (allTickets) {
-    const dayStart = new Date();
-    dayStart.setUTCHours(0, 0, 0, 0);
-
     const flights = await prisma.flight.findMany({
       where: {
         active: true,
-        departureAt: { gte: dayStart },
+        departureAt: { gt: new Date() },
       },
       orderBy: { departureAt: "asc" },
       include: {
@@ -536,6 +533,7 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
         summaryTitle="Choose your return"
         stripDate={activeReturnDate}
         dateParam="returnDate"
+        showingNearbyDates={onSelectedDay.length === 0 && returnRows.length > 0}
         dayFares={dayFares}
         baseParams={baseParams}
         flights={withTripTotals}
@@ -650,6 +648,7 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
       summaryTitle={isRoundTrip ? "Choose outbound" : undefined}
       stripDate={date}
       dateParam="date"
+      showingNearbyDates={onSelectedDay.length === 0 && displayRows.length > 0}
       dayFares={dayFares}
       baseParams={baseParams}
       flights={grouped}
