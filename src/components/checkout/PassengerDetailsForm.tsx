@@ -566,7 +566,16 @@ function TravellerCard({
         {canRemove && !isPrimary ? (
           <button
             type="button"
-            onClick={onRemove}
+            onClick={() => {
+              const name = `${row.firstName ?? ""} ${row.lastName === "—" ? "" : (row.lastName ?? "")}`.trim();
+              if (
+                confirm(
+                  `Remove ${name || `passenger ${i + 1}`} from this booking? Any details entered for them will be cleared.`,
+                )
+              ) {
+                onRemove();
+              }
+            }}
             className="shrink-0 rounded-full bg-white/15 px-3 py-1.5 text-xs font-semibold transition hover:bg-white/25"
           >
             Remove

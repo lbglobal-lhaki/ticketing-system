@@ -144,9 +144,11 @@ export async function getSystemAnalytics(): Promise<SystemAnalytics> {
   ] = await Promise.all([
     prisma.flight.groupBy({
       by: ["active"],
+      where: { deletedAt: null },
       _count: { _all: true },
     }),
     prisma.flight.aggregate({
+      where: { deletedAt: null },
       _sum: { remainingSeats: true, totalSeats: true },
     }),
     prisma.flight.count({
@@ -217,6 +219,7 @@ export async function getSystemAnalytics(): Promise<SystemAnalytics> {
       },
     }),
     prisma.flight.findMany({
+      where: { deletedAt: null },
       orderBy: { departureAt: "asc" },
       select: {
         id: true,

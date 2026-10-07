@@ -154,7 +154,17 @@ function AnswerFieldsEditor({
           />
           <button
             type="button"
-            onClick={() => onChange(pairs.filter((_, i) => i !== index))}
+            onClick={() => {
+              if (
+                (pair.key.trim() || pair.value.trim()) &&
+                !confirm(
+                  `Remove the "${pair.key.trim() || "untitled"}" answer? This takes effect when you save.`,
+                )
+              ) {
+                return;
+              }
+              onChange(pairs.filter((_, i) => i !== index));
+            }}
             className="text-xs text-muted hover:text-red-700"
             disabled={pairs.length <= 1}
           >

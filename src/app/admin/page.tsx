@@ -179,6 +179,7 @@ export default async function AdminPage({
 
   const [
     flights,
+    deletedFlights,
     bookings,
     invoices,
     cargoSubmissions,
@@ -189,8 +190,26 @@ export default async function AdminPage({
     cargoRates,
   ] = await Promise.all([
       prisma.flight.findMany({
+        where: { deletedAt: null },
         orderBy: [{ active: "desc" }, { departureAt: "asc" }],
         include: { fareReleases: { orderBy: { sortOrder: "asc" } } },
+      }),
+      prisma.flight.findMany({
+        where: { deletedAt: { not: null } },
+        orderBy: { deletedAt: "desc" },
+        select: {
+          id: true,
+          airline: true,
+          flightNumber: true,
+          origin: true,
+          destination: true,
+          departureAt: true,
+          deletedAt: true,
+          activeBeforeDelete: true,
+          _count: {
+            select: { bookings: true, returnBookings: true, cargoBookings: true },
+          },
+        },
       }),
       // Full history — search / reissue must reach older bookings, not only
       // the latest page of 50.
@@ -274,8 +293,16 @@ export default async function AdminPage({
     price: "Ticket price updated.",
     removed: "Flight removed from the website.",
     restored: "Flight is visible to customers again.",
-    deleted: "Flight deleted permanently — logged in the Deleted tab.",
-    "flights-deleted": "Flights deleted permanently — logged in the Deleted tab.",
+    "flight-trashed":
+      "Flight moved to the Deleted tab — restore it from there, or delete it permanently.",
+    "flights-trashed":
+      "Flights moved to the Deleted tab — restore them from there, or delete them permanently.",
+    "flight-restored": "Flight restored — it's back in the Flights tab.",
+    "flights-restored": "Flights restored — they're back in the Flights tab.",
+    deleted:
+      "Flight deleted permanently. Any bookings and invoices on it are logged below.",
+    "flights-deleted":
+      "Flights deleted permanently. Any bookings and invoices on them are logged below.",
     "invoice-paid":
       "Invoice marked paid. No email was sent — use Travel doc / Invoice to send it.",
     "invoice-reactivated":
@@ -547,6 +574,16 @@ export default async function AdminPage({
                 passengerType: p.passengerType as "adult" | "child" | "infant",
                 ticketNumber: p.ticketNumber,
               })),
+            }))}
+            deletedFlights={deletedFlights.map((f) => ({
+              id: f.id,
+              label: `${f.airline} ${f.flightNumber}`,
+              route: `${f.origin} → ${f.destination}`,
+              departureAt: f.departureAt.toISOString(),
+              deletedAt: (f.deletedAt ?? new Date()).toISOString(),
+              wasLive: f.activeBeforeDelete ?? false,
+              bookingCount: f._count.bookings + f._count.returnBookings,
+              cargoCount: f._count.cargoBookings,
             }))}
             deletedRecords={deletedRecords.map((row) => ({
               id: row.id,

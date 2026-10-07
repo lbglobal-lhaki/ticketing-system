@@ -30,6 +30,7 @@ import {
 import { SpecialAssistanceFields } from "@/components/SpecialAssistanceFields";
 import {
   DeletedRecordsPanel,
+  type AdminDeletedFlightRow,
   type AdminDeletedRecordRow,
 } from "@/components/DeletedRecordsPanel";
 import type { SystemAnalytics } from "@/lib/analytics/systemAnalytics";
@@ -282,7 +283,8 @@ const PAGE_META: Record<Tab, { title: string; description: string }> = {
   },
   deleted: {
     title: "Deleted",
-    description: "Anything removed from the dashboard is recorded here.",
+    description:
+      "Deleted flights wait here to be restored or deleted permanently. Other removed records are logged below.",
   },
 };
 
@@ -624,6 +626,7 @@ export function AdminDashboard({
   invoices,
   cargoSubmissions,
   cargoRates,
+  deletedFlights,
   deletedRecords,
   analytics,
   charterFares,
@@ -633,6 +636,7 @@ export function AdminDashboard({
   errorMessage,
 }: {
   flights: FlightRow[];
+  deletedFlights: AdminDeletedFlightRow[];
   bookings: BookingRow[];
   invoices: InvoiceRow[];
   cargoSubmissions: AdminCargoRow[];
@@ -1120,7 +1124,7 @@ export function AdminDashboard({
     if (ids.length === 0) return;
     if (
       !confirm(
-        `Delete ${ids.length} flight${ids.length === 1 ? "" : "s"} permanently? Any bookings and invoices still tied to them will be deleted too and recorded in the Deleted tab.`,
+        `Delete ${ids.length} flight${ids.length === 1 ? "" : "s"}?\n\n${ids.length === 1 ? "It" : "They"} will be hidden from customers and moved to the Deleted tab. Bookings and invoices are kept, and you can restore ${ids.length === 1 ? "it" : "them"} from there at any time.`,
       )
     ) {
       return;
@@ -1228,6 +1232,19 @@ export function AdminDashboard({
   }
 
   function removeFareRow(index: number) {
+    const row = fareRows[index];
+    if (!row) return;
+    const sold = row.totalSeats - row.remainingSeats;
+    const name = row.name.trim() || "this ticket type";
+    if (
+      !confirm(
+        sold > 0
+          ? `Remove ${name}? ${sold} seat${sold === 1 ? " is" : "s are"} already sold on it — those bookings keep their record, but it stops selling. This takes effect when you save the flight.`
+          : `Remove ${name}? This takes effect when you save the flight.`,
+      )
+    ) {
+      return;
+    }
     setFareRows((rows) => renumber(rows.filter((_, i) => i !== index)));
   }
 
@@ -1240,9 +1257,10 @@ export function AdminDashboard({
       (r) => r.cabinClass === cabin && r.totalSeats !== r.remainingSeats,
     );
     if (
-      seated.length > 0 &&
       !confirm(
-        `${cabinLabel(cabin)} has seats already sold. Removing the cabin deletes its ticket types — bookings that used them keep their record but the cabin stops selling. Continue?`,
+        seated.length > 0
+          ? `${cabinLabel(cabin)} has seats already sold. Removing the cabin deletes its ticket types — bookings that used them keep their record but the cabin stops selling. Continue?`
+          : `Remove ${cabinLabel(cabin)} and all its ticket types from this flight? This takes effect when you save the flight.`,
       )
     ) {
       return;
@@ -1506,6 +1524,34 @@ export function AdminDashboard({
                 </p>
                 <SubmitButton
                   pendingLabel="Applying…"
+                  onClick={(e) => {
+                    const form = e.currentTarget.form;
+                    if (!form || !form.checkValidity()) return;
+                    const raw = String(
+                      new FormData(form).get("priceAud") ?? "",
+                    ).replace(/[^0-9.]/g, "");
+                    const amount = Number(raw) || 0;
+                    const onlyUnpriced = Boolean(
+                      (form.elements.namedItem("onlyUnpriced") as HTMLInputElement | null)
+                        ?.checked,
+                    );
+                    const kind =
+                      fareTripMode === "round_trip" ? "round-trip" : "one-way";
+                    const tier = `${cabinLabel(bulkPriceCabin)} · ${bulkTierName}`;
+                    const lines = [
+                      `Set the ${kind} price of ${tier} to $${amount.toFixed(2)} on ${
+                        onlyUnpriced
+                          ? "every flight where it isn't priced yet"
+                          : "every matching flight, replacing their current prices"
+                      }?`,
+                    ];
+                    if (amount === 0) {
+                      lines.push(
+                        "$0 means \"not priced\" — on flights that sell ticket prices, customers won't be able to book this tier until it's priced again.",
+                      );
+                    }
+                    if (!confirm(lines.join("\n\n"))) e.preventDefault();
+                  }}
                   className="inline-flex min-h-10 items-center rounded-control border border-line bg-surface px-4 text-sm font-medium text-foreground transition-colors hover:border-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Apply to matching flights
@@ -1659,6 +1705,15 @@ export function AdminDashboard({
                           <input type="hidden" name="id" value={f.id} />
                           <SubmitButton
                             pendingLabel="Removing…"
+                            onClick={(e) => {
+                              if (
+                                !confirm(
+                                  `Remove ${f.airline} ${f.flightNumber} from the website?\n\nCustomers won't be able to see or book it. It stays in this list as Hidden — use Restore to show it again.`,
+                                )
+                              ) {
+                                e.preventDefault();
+                              }
+                            }}
                             className="text-muted transition hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             Remove
@@ -1682,7 +1737,7 @@ export function AdminDashboard({
                           onClick={(e) => {
                             if (
                               !confirm(
-                                "Delete this flight permanently? Any bookings and invoices still tied to it will be deleted too and recorded in the Deleted tab.",
+                                `Delete ${f.airline} ${f.flightNumber} (${f.origin} → ${f.destination})?\n\nIt will be hidden from customers and moved to the Deleted tab. Bookings and invoices are kept, and you can restore it from there at any time.`,
                               )
                             ) {
                               e.preventDefault();
@@ -3137,7 +3192,10 @@ export function AdminDashboard({
       {tab === "settings" && <SettingsAdminPanel settings={settings} />}
 
       {tab === "deleted" && (
-        <DeletedRecordsPanel records={deletedRecords} />
+        <DeletedRecordsPanel
+          deletedFlights={deletedFlights}
+          records={deletedRecords}
+        />
       )}
 
       </AdminShell>

@@ -370,7 +370,7 @@ export async function createWalkInBookingAction(
       : "";
 
     const flight = await prisma.flight.findFirst({
-      where: { id: flightId },
+      where: { id: flightId, deletedAt: null },
       include: { fareReleases: { orderBy: { sortOrder: "asc" } } },
     });
     if (!flight) throw new Error("Flight not found");
@@ -417,7 +417,7 @@ export async function createWalkInBookingAction(
     let returnCurrent = null;
     if (returnFlightId) {
       returnFlight = await prisma.flight.findFirst({
-        where: { id: returnFlightId },
+        where: { id: returnFlightId, deletedAt: null },
         include: { fareReleases: { orderBy: { sortOrder: "asc" } } },
       });
       if (!returnFlight) throw new Error("Return flight not found");

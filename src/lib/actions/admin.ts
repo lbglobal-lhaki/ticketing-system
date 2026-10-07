@@ -207,8 +207,8 @@ export async function updateFlightAction(
 
   const returnLegFlightId = parseReturnLegFlightId(formData, id);
 
-  const existingFlight = await prisma.flight.findUnique({
-    where: { id },
+  const existingFlight = await prisma.flight.findFirst({
+    where: { id, deletedAt: null },
     select: {
       active: true,
       fareReleases: { select: { id: true } },
@@ -391,6 +391,7 @@ export async function bulkUpdateFareTierPriceAction(formData: FormData) {
       // through the flight — and it correctly leaves the other cabin's
       // same-named tiers ("Early Bird" exists in both) untouched.
       cabinClass,
+      flight: { deletedAt: null },
       ...(onlyUnpriced
         ? isRoundTrip
           ? { roundTripPriceCents: 0 }
@@ -415,8 +416,8 @@ export async function removeFlightAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) redirect("/admin?error=Missing+flight");
 
-  await prisma.flight.update({
-    where: { id },
+  await prisma.flight.updateMany({
+    where: { id, deletedAt: null },
     data: { active: false },
   });
 
@@ -431,8 +432,8 @@ export async function restoreFlightAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) redirect("/admin?error=Missing+flight");
 
-  await prisma.flight.update({
-    where: { id },
+  await prisma.flight.updateMany({
+    where: { id, deletedAt: null },
     data: { active: true },
   });
 
@@ -442,26 +443,107 @@ export async function restoreFlightAction(formData: FormData) {
   redirect("/admin?tab=flights&saved=restored");
 }
 
+function flightIdsFrom(formData: FormData) {
+  return Array.from(
+    new Set(formData.getAll("id").map((v) => String(v).trim()).filter(Boolean)),
+  );
+}
+
+function revalidateFlightPages() {
+  revalidatePath("/admin");
+  revalidatePath("/flights");
+  revalidatePath("/");
+}
+
 /**
- * Permanently deletes one or many flights (accepts one or many `id` fields —
- * powers both the row Delete button and bulk-select delete). Any bookings
- * still pointing at them (as the outbound or return leg) — and their
- * invoices — are deleted along with them; every one of those rows is
- * recorded on the admin Deleted tab first so nothing disappears without a
- * trace.
+ * Moves one or many flights to the admin Deleted tab (accepts one or many
+ * `id` fields — powers both the row Delete button and bulk-select delete).
+ * Nothing is erased: the flight is hidden from customers and every booking,
+ * invoice and fare on it stays exactly as it is, so Restore puts it back.
  */
 export async function deleteFlightAction(formData: FormData) {
   await requireAdmin();
-  const ids = Array.from(new Set(formData.getAll("id").map(String).filter(Boolean)));
-  if (ids.length === 0) redirect("/admin?error=Missing+flight");
+  const ids = flightIdsFrom(formData);
+  if (ids.length === 0) redirect("/admin?tab=flights&error=Missing+flight");
 
   const flights = await prisma.flight.findMany({
-    where: { id: { in: ids } },
-    include: { fareReleases: true },
+    where: { id: { in: ids }, deletedAt: null },
+    select: { id: true, active: true },
   });
   if (flights.length === 0) {
-    redirect("/admin?tab=flights&error=Flight(s)+not+found");
+    redirect("/admin?tab=flights&error=Flight(s)+not+found+or+already+deleted");
   }
+
+  const deletedAt = new Date();
+  await prisma.$transaction(
+    flights.map((f) =>
+      prisma.flight.update({
+        where: { id: f.id },
+        data: { deletedAt, activeBeforeDelete: f.active, active: false },
+      }),
+    ),
+  );
+
+  revalidateFlightPages();
+  redirect(
+    `/admin?tab=flights&saved=${flights.length > 1 ? "flights-trashed" : "flight-trashed"}`,
+  );
+}
+
+/** Brings flights back from the Deleted tab, live or hidden as they were. */
+export async function restoreDeletedFlightAction(formData: FormData) {
+  await requireAdmin();
+  const ids = flightIdsFrom(formData);
+  if (ids.length === 0) redirect("/admin?tab=deleted&error=Missing+flight");
+
+  const flights = await prisma.flight.findMany({
+    where: { id: { in: ids }, deletedAt: { not: null } },
+    select: { id: true, activeBeforeDelete: true },
+  });
+  if (flights.length === 0) {
+    redirect("/admin?tab=deleted&error=Flight(s)+not+found+in+the+Deleted+tab");
+  }
+
+  await prisma.$transaction(
+    flights.map((f) =>
+      prisma.flight.update({
+        where: { id: f.id },
+        data: {
+          deletedAt: null,
+          active: f.activeBeforeDelete ?? false,
+          activeBeforeDelete: null,
+        },
+      }),
+    ),
+  );
+
+  revalidateFlightPages();
+  redirect(
+    `/admin?tab=deleted&saved=${flights.length > 1 ? "flights-restored" : "flight-restored"}`,
+  );
+}
+
+/**
+ * Permanently deletes flights that are already in the Deleted tab. Any
+ * bookings still pointing at them (as the outbound or return leg) — and their
+ * invoices — are deleted along with them; each of those is recorded in the
+ * Deleted log first so nothing disappears without a trace. Cargo bookings
+ * keep their record and simply lose the flight link.
+ */
+export async function purgeFlightAction(formData: FormData) {
+  await requireAdmin();
+  const requested = flightIdsFrom(formData);
+  if (requested.length === 0) redirect("/admin?tab=deleted&error=Missing+flight");
+
+  // Only flights already in the Deleted tab can be erased.
+  const flights = await prisma.flight.findMany({
+    where: { id: { in: requested }, deletedAt: { not: null } },
+    select: { id: true },
+  });
+  if (flights.length === 0) {
+    redirect("/admin?tab=deleted&error=Flight(s)+not+found+in+the+Deleted+tab");
+  }
+  const ids = flights.map((f) => f.id);
 
   const idSet = new Set(ids);
   const bookings = await prisma.booking.findMany({
@@ -513,7 +595,7 @@ export async function deleteFlightAction(formData: FormData) {
               entityType: "invoice",
               entityId: booking.invoice.id,
               label: booking.invoice.invoiceNumber,
-              summary: `Deleted together with flight ${booking.flight.airline} ${booking.flight.flightNumber}`,
+              summary: `Erased when flight ${booking.flight.airline} ${booking.flight.flightNumber} was permanently deleted`,
               snapshot: booking.invoice,
             },
             tx,
@@ -524,28 +606,8 @@ export async function deleteFlightAction(formData: FormData) {
             entityType: "booking",
             entityId: booking.id,
             label: booking.bookingRef,
-            summary: `${booking.passengerName} · deleted together with flight ${booking.flight.airline} ${booking.flight.flightNumber}`,
+            summary: `${booking.passengerName} · erased when flight ${booking.flight.airline} ${booking.flight.flightNumber} was permanently deleted`,
             snapshot: booking,
-          },
-          tx,
-        );
-      }
-
-      for (const flight of flights) {
-        const flightBookingCount = bookings.filter(
-          (b) => b.flightId === flight.id || b.returnFlightId === flight.id,
-        ).length;
-        await recordDeletion(
-          {
-            entityType: "flight",
-            entityId: flight.id,
-            label: `${flight.airline} ${flight.flightNumber}`,
-            summary: `${flight.origin} → ${flight.destination}${
-              flightBookingCount
-                ? ` · ${flightBookingCount} booking(s) removed with it`
-                : ""
-            }`,
-            snapshot: flight,
           },
           tx,
         );
@@ -568,11 +630,9 @@ export async function deleteFlightAction(formData: FormData) {
     { maxWait: 20_000, timeout: 60_000 },
   );
 
-  revalidatePath("/admin");
-  revalidatePath("/flights");
-  revalidatePath("/");
+  revalidateFlightPages();
   redirect(
-    `/admin?tab=flights&saved=${flights.length > 1 ? "flights-deleted" : "deleted"}`,
+    `/admin?tab=deleted&saved=${flights.length > 1 ? "flights-deleted" : "deleted"}`,
   );
 }
 

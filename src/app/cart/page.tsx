@@ -73,6 +73,7 @@ function CartItem({ quote }: { quote: CartQuote }) {
             <input type="hidden" name="quoteId" value={quote.id} />
             <SubmitButton
               pendingLabel="Removing…"
+              confirmMessage="Remove this trip from your cart? The held price will be released."
               className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-line px-5 py-2.5 text-sm font-semibold text-muted transition hover:border-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
             >
               Remove

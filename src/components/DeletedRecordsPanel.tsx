@@ -2,6 +2,10 @@
 
 import { useMemo, useState, useTransition } from "react";
 import {
+  purgeFlightAction,
+  restoreDeletedFlightAction,
+} from "@/lib/actions/admin";
+import {
   loadDeletedRecordSnapshotAction,
   purgeDeletedRecordAction,
 } from "@/lib/actions/deletedRecords";
@@ -62,9 +66,212 @@ function fmt(iso: string) {
   });
 }
 
+export type AdminDeletedFlightRow = {
+  id: string;
+  label: string;
+  route: string;
+  departureAt: string;
+  deletedAt: string;
+  /** Whether it was live (customer-visible) when deleted — Restore puts it back that way. */
+  wasLive: boolean;
+  bookingCount: number;
+  cargoCount: number;
+};
+
+function purgeWarning(flights: AdminDeletedFlightRow[]) {
+  const bookings = flights.reduce((s, f) => s + f.bookingCount, 0);
+  const cargo = flights.reduce((s, f) => s + f.cargoCount, 0);
+  const subject =
+    flights.length === 1
+      ? `${flights[0]!.label} (${flights[0]!.route})`
+      : `${flights.length} flights`;
+  const lines = [`Permanently delete ${subject}? This cannot be undone.`];
+  if (bookings > 0) {
+    lines.push(
+      `${bookings} booking${bookings === 1 ? "" : "s"} on ${flights.length === 1 ? "this flight" : "these flights"} and ${bookings === 1 ? "its invoice" : "their invoices"} will be deleted too (a read-only copy is kept in the log below).`,
+    );
+  }
+  if (cargo > 0) {
+    lines.push(
+      `${cargo} cargo booking${cargo === 1 ? "" : "s"} will be kept but no longer linked to a flight.`,
+    );
+  }
+  return { message: lines.join("\n\n"), bookings };
+}
+
+/** Asks once, and a second time when bookings would be erased with the flight(s). */
+function confirmPurge(flights: AdminDeletedFlightRow[]) {
+  const { message, bookings } = purgeWarning(flights);
+  if (!confirm(message)) return false;
+  if (bookings === 0) return true;
+  return confirm(
+    `Last check: delete ${bookings} booking${bookings === 1 ? "" : "s"} and ${bookings === 1 ? "its invoice" : "their invoices"} along with the flight${flights.length === 1 ? "" : "s"}?`,
+  );
+}
+
+function DeletedFlightsSection({ flights }: { flights: AdminDeletedFlightRow[] }) {
+  const [pending, startTransition] = useTransition();
+  const ids = useMemo(() => flights.map((f) => f.id), [flights]);
+  const bulk = useBulkSelection(ids);
+  const selectedFlights = flights.filter((f) => bulk.selected.has(f.id));
+
+  function submit(action: (fd: FormData) => Promise<void>, rows: string[]) {
+    const fd = new FormData();
+    for (const id of rows) fd.append("id", id);
+    startTransition(() => {
+      void action(fd);
+    });
+  }
+
+  function onBulkRestore() {
+    if (selectedFlights.length === 0) return;
+    if (
+      !confirm(
+        `Restore ${selectedFlights.length} flight${selectedFlights.length === 1 ? "" : "s"}? ${selectedFlights.length === 1 ? "It goes" : "They go"} back to the Flights tab, live or hidden as before.`,
+      )
+    ) {
+      return;
+    }
+    submit(restoreDeletedFlightAction, [...bulk.selected]);
+  }
+
+  function onBulkPurge() {
+    if (selectedFlights.length === 0 || !confirmPurge(selectedFlights)) return;
+    submit(purgeFlightAction, [...bulk.selected]);
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <h2 className="font-[family-name:var(--font-syne)] text-lg font-semibold tracking-tight">
+          Deleted flights
+          <span className="ml-2 text-sm font-medium text-muted">{flights.length}</span>
+        </h2>
+        <p className="mt-1 max-w-2xl text-sm text-muted">
+          Hidden from customers, with their bookings and invoices untouched.
+          Restore puts a flight back in the Flights tab; Delete permanently
+          erases it for good.
+        </p>
+      </div>
+
+      {flights.length === 0 ? (
+        <div className="border border-dashed border-line bg-surface/70 px-6 py-8 text-center text-sm text-muted">
+          No deleted flights.
+        </div>
+      ) : (
+        <>
+          <BulkSelectBar
+            count={bulk.selected.size}
+            itemLabel="flight"
+            pending={pending}
+            deleteLabel="Delete permanently"
+            onDelete={onBulkPurge}
+            onClear={bulk.clear}
+            extraActions={
+              <button
+                type="button"
+                onClick={onBulkRestore}
+                disabled={pending}
+                className="border border-accent/40 bg-white px-3 py-1.5 font-semibold text-accent-deep transition hover:border-accent disabled:opacity-60"
+              >
+                Restore selected
+              </button>
+            }
+          />
+          <label className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted">
+            <SelectAllCheckbox
+              allSelected={bulk.allSelected}
+              someSelected={bulk.someSelected}
+              onToggle={bulk.toggleAll}
+            />
+            Select all ({flights.length})
+          </label>
+          <ul className="divide-y divide-line border-y border-line bg-surface/60">
+            {flights.map((flight) => (
+              <li key={flight.id} className="px-4 py-4 sm:px-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${flight.label}`}
+                      checked={bulk.selected.has(flight.id)}
+                      onChange={() => bulk.toggle(flight.id)}
+                      className="mt-1.5 size-4 shrink-0 accent-accent-deep"
+                    />
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span
+                          className={`px-2 py-0.5 text-xs font-semibold uppercase tracking-[0.08em] ${ENTITY_BADGE_CLASS.flight}`}
+                        >
+                          Flight
+                        </span>
+                        <p className="font-[family-name:var(--font-syne)] text-base font-semibold tracking-tight">
+                          {flight.label}
+                        </p>
+                      </div>
+                      <p className="text-sm text-muted">
+                        {flight.route} · departs {fmt(flight.departureAt)}
+                      </p>
+                      <p className="text-sm text-muted">
+                        {flight.bookingCount} booking
+                        {flight.bookingCount === 1 ? "" : "s"}
+                        {flight.cargoCount
+                          ? ` · ${flight.cargoCount} cargo booking${flight.cargoCount === 1 ? "" : "s"}`
+                          : ""}{" "}
+                        · was {flight.wasLive ? "live" : "hidden"} before deletion
+                      </p>
+                      <p className="text-xs text-muted">
+                        Deleted {fmt(flight.deletedAt)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2 self-start">
+                    <form action={restoreDeletedFlightAction}>
+                      <input type="hidden" name="id" value={flight.id} />
+                      <SubmitButton
+                        pendingLabel="Restoring…"
+                        onClick={(e) => {
+                          if (
+                            !confirm(
+                              `Restore ${flight.label} (${flight.route})? It goes back to the Flights tab as ${flight.wasLive ? "live — customers can book it again" : "hidden"}.`,
+                            )
+                          ) {
+                            e.preventDefault();
+                          }
+                        }}
+                        className="tap-target rounded-control border border-accent/40 px-3 text-xs font-semibold text-accent-deep transition hover:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Restore
+                      </SubmitButton>
+                    </form>
+                    <form action={purgeFlightAction}>
+                      <input type="hidden" name="id" value={flight.id} />
+                      <SubmitButton
+                        pendingLabel="Deleting…"
+                        onClick={(e) => {
+                          if (!confirmPurge([flight])) e.preventDefault();
+                        }}
+                        className="tap-target rounded-control border border-line px-3 text-xs font-medium text-muted/70 transition hover:border-accent-red/40 hover:text-accent-red disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Delete permanently
+                      </SubmitButton>
+                    </form>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function DeletedRecordsPanel({
+  deletedFlights,
   records,
 }: {
+  deletedFlights: AdminDeletedFlightRow[];
   records: AdminDeletedRecordRow[];
 }) {
   const [miniTab, setMiniTab] = useState<MiniTab>("all");
@@ -139,19 +346,25 @@ export function DeletedRecordsPanel({
 
   return (
     <section className="space-y-6">
-      <div>
-        <p className="max-w-2xl text-sm text-muted">
-          Every flight, booking, invoice, and cargo enquiry deleted from the
-          dashboard is logged here with a full snapshot of the record. Use
-          &ldquo;Delete forever&rdquo; to purge an entry from this log too —
-          that permanently frees up database storage and can&apos;t be
-          undone.
+      <DeletedFlightsSection flights={deletedFlights} />
+
+      <div className="border-t border-line pt-6">
+        <h2 className="font-[family-name:var(--font-syne)] text-lg font-semibold tracking-tight">
+          Deletion log
+        </h2>
+        <p className="mt-1 max-w-2xl text-sm text-muted">
+          Bookings, invoices and cargo enquiries deleted from the dashboard —
+          and anything erased with a permanently deleted flight — are logged
+          here with a read-only snapshot. Use &ldquo;Delete forever&rdquo; to
+          purge an entry from this log too; that frees up database storage
+          and can&apos;t be undone.
         </p>
       </div>
 
       <BulkSelectBar
         count={bulk.selected.size}
         itemLabel="entry"
+        itemLabelPlural="entries"
         pending={pending}
         onDelete={onBulkPurge}
         onClear={bulk.clear}

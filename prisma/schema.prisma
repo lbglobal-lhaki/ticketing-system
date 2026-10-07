@@ -117,6 +117,11 @@ model Flight {
   /// Customers pay the charter catalogue, or the ticket-type prices on this flight.
   pricingSource  FlightPricingSource @default(charter)
   active         Boolean    @default(true)
+  /// Set when admin deletes the flight: it moves to the Deleted tab (hidden,
+  /// bookings untouched) until it is restored or deleted permanently.
+  deletedAt      DateTime?
+  /// `active` at the moment of deletion, so a restore puts it back as it was.
+  activeBeforeDelete Boolean?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
@@ -139,6 +144,7 @@ model Flight {
 
   @@index([origin, destination, departureAt])
   @@index([active])
+  @@index([deletedAt])
   @@index([returnLegFlightId])
 }
 

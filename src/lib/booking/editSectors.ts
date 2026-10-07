@@ -47,6 +47,13 @@ export async function resolveEditedSectors(
   if (next.returnFlightId && !inbound) {
     throw new Error("Selected return flight was not found");
   }
+  // A leg the booking already has may sit on a deleted flight; a new one can't.
+  if (outbound.deletedAt && outbound.id !== booking.flightId) {
+    throw new Error("Selected flight has been deleted — restore it first");
+  }
+  if (inbound?.deletedAt && inbound.id !== booking.returnFlightId) {
+    throw new Error("Selected return flight has been deleted — restore it first");
+  }
 
   const summary = {
     changed,

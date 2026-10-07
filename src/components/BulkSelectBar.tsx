@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 /**
  * Shared checkbox-selection state for an admin list/table. Selection is keyed
@@ -80,24 +80,32 @@ export function SelectAllCheckbox({
 export function BulkSelectBar({
   count,
   itemLabel = "item",
+  itemLabelPlural,
   onDelete,
   onClear,
   pending,
+  deleteLabel = "Delete selected",
+  extraActions,
 }: {
   count: number;
   itemLabel?: string;
+  itemLabelPlural?: string;
   onDelete: () => void;
   onClear: () => void;
   pending?: boolean;
+  deleteLabel?: string;
+  extraActions?: ReactNode;
 }) {
   if (count === 0) return null;
   return (
     <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border border-accent/40 bg-accent/10 px-4 py-3 text-sm shadow-sm backdrop-blur">
       <p className="font-medium text-accent-deep">
-        {count} {itemLabel}
-        {count === 1 ? "" : "s"} selected
+        {count}{" "}
+        {count === 1 ? itemLabel : (itemLabelPlural ?? `${itemLabel}s`)}{" "}
+        selected
       </p>
       <div className="flex items-center gap-3">
+        {extraActions}
         <button
           type="button"
           onClick={onClear}
@@ -112,7 +120,7 @@ export function BulkSelectBar({
           disabled={pending}
           className="border border-red-300 bg-red-50 px-3 py-1.5 font-semibold text-red-700 transition hover:border-red-400 hover:bg-red-100 disabled:opacity-60"
         >
-          {pending ? "Deleting…" : "Delete selected"}
+          {pending ? "Working…" : deleteLabel}
         </button>
       </div>
     </div>

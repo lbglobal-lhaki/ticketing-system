@@ -16,6 +16,8 @@ type SubmitButtonProps = Omit<
    * `useActionState` (sticky forms) instead of `action={...}`.
    */
   pending?: boolean;
+  /** Asks the user to confirm first; cancelling stops the submit. */
+  confirmMessage?: string;
 };
 
 /**
@@ -32,8 +34,10 @@ export function SubmitButton({
   children,
   pendingLabel,
   pending: pendingOverride,
+  confirmMessage,
   disabled,
   className,
+  onClick,
   ...rest
 }: SubmitButtonProps) {
   const status = useFormStatus();
@@ -44,6 +48,13 @@ export function SubmitButton({
       disabled={disabled || pending}
       aria-busy={pending}
       className={className}
+      onClick={(e) => {
+        if (confirmMessage && !confirm(confirmMessage)) {
+          e.preventDefault();
+          return;
+        }
+        onClick?.(e);
+      }}
       {...rest}
     >
       {pending ? (

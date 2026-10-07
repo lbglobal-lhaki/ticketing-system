@@ -88,6 +88,18 @@ export function PassengerGroupFields({
     const count = Math.min(max, Math.max(0, n));
     if (count === items.length) return;
     if (count < items.length) {
+      const removed = items.slice(count);
+      const filledIn = removed.filter(
+        (p) => p.fullName.trim() || p.passportNumber.trim(),
+      );
+      if (
+        filledIn.length > 0 &&
+        !confirm(
+          `Remove ${filledIn.map((p) => p.fullName.trim() || "this passenger").join(", ")}? The details you entered for ${filledIn.length === 1 ? "them" : "these passengers"} will be cleared.`,
+        )
+      ) {
+        return;
+      }
       onChange(items.slice(0, count));
       return;
     }
