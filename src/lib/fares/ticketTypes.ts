@@ -8,10 +8,7 @@ function baggageForCabin(cabin: string) {
     : { checked: "23 kg", cabin: "7 kg", meal: "Meal included" };
 }
 
-/**
- * Turn this flight's ticket types into the same cards the charter catalogue
- * uses, so fare selection doesn't care which price source the admin picked.
- */
+/** Turn this flight's ticket types into the fare cards customers pick from. */
 export function buildTicketTypeFareProducts(input: {
   cabinClass: "economy" | "business";
   releases: FareReleaseRow[];

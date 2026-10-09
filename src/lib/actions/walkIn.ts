@@ -46,6 +46,7 @@ import { specialAssistanceToJson } from "@/lib/booking/specialAssistance";
 import { resolveEditedSectors } from "@/lib/booking/editSectors";
 import { parseDateTimeLocal, parseFlightDateTime } from "@/lib/datetime";
 import { getCurrentFareRelease } from "@/lib/fares/current";
+import { matchingReturnRelease } from "@/lib/fares/ticketTypes";
 import {
   cabinLabel,
   cabinsOnFlight,
@@ -337,18 +338,10 @@ export async function createWalkInBookingAction(
   try {
     /*
      * One flight sells both cabins now, so every lookup below has to be scoped
-     * to one. A selected charter fare tier is cabin-specific and wins over the
-     * form's cabin toggle; otherwise the toggle decides.
+     * to one. An optional ticket-type pick (fareProductId = a FareRelease id on
+     * the outbound flight) must belong to the cabin the form chose.
      */
-    const fareProduct = data.fareProductId
-      ? await prisma.charterFareProduct.findFirst({
-          where: { id: data.fareProductId, active: true },
-        })
-      : null;
-    if (data.fareProductId && !fareProduct) {
-      throw new Error("Selected fare tier is unavailable");
-    }
-    const cabinClass = parseCabin(fareProduct?.cabinClass ?? data.cabinClass);
+    const cabinClass = parseCabin(data.cabinClass);
 
     const flightId = await resolveLegFlightId(
       formData,
@@ -376,13 +369,11 @@ export async function createWalkInBookingAction(
     if (!flight) throw new Error("Flight not found");
     assertChildInfantAges(companions.all, flight.departureAt);
 
-    // A fare-tier override charges its own catalogue price, and a custom
-    // admin price replaces the total outright — in either case the flight's
-    // own fare release only needs to exist (to decrement seats against), it
+    // A custom admin price replaces the total outright — the flight's own fare
+    // release then only needs to exist (to decrement seats against), it
     // doesn't need to be priced itself.
-    const usingFareOverride = Boolean(data.fareProductId);
     const usingCustomPrice = customTotalCents !== null;
-    const skipsSystemFarePricing = usingFareOverride || usingCustomPrice;
+    const skipsSystemFarePricing = usingCustomPrice;
     const isRoundTrip = Boolean(returnFlightId);
 
     if (!cabinsOnFlight(flight.fareReleases).includes(cabinClass)) {
@@ -390,11 +381,27 @@ export async function createWalkInBookingAction(
         `Outbound flight does not sell ${cabinLabel(cabinClass)} class`,
       );
     }
-    const outboundCurrent = getCurrentFareRelease(
-      flight.fareReleases,
-      cabinClass,
-      { roundTrip: isRoundTrip },
-    );
+    const pickedRelease = data.fareProductId
+      ? flight.fareReleases.find((r) => r.id === data.fareProductId && r.active)
+      : null;
+    if (data.fareProductId && !pickedRelease) {
+      throw new Error(
+        "Selected ticket type isn't on this flight any more — pick it again",
+      );
+    }
+    if (pickedRelease && parseCabin(pickedRelease.cabinClass) !== cabinClass) {
+      throw new Error(
+        `Selected ticket type is ${cabinLabel(pickedRelease.cabinClass)}, but the booking is ${cabinLabel(cabinClass)}`,
+      );
+    }
+    if (pickedRelease && pickedRelease.remainingSeats < data.seatsBooked) {
+      throw new Error(`Not enough seats left on ${pickedRelease.name}`);
+    }
+    const outboundCurrent =
+      pickedRelease ??
+      getCurrentFareRelease(flight.fareReleases, cabinClass, {
+        roundTrip: isRoundTrip,
+      });
     if (!outboundCurrent) {
       throw new Error(
         `Outbound flight has no active ${cabinLabel(cabinClass)} fare release`,
@@ -407,8 +414,8 @@ export async function createWalkInBookingAction(
       if (outboundNeeded <= 0) {
         throw new Error(
           isRoundTrip
-            ? "Current round-trip fare release is not priced — set a round-trip price in Flights, pick a fare tier override, or enter a custom price below"
-            : "Current fare release is not priced — set a price in Flights, pick a fare tier override, or enter a custom price below",
+            ? `${outboundCurrent.name} has no round-trip price — set one in Flights, pick another ticket type, or enter a custom price below`
+            : `${outboundCurrent.name} has no one-way price — set one in Flights, pick another ticket type, or enter a custom price below`,
         );
       }
     }
@@ -439,11 +446,17 @@ export async function createWalkInBookingAction(
           `Return flight does not sell ${cabinLabel(cabinClass)} class`,
         );
       }
-      returnCurrent = getCurrentFareRelease(
-        returnFlight.fareReleases,
-        cabinClass,
-        { roundTrip: true },
-      );
+      returnCurrent =
+        (pickedRelease
+          ? matchingReturnRelease(
+              returnFlight.fareReleases,
+              pickedRelease,
+              cabinClass,
+            )
+          : null) ??
+        getCurrentFareRelease(returnFlight.fareReleases, cabinClass, {
+          roundTrip: true,
+        });
       if (!returnCurrent) {
         throw new Error(
           `Return flight has no active ${cabinLabel(cabinClass)} fare release`,
@@ -451,7 +464,7 @@ export async function createWalkInBookingAction(
       }
       if (!skipsSystemFarePricing && returnCurrent.roundTripPriceCents <= 0) {
         throw new Error(
-          "Return round-trip fare is not priced — set a round-trip price in Flights, pick a fare tier override, or enter a custom price below",
+          "Return round-trip fare is not priced — set a round-trip price in Flights, pick another ticket type, or enter a custom price below",
         );
       }
     }
@@ -479,38 +492,14 @@ export async function createWalkInBookingAction(
       unitAdultFareCents = legs.unitAdultCents;
     }
 
-    // Optional fare-tier override — admin can charge a specific charter
-    // catalogue price (Saver / Flexi / …) instead of the flight's current
-    // fare-release price, same as the online checkout allows.
-    let fareProductCode = "";
-    let fareProductName = "";
+    // A picked ticket type is recorded the same way online checkout does.
+    const fareProductCode = pickedRelease ? `ticket:${pickedRelease.id}` : "";
+    const fareProductName = pickedRelease?.name ?? "";
     let outboundReleaseName = outboundCurrent.name;
-    if (fareProduct) {
-      const product = fareProduct;
-      // Cabin came from this product above, so both legs already matched it.
-      fareProductCode = product.code;
-      fareProductName = product.name;
-      outboundReleaseName = product.name;
-      if (returnFlight) {
-        if (product.roundTripPriceCents <= 0) {
-          throw new Error(
-            "Selected round-trip fare is not priced — set a charter round-trip price first",
-          );
-        }
-        unitAdultFareCents = product.roundTripPriceCents;
-      } else {
-        if (product.priceCents <= 0) {
-          throw new Error(
-            "Selected one-way fare is not priced — set a charter one-way price first",
-          );
-        }
-        unitAdultFareCents = product.priceCents;
-      }
-    }
 
     // Custom price wins over everything above — it's a flat total for the
     // whole booking (all seats/legs + child/infant fares included).
-    if (usingCustomPrice && !usingFareOverride) {
+    if (usingCustomPrice && !pickedRelease) {
       outboundReleaseName = "Custom price (admin-set)";
     }
 

@@ -70,14 +70,3 @@ export function productsPricedForTrip(
     : products.filter((p) => p.priceCents > 0);
 }
 
-/** Prefer the flight's catalogue; if that trip type is unpriced, use ticket types. */
-export function fareProductsForTripType(
-  primary: FareProduct[],
-  fallback: FareProduct[],
-  trip: "one_way" | "round_trip",
-) {
-  const fromPrimary = productsPricedForTrip(primary, trip);
-  return fromPrimary.length > 0
-    ? fromPrimary
-    : productsPricedForTrip(fallback, trip);
-}

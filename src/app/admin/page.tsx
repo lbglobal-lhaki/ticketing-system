@@ -18,7 +18,6 @@ import { getSystemAnalytics } from "@/lib/analytics/systemAnalytics";
 import { expireStaleHoldsForAdminLoad } from "@/lib/booking/expireHolds";
 import { prisma } from "@/lib/db";
 import { getCargoShopRates } from "@/lib/cargo/products";
-import { listAllCharterFareProductsAdmin } from "@/lib/fares/charter";
 import { getSiteSettings } from "@/lib/settings";
 import { adminLoginSchema } from "@/lib/validation";
 
@@ -39,7 +38,6 @@ function parseTab(
   | "analytics"
   | "flights"
   | "form"
-  | "fares"
   | "bookings"
   | "invoices"
   | "cargo"
@@ -50,7 +48,6 @@ function parseTab(
     value === "analytics" ||
     value === "flights" ||
     value === "form" ||
-    value === "fares" ||
     value === "bookings" ||
     value === "invoices" ||
     value === "cargo" ||
@@ -185,7 +182,6 @@ export default async function AdminPage({
     cargoSubmissions,
     deletedRecords,
     analytics,
-    charterFares,
     settings,
     cargoRates,
   ] = await Promise.all([
@@ -282,7 +278,6 @@ export default async function AdminPage({
         },
       }),
       getSystemAnalytics(),
-      listAllCharterFareProductsAdmin(),
       getSiteSettings(),
       getCargoShopRates(),
     ]);
@@ -329,7 +324,6 @@ export default async function AdminPage({
       "Bookings (and their invoices, if any) deleted — logged in the Deleted tab.",
     "walk-in":
       "Walk-in booking created. Edit and send documents from the Invoices tab when ready.",
-    "fare-updated": "Charter fare product saved.",
     "cargo-updated": "Cargo submission updated.",
     "cargo-created": "Cargo booking created.",
     "cargo-deleted": "Cargo booking deleted — logged in the Deleted tab.",
@@ -399,46 +393,6 @@ export default async function AdminPage({
               params.error ? decodeURIComponent(params.error) : null
             }
             analytics={analytics}
-            charterFares={charterFares.map((f) => ({
-              id: f.id,
-              code: f.code,
-              name: f.name,
-              cabinClass: f.cabinClass as "economy" | "business",
-              sortOrder: f.sortOrder,
-              priceCents: f.priceCents,
-              roundTripPriceCents: f.roundTripPriceCents ?? 0,
-              updatedAt: f.updatedAt.toISOString(),
-              tagline: f.tagline,
-              recommended: f.recommended,
-              mostPopular: f.mostPopular,
-              active: f.active,
-              flightChangeLabel: f.flightChangeLabel,
-              refundLabel: f.refundLabel,
-              checkedBaggage: f.checkedBaggage,
-              cabinBaggage: f.cabinBaggage,
-              seatSelection: f.seatSelection,
-              mealLabel: f.mealLabel,
-              frequentFlyerLabel: f.frequentFlyerLabel,
-              priorityCheckIn: f.priorityCheckIn,
-              priorityBoarding: f.priorityBoarding,
-              changePermitted: f.changePermitted,
-              changeFeeLabel: f.changeFeeLabel,
-              refundPermitted: f.refundPermitted,
-              refundFeeLabel: f.refundFeeLabel,
-              perkLines: Array.isArray(f.perkLines)
-                ? (f.perkLines as string[])
-                : [],
-              changeBullets: Array.isArray(f.changeBullets)
-                ? (f.changeBullets as string[])
-                : [],
-              refundBullets: Array.isArray(f.refundBullets)
-                ? (f.refundBullets as string[])
-                : [],
-              baggageBullets: Array.isArray(f.baggageBullets)
-                ? (f.baggageBullets as string[])
-                : [],
-              notes: f.notes,
-            }))}
             flights={flights.map((f) => ({
               id: f.id,
               airline: f.airline,
@@ -451,7 +405,6 @@ export default async function AdminPage({
               remainingSeats: f.remainingSeats,
               cargoPayloadKg: f.cargoPayloadKg,
               cargoBookedKg: f.cargoBookedKg,
-              pricingSource: f.pricingSource as "charter" | "ticket_types",
               active: f.active,
               returnLegFlightId: f.returnLegFlightId,
               fareReleases: f.fareReleases.map((r) => ({

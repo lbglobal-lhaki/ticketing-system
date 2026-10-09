@@ -37,7 +37,7 @@ export function FareComparisonRow({
   infants = 0,
   title = "Choose your fare",
   subtitle = "Chartered flight fares for Perth ⇄ Paro — compare rules, then select.",
-  emptyHint = "Ask admin to activate charter fares for this cabin.",
+  emptyHint = "This flight has no priced ticket types for this cabin yet.",
 }: FareComparisonRowProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [detailsId, setDetailsId] = useState<string | null>(null);

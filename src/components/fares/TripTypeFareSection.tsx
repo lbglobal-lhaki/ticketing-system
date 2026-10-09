@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { FareComparisonRow } from "@/components/fares/FareComparisonRow";
 import { SelectedFlightSummary } from "@/components/fares/SelectedFlightSummary";
-import { fareProductsForTripType } from "@/lib/fares/products";
+import { productsPricedForTrip } from "@/lib/fares/products";
 import type { FareProduct } from "@/lib/fares/products";
 
 type Leg = {
@@ -18,54 +18,44 @@ type Leg = {
 };
 
 /**
- * Charter fare selection with an inline One way / Round trip toggle.
+ * Fare selection with an inline One way / Round trip toggle.
  *
  * This charter route sells one fixed round-trip pair per month — customers
  * don't search for a return flight separately. If this flight has a
  * designated `pairedReturn` leg, picking "Round trip" here auto-attaches it
- * and uses the stored round-trip catalogue total; no second search step required.
+ * and uses each ticket type's round-trip price; no second search step required.
  */
 export function TripTypeFareSection({
   outbound,
   pairedReturn,
   products,
-  fallbackProducts = [],
   supportEmail,
   disabled,
   adults = 1,
   children = 0,
   infants = 0,
-  pricingSource = "charter",
 }: {
   outbound: Leg;
   pairedReturn: Leg | null;
+  /** This flight's ticket types for the chosen cabin. */
   products: FareProduct[];
-  /** Used when the primary catalogue has no price for the chosen trip type. */
-  fallbackProducts?: FareProduct[];
   supportEmail: string;
   disabled?: boolean;
   adults?: number;
   children?: number;
   infants?: number;
-  pricingSource?: string;
 }) {
   const canRoundTrip = Boolean(pairedReturn && pairedReturn.remainingSeats > 0);
-  const usingTicketTypes = pricingSource === "ticket_types";
   const [tripType, setTripType] = useState<"one_way" | "round_trip">(
     canRoundTrip ? "round_trip" : "one_way",
   );
 
   const isRoundTrip = tripType === "round_trip" && canRoundTrip;
 
-  const trip = isRoundTrip ? "round_trip" : "one_way";
-  const selected = fareProductsForTripType(products, fallbackProducts, trip);
-  const usingTicketCards =
-    usingTicketTypes ||
-    (pricingSource !== "ticket_types" &&
-      products.filter((p) =>
-        isRoundTrip ? p.roundTripPriceCents > 0 : p.priceCents > 0,
-      ).length === 0 &&
-      selected.length > 0);
+  const selected = productsPricedForTrip(
+    products,
+    isRoundTrip ? "round_trip" : "one_way",
+  );
 
   const displayedProducts = isRoundTrip
     ? selected.map((p) => ({
@@ -132,18 +122,10 @@ export function TripTypeFareSection({
         title={isRoundTrip ? "Choose your round-trip fare" : "Choose your fare"}
         subtitle={
           isRoundTrip
-            ? usingTicketCards
-              ? "Ticket prices for both legs · child 75% · infant 10% (no seat)"
-              : "Adult package for both legs · child 75% · infant 10% (no seat)"
-            : usingTicketCards
-              ? "Ticket prices on this flight · child 75% · infant 10% (no seat)"
-              : "Adult fare per seat · child 75% · infant 10% (no seat)"
+            ? "Ticket prices for both legs · child 75% · infant 10% (no seat)"
+            : "Ticket prices on this flight · child 75% · infant 10% (no seat)"
         }
-        emptyHint={
-          usingTicketCards || usingTicketTypes
-            ? "This flight has no priced ticket types for this cabin yet."
-            : "Ask admin to activate charter fares for this cabin."
-        }
+        emptyHint="This flight has no priced ticket types for this cabin yet."
       />
     </div>
   );

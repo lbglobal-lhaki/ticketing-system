@@ -63,9 +63,9 @@ export async function createPriceQuote(input: {
   flightId: string;
   returnFlightId?: string;
   sessionId: string;
-  /** Selected charter fare product, or ticket-type id when the flight sells ticket prices. */
+  /** Selected ticket type (a FareRelease id on the outbound flight). */
   fareProductId?: string;
-  /** Cabin to book. Ignored when a fare product is given — that carries its own. */
+  /** Cabin to book. Ignored when a ticket type is given — that carries its own. */
   cabinClass?: string;
   adults?: number;
   children?: number;
@@ -98,35 +98,26 @@ export async function createPriceQuote(input: {
    * fare release can be picked — otherwise a business tier could be handed to
    * an economy booking simply because it sorts first.
    *
-   * Price source is per flight: ticket_types charges the selected ticket type
-   * (fareProductId is a FareRelease id). Charter charges the catalogue product
-   * and still decrements the current inventory bucket. A charter flight can
-   * still book a ticket type when that cabin's catalogue has no round-trip
-   * price (the customer-facing fallback).
+   * The customer pays the ticket type they picked (fareProductId is a
+   * FareRelease id on this flight).
    */
   const ticketRelease = input.fareProductId
     ? (flight.fareReleases.find(
         (r) => r.id === input.fareProductId && r.active,
       ) ?? null)
     : null;
+  if (input.fareProductId && !ticketRelease) {
+    return {
+      ok: false as const,
+      error: "That ticket type is no longer available — please choose another fare",
+    };
+  }
   if (ticketRelease && ticketRelease.remainingSeats < 1) {
     return { ok: false as const, error: "Selected ticket type is sold out" };
   }
 
-  const product =
-    !ticketRelease && input.fareProductId
-      ? await prisma.charterFareProduct.findFirst({
-          where: { id: input.fareProductId, active: true },
-        })
-      : null;
-  if (input.fareProductId && !ticketRelease && !product) {
-    return { ok: false as const, error: "Selected fare product is unavailable" };
-  }
   const cabinClass = parseCabin(
-    ticketRelease?.cabinClass ??
-      product?.cabinClass ??
-      input.cabinClass ??
-      "economy",
+    ticketRelease?.cabinClass ?? input.cabinClass ?? "economy",
   );
 
   const outboundCabins = cabinsOnFlight(flight.fareReleases);
@@ -244,35 +235,7 @@ export async function createPriceQuote(input: {
   let fareReleaseName = outboundCurrent.name;
   let returnFareReleaseName = returnCurrent?.name ?? "";
 
-  if (product) {
-    // Cabin already resolved from this product above, so there is nothing left
-    // to cross-check against the flight — it sells the cabin or we bailed out.
-    fareProductCode = product.code;
-    fareProductName = product.name;
-    fareReleaseName = product.name;
-    if (returnFlight) {
-      if (product.roundTripPriceCents <= 0) {
-        return {
-          ok: false as const,
-          error:
-            "Selected round-trip fare is not priced yet — ask admin to set charter round-trip prices",
-        };
-      }
-      const split = splitRoundTripPackageCents(product.roundTripPriceCents);
-      outboundCents = split.outboundCents;
-      returnCents = split.returnCents;
-      returnFareReleaseName = product.name;
-    } else {
-      if (product.priceCents <= 0) {
-        return {
-          ok: false as const,
-          error: "Selected fare product is not priced yet",
-        };
-      }
-      outboundCents = product.priceCents;
-      returnCents = 0;
-    }
-  } else if (ticketRelease) {
+  if (ticketRelease) {
     fareProductCode = `ticket:${ticketRelease.id}`;
     fareProductName = ticketRelease.name;
     fareReleaseName = ticketRelease.name;

@@ -4,10 +4,8 @@ import { FareComparisonRow } from "@/components/fares/FareComparisonRow";
 import { SelectedFlightSummary } from "@/components/fares/SelectedFlightSummary";
 import { getBrand } from "@/lib/branding";
 import { prisma } from "@/lib/db";
-import {
-  customerFareProductSets,
-  fareProductsForTripType,
-} from "@/lib/fares/customerPrice";
+import { fareProductsForCustomer } from "@/lib/fares/customerPrice";
+import { productsPricedForTrip } from "@/lib/fares/products";
 import {
   cabinsOnFlight,
   parseCabin,
@@ -72,18 +70,13 @@ export default async function TripReviewPage({
     seatsByCabin(outbound.fareReleases)[cabinClass].remainingSeats < 1 ||
     seatsByCabin(returnFlight.fareReleases)[cabinClass].remainingSeats < 1;
 
-  const { primary, fallback } = await customerFareProductSets({
-    pricingSource: outbound.pricingSource,
+  const products = fareProductsForCustomer({
     cabinClass,
     releases: outbound.fareReleases,
     available: !soldOut,
   });
-  const usingTicketTypes =
-    outbound.pricingSource === "ticket_types" ||
-    primary.filter((p) => p.roundTripPriceCents > 0).length === 0;
-  const roundTripProducts = fareProductsForTripType(
-    primary,
-    fallback,
+  const roundTripProducts = productsPricedForTrip(
+    products,
     "round_trip",
   ).map((p) => ({
     ...p,
@@ -127,16 +120,8 @@ export default async function TripReviewPage({
             children={children}
             infants={infants}
             title="Choose your round-trip fare"
-            subtitle={
-              usingTicketTypes
-                ? "Ticket prices for both legs · child 75% · infant 10% (no seat)"
-                : "Prices below are per adult · child 75% · infant 10% (no seat)"
-            }
-            emptyHint={
-              usingTicketTypes
-                ? "This flight has no priced ticket types for this cabin yet."
-                : "Ask admin to activate charter fares for this cabin."
-            }
+            subtitle="Ticket prices for both legs · child 75% · infant 10% (no seat)"
+            emptyHint="This flight has no priced ticket types for this cabin yet."
           />
         </div>
       </div>

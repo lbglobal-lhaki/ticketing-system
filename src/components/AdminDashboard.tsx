@@ -35,10 +35,6 @@ import {
 } from "@/components/DeletedRecordsPanel";
 import type { SystemAnalytics } from "@/lib/analytics/systemAnalytics";
 import {
-  CharterFaresAdmin,
-  type AdminCharterFare,
-} from "@/components/CharterFaresAdmin";
-import {
   SettingsAdminPanel,
   type AdminSiteSettings,
 } from "@/components/SettingsAdminPanel";
@@ -144,7 +140,6 @@ type FlightRow = {
   /** Payload shared between passengers and cargo on this sector (kg). */
   cargoPayloadKg: number;
   cargoBookedKg: number;
-  pricingSource: "charter" | "ticket_types";
   active: boolean;
   returnLegFlightId: string | null;
   fareReleases: SavedFareRow[];
@@ -209,7 +204,6 @@ type Tab =
   | "analytics"
   | "flights"
   | "form"
-  | "fares"
   | "bookings"
   | "invoices"
   | "cargo"
@@ -220,7 +214,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "analytics", label: "Analytics" },
   { id: "flights", label: "Flights" },
   { id: "form", label: "Add / Edit" },
-  { id: "fares", label: "Charter fares" },
   { id: "bookings", label: "Bookings" },
   { id: "invoices", label: "Invoices" },
   { id: "cargo", label: "Cargo" },
@@ -229,13 +222,13 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 /**
- * Sidebar grouping. Same eight destinations in the same order as the tab strip
+ * Sidebar grouping. Same destinations in the same order as the tab strip
  * they replace — only the presentation is grouped, so `?tab=` and every
  * redirect target are unaffected.
  */
 const NAV_GROUPS: { label: string; ids: Tab[] }[] = [
   { label: "Overview", ids: ["analytics"] },
-  { label: "Inventory", ids: ["flights", "form", "fares"] },
+  { label: "Inventory", ids: ["flights", "form"] },
   { label: "Sales", ids: ["bookings", "invoices"] },
   { label: "Operations", ids: ["cargo", "settings", "deleted"] },
 ];
@@ -255,11 +248,6 @@ const PAGE_META: Record<Tab, { title: string; description: string }> = {
   form: {
     title: "Flight",
     description: "Schedule, round-trip pairing, cabins and ticket types.",
-  },
-  fares: {
-    title: "Charter fares",
-    description:
-      "The fare catalogue customers choose from — one set per cabin.",
   },
   bookings: {
     title: "Bookings",
@@ -629,7 +617,6 @@ export function AdminDashboard({
   deletedFlights,
   deletedRecords,
   analytics,
-  charterFares,
   settings,
   initialTab,
   savedMessage,
@@ -643,7 +630,6 @@ export function AdminDashboard({
   cargoRates: { cargoRatePerKgCents: number; cargoMinChargeCents: number };
   deletedRecords: AdminDeletedRecordRow[];
   analytics: SystemAnalytics;
-  charterFares: AdminCharterFare[];
   settings: AdminSiteSettings;
   initialTab?: Tab;
   savedMessage?: string | null;
@@ -663,9 +649,6 @@ export function AdminDashboard({
   const updateFlightSticky = useStickyAction(updateFlightAction);
   const [partnerFlightId, setPartnerFlightId] = useState("");
   const [payloadKg, setPayloadKg] = useState(String(settings.defaultPayloadKg));
-  const [pricingSource, setPricingSource] = useState<
-    "charter" | "ticket_types"
-  >("ticket_types");
   const payloadSeatCap = Math.floor(
     (Number(payloadKg) || 0) / Math.max(1, settings.passengerPayloadKg),
   );
@@ -1060,40 +1043,42 @@ export function AdminDashboard({
     () => [
       {
         value: "",
-        label: "Auto — use each flight's current fare-release price",
+        label: "Auto — use the flight's current ticket type",
         keywords: "auto default none",
       },
-      ...charterFares
-        .filter((f) => f.active && f.cabinClass === walkInCabin)
-        .map((f) => {
-          const showRt =
-            walkInTripType === "round_trip" && f.roundTripPriceCents > 0;
+      ...(walkInOutboundFlight?.fareReleases ?? [])
+        .filter(
+          (r): r is typeof r & { id: string } =>
+            Boolean(r.id) && r.cabinClass === walkInCabin,
+        )
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((r) => {
+          const price =
+            walkInTripType === "round_trip" ? r.roundTripPriceCents : r.priceCents;
           return {
-            value: f.id,
-            label: `${cabinLabel(f.cabinClass)} · ${f.name}`,
-            description: showRt
-              ? `${formatAud(f.roundTripPriceCents)} round-trip total`
-              : `${formatAud(f.priceCents)} one-way`,
-            keywords: f.cabinClass,
+            value: r.id,
+            label: `${cabinLabel(r.cabinClass)} · ${r.name}`,
+            description: `${
+              price > 0
+                ? walkInTripType === "round_trip"
+                  ? `${formatAud(price)} round-trip total`
+                  : `${formatAud(price)} one-way`
+                : "Not priced"
+            } · ${r.remainingSeats} seat${r.remainingSeats === 1 ? "" : "s"} left`,
+            keywords: r.cabinClass,
           };
         }),
     ],
-    [charterFares, walkInTripType, walkInCabin],
+    [walkInOutboundFlight, walkInTripType, walkInCabin],
   );
 
   const walkInAdultUnitCents = useMemo(() => {
-    const product = charterFares.find(
-      (f) => f.id === walkInFareProductId && f.active,
-    );
-    if (product) {
-      return walkInTripType === "round_trip"
-        ? product.roundTripPriceCents
-        : product.priceCents;
-    }
     const flight = walkInOutboundFlight;
     if (!flight) return 0;
     const priceOf = (r: SavedFareRow) =>
       walkInTripType === "round_trip" ? r.roundTripPriceCents : r.priceCents;
+    const picked = flight.fareReleases.find((r) => r.id === walkInFareProductId);
+    if (picked) return priceOf(picked);
     const sorted = flight.fareReleases
       .filter((r) => r.cabinClass === walkInCabin)
       .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -1102,7 +1087,6 @@ export function AdminDashboard({
       sorted.find((r) => r.remainingSeats > 0);
     return hit ? priceOf(hit) : 0;
   }, [
-    charterFares,
     walkInFareProductId,
     walkInTripType,
     walkInOutboundFlight,
@@ -1274,7 +1258,6 @@ export function AdminDashboard({
     setEditingId(null);
     setPartnerFlightId("");
     setPayloadKg(String(settings.defaultPayloadKg));
-    setPricingSource("ticket_types");
     setFareRows(defaultFareRows());
     selectTab("form");
   }
@@ -1286,7 +1269,6 @@ export function AdminDashboard({
       // get the real saved prices (not stale zeros from the previous flight).
       setPartnerFlightId(flight.returnLegFlightId ?? "");
       setPayloadKg(String(flight.cargoPayloadKg));
-      setPricingSource(flight.pricingSource ?? "charter");
       setFareRows(
         flight.fareReleases.length > 0
           ? withUids(
@@ -1645,11 +1627,6 @@ export function AdminDashboard({
                           }`}
                         >
                           {f.active ? "Live" : "Hidden"}
-                        </span>
-                        <span className="border border-line px-2 py-0.5 text-xs font-medium text-muted">
-                          {f.pricingSource === "ticket_types"
-                            ? "Sells ticket prices"
-                            : "Sells charter fares"}
                         </span>
                         {cabinSeatsOf(f).map(({ cabin, total, remaining }) => (
                           <span
@@ -2055,44 +2032,6 @@ export function AdminDashboard({
 
             </FormSection>
 
-            <FormSection
-              title="What customers pay"
-              description="Charter fares are the Saver / Flexi catalogue on the Charter fares tab. Ticket types are the one-way and round-trip prices you set on this flight."
-            >
-              <input type="hidden" name="pricingSource" value={pricingSource} />
-              <div className="sm:col-span-2">
-                <div className="inline-flex rounded-full border border-line bg-white p-1 text-sm font-medium">
-                  <button
-                    type="button"
-                    onClick={() => setPricingSource("charter")}
-                    className={`rounded-full px-4 py-2 transition ${
-                      pricingSource === "charter"
-                        ? "bg-accent-deep text-white"
-                        : "text-muted hover:text-foreground"
-                    }`}
-                  >
-                    Charter fares
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPricingSource("ticket_types")}
-                    className={`rounded-full px-4 py-2 transition ${
-                      pricingSource === "ticket_types"
-                        ? "bg-accent-deep text-white"
-                        : "text-muted hover:text-foreground"
-                    }`}
-                  >
-                    This flight&apos;s ticket types
-                  </button>
-                </div>
-                <p className="mt-2 text-xs text-muted">
-                  {pricingSource === "ticket_types"
-                    ? "The shop will show and charge the ticket prices below. Charter catalogue prices are ignored for this departure."
-                    : "The shop will show and charge the Charter fares catalogue. Ticket types below still hold seats, but their prices are not sold to customers."}
-                </p>
-              </div>
-            </FormSection>
-
             <div className="sm:col-span-2 space-y-5 rounded-card border border-line bg-surface p-5 shadow-ui-sm">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
@@ -2102,10 +2041,8 @@ export function AdminDashboard({
                   <p className="mt-1 max-w-xl text-sm text-muted">
                     Each cabin sells its ticket types in order, top to bottom.
                     Leave a price at 0 to hold a ticket type back — it will not
-                    sell until you price it.
-                    {pricingSource === "charter"
-                      ? " These prices are inventory only unless you switch What customers pay to this flight’s ticket types."
-                      : " These are the prices customers will see."}
+                    sell until you price it. These are the prices customers
+                    see and pay.
                   </p>
                 </div>
                 <p className="text-sm text-muted">
@@ -2335,8 +2272,6 @@ export function AdminDashboard({
         </section>
       )}
 
-      {tab === "fares" && <CharterFaresAdmin fares={charterFares} />}
-
       {tab === "bookings" && (
         <section className="space-y-8">
 
@@ -2376,6 +2311,8 @@ export function AdminDashboard({
                     setWalkInReturnChoice("");
                     setWalkInReturnDate("");
                     setWalkInTripType("one_way");
+                    // Ticket types belong to one flight; drop a pick from the old one.
+                    setWalkInFareProductId("");
                   }}
                   placeholder="Select outbound flight"
                   searchPlaceholder="Flight number, route, date…"
@@ -2553,20 +2490,20 @@ export function AdminDashboard({
               />
               <label className="space-y-1 text-sm sm:col-span-2">
                 <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                  Fare tier (optional override)
+                  Ticket type (optional)
                 </span>
                 <Combobox
                   name="fareProductId"
                   value={walkInFareProductId}
                   onChange={setWalkInFareProductId}
-                  placeholder="Auto — use each flight's current fare-release price"
-                  searchPlaceholder="Cabin or fare name…"
+                  placeholder="Auto — use the flight's current ticket type"
+                  searchPlaceholder="Ticket type…"
                   options={fareProductOptions}
                 />
                 <span className="block text-xs text-muted">
-                  Charges this catalogue price instead of the fare-release
-                  price. Round-trip uses the stored RT package total. Must match
-                  the cabin of the flight(s) chosen above.
+                  {walkInOutboundFlight
+                    ? "Sell a specific ticket type on this flight instead of the current one. Round trip uses its round-trip price, and the return leg uses the same-named ticket type."
+                    : "Pick the outbound flight first to choose one of its ticket types."}
                 </span>
               </label>
               <details className="group sm:col-span-2">

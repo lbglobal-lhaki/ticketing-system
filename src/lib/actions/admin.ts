@@ -52,7 +52,6 @@ export async function createFlightAction(
     arrivalAt: formData.get("arrivalAt"),
     cabinClass: formData.get("cabinClass"),
     cargoPayloadKg: formData.get("cargoPayloadKg") ?? undefined,
-    pricingSource: formData.get("pricingSource") || "charter",
   });
 
   if (!parsed.success) {
@@ -114,7 +113,7 @@ export async function createFlightAction(
       totalSeats: totals.totalSeats,
       remainingSeats: totals.remainingSeats,
       cargoPayloadKg: data.cargoPayloadKg,
-      pricingSource: data.pricingSource,
+      pricingSource: "ticket_types",
       active: true,
       returnLegFlightId,
       fareReleases: {
@@ -156,7 +155,6 @@ export async function updateFlightAction(
     arrivalAt: formData.get("arrivalAt"),
     cabinClass: formData.get("cabinClass"),
     cargoPayloadKg: formData.get("cargoPayloadKg") ?? undefined,
-    pricingSource: formData.get("pricingSource") || "charter",
   });
 
   if (!parsed.success) {
@@ -296,7 +294,7 @@ export async function updateFlightAction(
         totalSeats: totals.totalSeats,
         remainingSeats: totals.remainingSeats,
         cargoPayloadKg: data.cargoPayloadKg,
-        pricingSource: data.pricingSource,
+        pricingSource: "ticket_types",
         // Preserve hidden/removed status — editing must not republish a flight.
         active: existingFlight.active,
         returnLegFlightId,

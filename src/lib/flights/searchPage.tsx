@@ -8,14 +8,9 @@ import {
   groupFlightResults,
   type DateStripDay,
 } from "@/lib/flights/results";
-import { getCharterCabinFromPrices } from "@/lib/fares/charter";
-import { cabinPriceForFlight } from "@/lib/fares/customerPrice";
+import { ticketTypeCabinPrice } from "@/lib/fares/customerPrice";
 import type { FareReleaseRow } from "@/lib/fares/current";
-import {
-  cabinsOnFlight,
-  seatsByCabin,
-  type CabinClassValue,
-} from "@/lib/fares/templates";
+import { cabinsOnFlight, seatsByCabin } from "@/lib/fares/templates";
 import { airportLabel, buildAirportOptions, formatFlightTime } from "@/lib/format";
 import type { AirportOption } from "@/lib/format";
 import { formatAud } from "@/lib/pricing";
@@ -91,22 +86,6 @@ const fareReleasePriceSelect = {
   roundTripPriceCents: true,
   active: true,
 } as const;
-
-function charterCentsForCabin(
-  cabinClass: CabinClassValue,
-  isRoundTrip: boolean,
-  catalog: {
-    economy: number | null;
-    business: number | null;
-    economyRoundTrip: number | null;
-    businessRoundTrip: number | null;
-  },
-) {
-  if (cabinClass === "business") {
-    return isRoundTrip ? catalog.businessRoundTrip : catalog.business;
-  }
-  return isRoundTrip ? catalog.economyRoundTrip : catalog.economy;
-}
 
 function parseCabinClass(raw?: string): "economy" | "business" {
   return raw === "business" ? "business" : "economy";
@@ -213,18 +192,6 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
   const { adults, children, infants, seated: passengers } = parsePartyMix(raw);
   const cabinClass = parseCabinClass(raw.cabinClass);
   const allTickets = raw.allTickets === "1" || raw.allTickets === "true";
-  const {
-    economy: economyFromCents,
-    business: businessFromCents,
-    economyRoundTrip: economyRtFromCents,
-    businessRoundTrip: businessRtFromCents,
-  } = await getCharterCabinFromPrices();
-  const charterCatalog = {
-    economy: economyFromCents,
-    business: businessFromCents,
-    economyRoundTrip: economyRtFromCents,
-    businessRoundTrip: businessRtFromCents,
-  };
 
   /*
    * One row per cabin the flight actually sells, so a single departure yields
@@ -234,7 +201,6 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
   function cabinRowsFor<
     F extends {
       departureAt: Date;
-      pricingSource: string;
       fareReleases: FareReleaseRow[];
     },
   >(flight: F) {
@@ -246,18 +212,12 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
         totalSeats: seats[rowCabin].totalSeats,
         remainingSeats: seats[rowCabin].remainingSeats,
       },
-      price: cabinPriceForFlight({
-        pricingSource: flight.pricingSource,
-        releases: flight.fareReleases,
-        cabinClass: rowCabin,
-        seats: seats[rowCabin],
+      price: ticketTypeCabinPrice(
+        flight.fareReleases,
+        rowCabin,
+        seats[rowCabin],
         isRoundTrip,
-        charterCents: charterCentsForCabin(
-          rowCabin,
-          isRoundTrip,
-          charterCatalog,
-        ),
-      }),
+      ),
     }));
   }
 
@@ -384,14 +344,12 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
     }
 
     const outboundSeats = seatsByCabin(outbound.fareReleases)[cabinClass];
-    const outboundPrice = cabinPriceForFlight({
-      pricingSource: outbound.pricingSource,
-      releases: outbound.fareReleases,
+    const outboundPrice = ticketTypeCabinPrice(
+      outbound.fareReleases,
       cabinClass,
-      seats: outboundSeats,
+      outboundSeats,
       isRoundTrip,
-      charterCents: charterCentsForCabin(cabinClass, isRoundTrip, charterCatalog),
-    });
+    );
     const activeReturnDate = returnDate ?? date;
     const { windowStart, windowEnd } = searchWindow(activeReturnDate);
     const returns = await prisma.flight.findMany({
