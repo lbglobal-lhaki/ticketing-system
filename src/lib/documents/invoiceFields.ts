@@ -179,6 +179,21 @@ export function defaultBaggageLabel(cabinClass: string, fareProductName?: string
   return "1 PIECE (23kg)";
 }
 
+/** Ticket-type allocation snapshot, else the cabin default. */
+export function includedBaggageDisplay(input: {
+  includedBaggageLabel?: string | null;
+  includedBaggageKg?: number | null;
+  cabinClass: string;
+  fareName?: string | null;
+}) {
+  const label = input.includedBaggageLabel?.trim();
+  if (label) return label;
+  if ((input.includedBaggageKg ?? 0) > 0) return `${input.includedBaggageKg} kg`;
+  const raw = defaultBaggageLabel(input.cabinClass, input.fareName ?? undefined);
+  const kg = raw.match(/(\d+\s*kg)/i)?.[1];
+  return kg?.replace(/\s+/g, " ") ?? raw.split("(")[0]?.trim() ?? "23 kg";
+}
+
 /**
  * Flat white line-icons for the footer contact badges (phone/website/email).
  * Plain SVG instead of emoji — emoji glyphs render as full-color pictures in

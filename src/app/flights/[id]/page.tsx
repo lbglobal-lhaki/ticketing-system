@@ -4,6 +4,7 @@ import { TripTypeFareSection } from "@/components/fares/TripTypeFareSection";
 import { getBrand } from "@/lib/branding";
 import { prisma } from "@/lib/db";
 import { fareProductsForCustomer } from "@/lib/fares/customerPrice";
+import { listTicketTypeBaggageAllocations } from "@/lib/fares/baggageAllowance.server";
 import {
   cabinLabel,
   cabinsOnFlight,
@@ -63,10 +64,12 @@ export default async function FlightDetailPage({
   const cabinSeats = seatsByCabin(flight.fareReleases)[cabinClass];
   // Sold out is per cabin — a full business cabin must not hide economy seats.
   const soldOut = cabinSeats.remainingSeats < 1;
+  const allocations = await listTicketTypeBaggageAllocations();
   const products = fareProductsForCustomer({
     cabinClass,
     releases: flight.fareReleases,
     available: !soldOut,
+    allocations,
   });
 
   const cabinHref = (cabin: string) => {

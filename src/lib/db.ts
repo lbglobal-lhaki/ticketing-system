@@ -13,7 +13,7 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 /** Bump when Prisma models change so hot-reload drops a stale client. */
-const PRISMA_SCHEMA_VERSION = "cargo-weight-options-v1";
+const PRISMA_SCHEMA_VERSION = "ticket-type-baggage-v1";
 
 function isTransientDbError(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error);
@@ -89,6 +89,7 @@ function getPrisma(): PrismaClient {
         cargoSubmission?: unknown;
         cargoProduct?: unknown;
         cargoWeightOption?: unknown;
+        ticketTypeBaggageAllocation?: unknown;
         cargoEmailNotice?: unknown;
         deletedRecord?: unknown;
         adminLoginGuard?: unknown;
@@ -103,6 +104,7 @@ function getPrisma(): PrismaClient {
     typeof client.cargoSubmission === "undefined" ||
     typeof client.cargoProduct === "undefined" ||
     typeof client.cargoWeightOption === "undefined" ||
+    typeof client.ticketTypeBaggageAllocation === "undefined" ||
     typeof client.cargoEmailNotice === "undefined" ||
     typeof client.deletedRecord === "undefined" ||
     typeof client.adminLoginGuard === "undefined";

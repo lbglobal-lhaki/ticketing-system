@@ -1,11 +1,13 @@
 import { cabinLabel, parseCabin } from "@/lib/fares/templates";
 import type { FareProduct } from "@/lib/fares/products";
 import type { FareReleaseRow } from "@/lib/fares/current";
+import {
+  resolveBaggageAllowance,
+  type TicketTypeBaggageAllocationRow,
+} from "@/lib/fares/baggageAllowance";
 
-function baggageForCabin(cabin: string) {
-  return cabin === "business"
-    ? { checked: "40 kg", cabin: "10 kg", meal: "Business meal included" }
-    : { checked: "23 kg", cabin: "7 kg", meal: "Meal included" };
+function mealForCabin(cabin: string) {
+  return cabin === "business" ? "Business meal included" : "Meal included";
 }
 
 /** Turn this flight's ticket types into the fare cards customers pick from. */
@@ -13,9 +15,10 @@ export function buildTicketTypeFareProducts(input: {
   cabinClass: "economy" | "business";
   releases: FareReleaseRow[];
   available: boolean;
+  allocations?: TicketTypeBaggageAllocationRow[];
 }): FareProduct[] {
   const cabin = parseCabin(input.cabinClass);
-  const bag = baggageForCabin(cabin);
+  const allocations = input.allocations ?? [];
 
   return input.releases
     .filter((r) => r.active && parseCabin(r.cabinClass) === cabin)
@@ -23,6 +26,7 @@ export function buildTicketTypeFareProducts(input: {
     .map((r) => {
       const priced = r.priceCents > 0 || r.roundTripPriceCents > 0;
       const inStock = r.remainingSeats > 0;
+      const bag = resolveBaggageAllowance(allocations, cabin, r.name);
       return {
         id: r.id,
         code: `ticket:${r.id}`,
@@ -39,17 +43,17 @@ export function buildTicketTypeFareProducts(input: {
         highlights: {
           flightChange: "As per fare rules",
           refund: "As per fare rules",
-          baggage: bag.checked,
-          cabinBaggage: bag.cabin,
+          baggage: bag.checkedLabel,
+          cabinBaggage: bag.cabinBagLabel,
           seatSelection: "Standard seat selection",
-          meal: bag.meal,
+          meal: mealForCabin(cabin),
         },
         perkLines: [],
         change: { permitted: false, feeLabel: null, bullets: [] },
         refund: { permitted: false, feeLabel: null, bullets: [] },
         baggageBullets: [
-          `Checked baggage ${bag.checked}`,
-          `Cabin baggage ${bag.cabin}`,
+          `Checked baggage ${bag.checkedLabel}`,
+          `Cabin baggage ${bag.cabinBagLabel}`,
         ],
         nameChangeBullets: [],
         noShowBullets: [],

@@ -2,6 +2,7 @@ import { getBrand } from "@/lib/branding";
 import {
   cityName,
   computeInvoiceTotals,
+  includedBaggageDisplay,
 } from "@/lib/documents/invoiceFields";
 import {
   CONTENT_SIDE_PADDING_MM,
@@ -302,6 +303,19 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
             : ""
         }</span></div>
         <div class="row"><span>Booking Reference:</span><span><strong>${esc(data.bookingRef)}</strong></span></div>
+        ${
+          data.fareReleaseName || data.fareProductName
+            ? `<div class="row"><span>Fare:</span><span>${esc(data.fareProductName || data.fareReleaseName)}</span></div>`
+            : ""
+        }
+        <div class="row"><span>Included baggage:</span><span>${esc(
+          includedBaggageDisplay({
+            includedBaggageLabel: data.includedBaggageLabel,
+            includedBaggageKg: data.includedBaggageKg,
+            cabinClass: data.flight.cabinClass,
+            fareName: data.fareProductName || data.fareReleaseName,
+          }),
+        )}</span></div>
       </div>`;
 
   // A <thead> repeats automatically on every page a long table spans, so the

@@ -18,6 +18,11 @@ import {
 } from "@/lib/documents/invoiceFields";
 import { getCurrentFareRelease } from "@/lib/fares/current";
 import { matchingReturnRelease } from "@/lib/fares/ticketTypes";
+import { listTicketTypeBaggageAllocations } from "@/lib/fares/baggageAllowance.server";
+import {
+  resolveBaggageAllowance,
+  snapshotFromAllowance,
+} from "@/lib/fares/baggageAllowance";
 import {
   cabinLabel,
   cabinsOnFlight,
@@ -418,6 +423,7 @@ export async function confirmBooking(input: {
 
   // Read outside the transaction so the surcharge table isn't part of it.
   const seatRates = await getSeatRates();
+  const baggageAllocations = await listTicketTypeBaggageAllocations();
 
   try {
     const result = await retryOnUniqueConflict(() =>
@@ -645,6 +651,14 @@ export async function confirmBooking(input: {
         const bookingRef = ids.bookingRefs[0]!;
         const ticketNumber = ids.outboundTickets[0]!;
 
+        const baggageSnap = snapshotFromAllowance(
+          resolveBaggageAllowance(
+            baggageAllocations,
+            parseCabin(quote.fareRelease?.cabinClass ?? "economy"),
+            quote.fareProductName || quote.fareReleaseName,
+          ),
+        );
+
         const booking = await tx.booking.create({
           data: {
             quoteId: quote.id,
@@ -664,6 +678,8 @@ export async function confirmBooking(input: {
             serviceFeeCents,
             fareProductCode: quote.fareProductCode,
             fareProductName: quote.fareProductName,
+            includedBaggageKg: baggageSnap.includedBaggageKg,
+            includedBaggageLabel: baggageSnap.includedBaggageLabel,
             specialAssistance: specialAssistanceToJson(
               quote.specialAssistance,
             ),

@@ -438,6 +438,7 @@ export default async function AdminPage({
               amountPaidCents: b.amountPaidCents,
               fareReleaseName: b.fareReleaseName,
               extraBaggageKg: b.extraBaggageKg,
+              includedBaggageLabel: b.includedBaggageLabel,
               specialAssistance: b.specialAssistance,
               status: b.status,
               paymentMethod: b.paymentMethod,

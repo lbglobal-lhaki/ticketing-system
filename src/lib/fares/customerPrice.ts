@@ -2,6 +2,7 @@ import { getCurrentFareRelease, type FareReleaseRow } from "@/lib/fares/current"
 import type { FareProduct } from "@/lib/fares/products";
 import type { CabinClassValue } from "@/lib/fares/templates";
 import { buildTicketTypeFareProducts } from "@/lib/fares/ticketTypes";
+import type { TicketTypeBaggageAllocationRow } from "@/lib/fares/baggageAllowance";
 
 export type CabinPriceSnapshot = {
   basePriceCents: number;
@@ -56,6 +57,7 @@ export function fareProductsForCustomer(input: {
   cabinClass: CabinClassValue;
   releases: FareReleaseRow[];
   available: boolean;
+  allocations?: TicketTypeBaggageAllocationRow[];
 }): FareProduct[] {
   return buildTicketTypeFareProducts(input);
 }

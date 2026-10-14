@@ -56,6 +56,8 @@ export function eTicketEmail(data: BookingDocumentData) {
     <p>Thank you for your payment. Your travel document for booking <strong>${esc(data.bookingRef)}</strong> is attached to this email.</p>
     <p><strong>Booking Reference:</strong> ${esc(data.bookingRef)}<br/>
     <strong>Route:</strong> ${esc(route)}<br/>
+    <strong>Fare:</strong> ${esc(data.fareProductName || data.fareReleaseName || "—")}<br/>
+    <strong>Included baggage:</strong> ${esc(data.includedBaggageLabel || (data.includedBaggageKg ? `${data.includedBaggageKg} kg` : "As per fare"))}<br/>
     <strong>Departure:</strong> ${esc(formatFlightDateTime(data.flight.departureAt))} ${esc(airportTzAbbr(data.flight.origin, data.flight.departureAt))}</p>
     ${specialAssistanceEmailHtml(data)}
     <p><a href="${travelUrl}">View travel document online</a></p>
@@ -73,6 +75,8 @@ Thank you for your payment. Your travel document for booking ${data.bookingRef} 
 
 Booking Reference: ${data.bookingRef}
 Route: ${route}
+Fare: ${data.fareProductName || data.fareReleaseName || "—"}
+Included baggage: ${data.includedBaggageLabel || (data.includedBaggageKg ? `${data.includedBaggageKg} kg` : "As per fare")}
 Departure: ${formatFlightDateTime(data.flight.departureAt)} ${airportTzAbbr(data.flight.origin, data.flight.departureAt)}
 ${specialAssistanceEmailText(data)}
 

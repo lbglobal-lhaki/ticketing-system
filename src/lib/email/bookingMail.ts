@@ -15,6 +15,7 @@ import {
   invoiceReceiptEmail,
 } from "@/lib/email/templates";
 import { sendEmail, type EmailAttachment } from "@/lib/email/send";
+import { baggageSnapshotForTicket } from "@/lib/fares/baggageAllowance.server";
 
 async function travelDocAttachment(
   data: BookingDocumentData,
@@ -76,6 +77,17 @@ export async function loadBookingDocumentData(
   });
   if (!booking) return null;
 
+  let includedBaggageKg = booking.includedBaggageKg;
+  let includedBaggageLabel = booking.includedBaggageLabel;
+  if (!includedBaggageLabel && includedBaggageKg <= 0) {
+    const snap = await baggageSnapshotForTicket(
+      booking.fareRelease?.cabinClass ?? "economy",
+      booking.fareProductName || booking.fareReleaseName,
+    );
+    includedBaggageKg = snap.includedBaggageKg;
+    includedBaggageLabel = snap.includedBaggageLabel;
+  }
+
   const quote = booking.quote;
   const passengers = resolveDocumentPassengers({
     booking: {
@@ -128,6 +140,8 @@ export async function loadBookingDocumentData(
     passengers,
     seatsBooked: booking.seatsBooked,
     extraBaggageKg: booking.extraBaggageKg,
+    includedBaggageKg,
+    includedBaggageLabel,
     specialAssistance: parseSpecialAssistance(booking.specialAssistance),
     fareReleaseName: booking.fareReleaseName,
     fareProductName: booking.fareProductName,

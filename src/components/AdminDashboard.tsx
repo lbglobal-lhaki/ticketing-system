@@ -45,6 +45,7 @@ import {
 import { SystemAnalyticsSection } from "@/components/SystemAnalyticsSection";
 import { flightPayloadFromRow, formatKg } from "@/lib/cargo/capacity";
 import type { CargoWeightOptionRow } from "@/lib/cargo/weightOptions";
+import { ticketTypeChoicesFromNames } from "@/lib/fares/baggageAllowance";
 import { MoneyInput } from "@/components/MoneyInput";
 import {
   PassengerGroupFields,
@@ -177,6 +178,7 @@ type BookingRow = {
   amountPaidCents: number;
   fareReleaseName: string;
   extraBaggageKg: number;
+  includedBaggageLabel: string;
   specialAssistance?: unknown;
   status: "pending_payment" | "confirmed" | "cancelled" | "hold_expired";
   paymentMethod: "card" | "bank_transfer" | "cash" | null;
@@ -682,6 +684,18 @@ export function AdminDashboard({
   const editingBooking = useMemo(
     () => bookings.find((b) => b.id === editingBookingId) ?? null,
     [bookings, editingBookingId],
+  );
+  const ticketTypeChoices = useMemo(
+    () =>
+      ticketTypeChoicesFromNames(
+        flights.flatMap((f) =>
+          f.fareReleases.map((r) => ({
+            cabinClass: r.cabinClass,
+            name: r.name,
+          })),
+        ),
+      ),
+    [flights],
   );
 
   // Every save/delete/etc. here submits a form (or a bulk action) that
@@ -2981,6 +2995,11 @@ export function AdminDashboard({
                         {b.returnFlight
                           ? ` · ${b.returnFlight.flightNumber} ${b.returnFlight.origin}→${b.returnFlight.destination}`
                           : ""}
+                        {b.includedBaggageLabel ? (
+                          <p className="mt-0.5 text-xs text-muted">
+                            Included {b.includedBaggageLabel}
+                          </p>
+                        ) : null}
                         {b.extraBaggageKg > 0 ? (
                           <p className="mt-0.5 text-xs text-muted">
                             +{b.extraBaggageKg} extra bag
@@ -3124,6 +3143,7 @@ export function AdminDashboard({
         <CargoAdminPanel
           submissions={cargoSubmissions}
           weightOptions={cargoWeightOptions}
+          ticketTypes={ticketTypeChoices}
         />
       )}
 

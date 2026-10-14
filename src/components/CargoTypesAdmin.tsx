@@ -15,6 +15,11 @@ import {
   optionRangeLabel,
   type CargoWeightOptionRow,
 } from "@/lib/cargo/weightOptions";
+import {
+  ticketTypeKey,
+  type TicketTypeChoice,
+} from "@/lib/fares/baggageAllowance";
+import { cabinLabel } from "@/lib/fares/templates";
 import { formatAud } from "@/lib/pricing";
 
 const fieldClass =
@@ -28,9 +33,13 @@ function originLabel(code: string) {
 
 function OptionForm({
   option,
+  ticketTypes,
+  options,
   onCancel,
 }: {
   option: CargoWeightOptionRow | null;
+  ticketTypes: TicketTypeChoice[];
+  options: CargoWeightOptionRow[];
   onCancel: () => void;
 }) {
   const sticky = useStickyAction(saveCargoWeightOptionAction);
@@ -38,7 +47,20 @@ function OptionForm({
   const [kind, setKind] = useState<"fixed" | "per_kg">(
     option?.kind ?? "fixed",
   );
+  const [sellAsCargo, setSellAsCargo] = useState(option?.sellAsCargo ?? true);
   const selectedOrigins = option?.origins ?? [];
+  const selectedKeys = new Set(
+    (option?.ticketTypes ?? []).map((t) => ticketTypeKey(t.cabinClass, t.name)),
+  );
+  const ownerByKey = new Map<string, string>();
+  for (const row of options) {
+    if (option && row.id === option.id) continue;
+    for (const t of row.ticketTypes) {
+      ownerByKey.set(ticketTypeKey(t.cabinClass, t.name), row.name);
+    }
+  }
+  const economyTypes = ticketTypes.filter((t) => t.cabinClass === "economy");
+  const businessTypes = ticketTypes.filter((t) => t.cabinClass === "business");
 
   return (
     <form
@@ -133,7 +155,7 @@ function OptionForm({
               </span>
               <MoneyInput
                 name="priceAud"
-                required
+                required={sellAsCargo}
                 defaultValue={((option?.priceCents ?? 0) / 100).toFixed(2)}
                 className={labeledControlClass(fieldClass, err("priceAud"))}
               />
@@ -175,7 +197,7 @@ function OptionForm({
               </span>
               <MoneyInput
                 name="priceAud"
-                required
+                required={sellAsCargo}
                 defaultValue={((option?.priceCents ?? 0) / 100).toFixed(2)}
                 className={labeledControlClass(fieldClass, err("priceAud"))}
               />
@@ -236,6 +258,101 @@ function OptionForm({
         </div>
       </fieldset>
 
+      <label className="flex items-start gap-2.5 rounded-xl border border-line px-3 py-3 text-sm">
+        <input
+          type="checkbox"
+          checked={sellAsCargo}
+          onChange={(e) => setSellAsCargo(e.target.checked)}
+          className="mt-0.5 size-4 accent-accent-deep"
+        />
+        <span>
+          <span className="font-medium text-foreground">
+            Sell this band on the cargo page
+          </span>
+          <span className="mt-0.5 block text-xs text-muted">
+            Turn off for passenger baggage only — for example 23 kg on Early
+            Bird — so it does not appear as a cargo product.
+          </span>
+        </span>
+      </label>
+      <input type="hidden" name="sellAsCargo" value={sellAsCargo ? "true" : "false"} />
+
+      <fieldset className="space-y-3">
+        <legend className="text-xs font-medium uppercase tracking-[0.12em] text-muted">
+          Include with these ticket types
+        </legend>
+        <p className="text-xs text-muted">
+          Tick Early Bird (or any other type) to give that fare this weight as
+          included checked baggage. It shows on fare cards, invoices and travel
+          documents. A ticket type can only sit on one weight — ticking it here
+          moves it off the other option.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {[
+            { title: "Economy", rows: economyTypes },
+            { title: "Business", rows: businessTypes },
+          ].map((group) => (
+            <div key={group.title} className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+                {group.title}
+              </p>
+              {group.rows.map((choice) => {
+                const owner = ownerByKey.get(choice.key);
+                return (
+                  <label
+                    key={choice.key}
+                    className="flex items-start gap-2.5 rounded-xl border border-line px-3 py-2.5 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      name="ticketType"
+                      value={`${choice.cabinClass}:${choice.name}`}
+                      defaultChecked={selectedKeys.has(choice.key)}
+                      className="mt-0.5 size-4 accent-accent-deep"
+                    />
+                    <span>
+                      <span className="font-medium text-foreground">
+                        {choice.name}
+                      </span>
+                      {owner ? (
+                        <span className="mt-0.5 block text-xs text-muted">
+                          Currently on {owner} — tick to move it here
+                        </span>
+                      ) : null}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-[8rem_minmax(0,1fr)]">
+          <label className="block text-sm">
+            <span className="text-xs font-medium uppercase tracking-[0.12em] text-muted">
+              Other cabin
+            </span>
+            <select
+              name="customTicketTypeCabin"
+              defaultValue="economy"
+              className={fieldClass}
+            >
+              <option value="economy">Economy</option>
+              <option value="business">Business</option>
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="text-xs font-medium uppercase tracking-[0.12em] text-muted">
+              Other ticket type name
+            </span>
+            <input
+              name="customTicketTypeName"
+              placeholder="e.g. Super Saver"
+              className={fieldClass}
+            />
+          </label>
+        </div>
+      </fieldset>
+
       {sticky.formError ? (
         <p className="text-sm text-red-700">{sticky.formError}</p>
       ) : null}
@@ -262,11 +379,15 @@ function OptionForm({
 
 export function CargoTypesAdmin({
   options,
+  ticketTypes,
 }: {
   options: CargoWeightOptionRow[];
+  ticketTypes: TicketTypeChoice[];
 }) {
   const [editingId, setEditingId] = useState<string | null | "new">(null);
-  const live = options.filter((o) => o.active && o.priceCents > 0);
+  const live = options.filter(
+    (o) => o.active && o.sellAsCargo && o.priceCents > 0,
+  );
 
   return (
     <section className="space-y-5">
@@ -276,9 +397,9 @@ export function CargoTypesAdmin({
             Cargo weight options
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Customers pick one of these bands. Fixed prices are a locked total;
-            100 kg and above charge per kilogram. Turn a band off for Perth or
-            Paro when that sector cannot take it.
+            Cargo customers pick a priced band. Tick ticket types on a weight
+            — for example 23 kg on Early Bird — to include that allowance on
+            the fare, invoice and travel document.
           </p>
         </div>
         {editingId === null ? (
@@ -299,7 +420,12 @@ export function CargoTypesAdmin({
       </p>
 
       {editingId === "new" ? (
-        <OptionForm option={null} onCancel={() => setEditingId(null)} />
+        <OptionForm
+          option={null}
+          ticketTypes={ticketTypes}
+          options={options}
+          onCancel={() => setEditingId(null)}
+        />
       ) : null}
 
       <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-white">
@@ -318,6 +444,8 @@ export function CargoTypesAdmin({
                 {editingId === option.id ? (
                   <OptionForm
                     option={option}
+                    ticketTypes={ticketTypes}
+                    options={options}
                     onCancel={() => setEditingId(null)}
                   />
                 ) : (
@@ -341,10 +469,24 @@ export function CargoTypesAdmin({
                         </span>
                       </div>
                       <p className="text-sm text-muted">
-                        {optionRangeLabel(option)} · {origins}
+                        {optionRangeLabel(option)}
+                        {option.sellAsCargo ? ` · ${origins}` : " · Passenger baggage only"}
                       </p>
+                      {option.ticketTypes.length > 0 ? (
+                        <p className="text-sm text-foreground">
+                          {option.ticketTypes
+                            .map((t) => `${t.name} (${cabinLabel(t.cabinClass)})`)
+                            .join(" · ")}
+                        </p>
+                      ) : (
+                        <p className="text-sm text-muted">
+                          Not allocated to a ticket type
+                        </p>
+                      )}
                       <p className="font-[family-name:var(--font-syne)] text-lg font-bold text-accent-deep">
-                        {optionPriceLabel(option)}
+                        {option.sellAsCargo
+                          ? optionPriceLabel(option)
+                          : "Included with fare"}
                       </p>
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center gap-2">

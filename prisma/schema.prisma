@@ -271,6 +271,11 @@ model Booking {
   /// Extra checked bags purchased at booking time (piece count) — admin-priced,
   /// charge lives on the invoice's extraBaggageCents line.
   extraBaggageKg      Int            @default(0)
+  /// Included checked-baggage allowance snapshotted from the ticket type
+  /// (kg). 0 = not recorded — documents fall back to the live allocation.
+  includedBaggageKg    Int           @default(0)
+  /// Printed label at booking time, e.g. "23 kg".
+  includedBaggageLabel String        @default("")
   /// Party-level special assistance notes (wheelchair, language, other).
   specialAssistance   Json           @default("{}")
   paymentMethod       PaymentMethod?
@@ -543,12 +548,35 @@ model CargoWeightOption {
   origins       String[]        @default([])
   sortOrder     Int             @default(0)
   active        Boolean         @default(true)
+  /// When false this row is a passenger-baggage allowance only — hidden from /cargo.
+  sellAsCargo   Boolean         @default(true)
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
-  bookings      CargoSubmission[]
+  bookings           CargoSubmission[]
+  ticketAllocations  TicketTypeBaggageAllocation[]
 
   @@index([active, sortOrder])
+}
+
+/// Included checked baggage for a ticket type (Early Bird, Economy Standard, …).
+/// One ticket type + cabin maps to one weight option; admin can steal a type
+/// from another option when they re-allocate.
+model TicketTypeBaggageAllocation {
+  id                  String            @id @default(cuid())
+  cabinClass          CabinClass
+  ticketTypeName      String
+  /// Lowercased trimmed name used for matching and uniqueness.
+  ticketTypeKey       String
+  cargoWeightOptionId String
+  cargoWeightOption   CargoWeightOption @relation(fields: [cargoWeightOptionId], references: [id], onDelete: Cascade)
+  includedKg          Int
+  cabinBaggageKg      Int               @default(7)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@unique([cabinClass, ticketTypeKey])
+  @@index([cargoWeightOptionId])
 }
 
 /// Single-row admin settings. Seat surcharges default to 0 so seat selection

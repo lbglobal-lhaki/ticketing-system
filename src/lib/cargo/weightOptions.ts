@@ -2,6 +2,11 @@ import { formatAud } from "@/lib/pricing";
 
 export type CargoWeightKind = "fixed" | "per_kg";
 
+export type CargoTicketAllocation = {
+  cabinClass: "economy" | "business";
+  name: string;
+};
+
 export type CargoWeightOptionRow = {
   id: string;
   code: string;
@@ -15,6 +20,8 @@ export type CargoWeightOptionRow = {
   origins: string[];
   sortOrder: number;
   active: boolean;
+  sellAsCargo: boolean;
+  ticketTypes: CargoTicketAllocation[];
   updatedAt: string;
 };
 
@@ -41,6 +48,8 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     origins: [],
     sortOrder: 1,
     active: true,
+    sellAsCargo: true,
+    ticketTypes: [],
   },
   {
     code: "kg-5",
@@ -54,6 +63,8 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     origins: [],
     sortOrder: 2,
     active: true,
+    sellAsCargo: true,
+    ticketTypes: [],
   },
   {
     code: "kg-10",
@@ -67,6 +78,8 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     origins: [],
     sortOrder: 3,
     active: true,
+    sellAsCargo: true,
+    ticketTypes: [],
   },
   {
     code: "kg-20",
@@ -80,6 +93,8 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     origins: [],
     sortOrder: 4,
     active: true,
+    sellAsCargo: true,
+    ticketTypes: [],
   },
   {
     code: "kg-30",
@@ -93,6 +108,8 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     origins: [],
     sortOrder: 5,
     active: true,
+    sellAsCargo: true,
+    ticketTypes: [],
   },
   {
     code: "kg-45",
@@ -106,6 +123,8 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     origins: [],
     sortOrder: 6,
     active: true,
+    sellAsCargo: true,
+    ticketTypes: [],
   },
   {
     code: "kg-100-plus",
@@ -119,6 +138,8 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     origins: [],
     sortOrder: 7,
     active: true,
+    sellAsCargo: true,
+    ticketTypes: [],
   },
   {
     code: "kg-300-plus",
@@ -132,6 +153,8 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     origins: [],
     sortOrder: 8,
     active: true,
+    sellAsCargo: true,
+    ticketTypes: [],
   },
   {
     code: "kg-500-plus",
@@ -145,6 +168,8 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     origins: [],
     sortOrder: 9,
     active: true,
+    sellAsCargo: true,
+    ticketTypes: [],
   },
   {
     code: "kg-1000-plus",
@@ -158,6 +183,8 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     origins: [],
     sortOrder: 10,
     active: true,
+    sellAsCargo: true,
+    ticketTypes: [],
   },
 ];
 

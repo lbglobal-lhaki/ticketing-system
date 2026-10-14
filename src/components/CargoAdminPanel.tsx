@@ -22,6 +22,7 @@ import { SegmentedField } from "@/components/admin/SegmentedField";
 import { FieldError, labeledControlClass } from "@/components/forms/FieldError";
 import { CargoTypesAdmin } from "@/components/CargoTypesAdmin";
 import type { CargoWeightOptionRow } from "@/lib/cargo/weightOptions";
+import type { TicketTypeChoice } from "@/lib/fares/baggageAllowance";
 import { formatAud } from "@/lib/pricing";
 import { useStickyAction } from "@/components/forms/useStickyAction";
 
@@ -180,9 +181,11 @@ function AnswerFieldsEditor({
 export function CargoAdminPanel({
   submissions,
   weightOptions,
+  ticketTypes,
 }: {
   submissions: AdminCargoRow[];
   weightOptions: CargoWeightOptionRow[];
+  ticketTypes: TicketTypeChoice[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -385,7 +388,7 @@ export function CargoAdminPanel({
         />
       ) : (
         <>
-      <CargoTypesAdmin options={weightOptions} />
+      <CargoTypesAdmin options={weightOptions} ticketTypes={ticketTypes} />
 
       <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">

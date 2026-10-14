@@ -196,6 +196,12 @@ export default async function ConfirmationPage({
               <span className="text-muted">Fare</span>{" "}
               {booking.fareReleaseName || "—"}
             </p>
+            {booking.includedBaggageLabel || booking.includedBaggageKg > 0 ? (
+              <p>
+                <span className="text-muted">Included baggage</span>{" "}
+                {booking.includedBaggageLabel || `${booking.includedBaggageKg} kg`}
+              </p>
+            ) : null}
             <p>
               <span className="text-muted">Seats</span> {booking.seatsBooked}
             </p>

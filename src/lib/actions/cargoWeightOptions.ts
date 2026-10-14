@@ -8,6 +8,11 @@ import { prisma } from "@/lib/db";
 import { slugifyCargoName } from "@/lib/cargo/productPricing";
 import { CARGO_FLIGHT_CATEGORIES } from "@/lib/cargo/weightOptions";
 import {
+  optionAllowanceKg,
+  parseTicketTypeKey,
+} from "@/lib/fares/baggageAllowance";
+import { replaceAllocationsForOption } from "@/lib/fares/baggageAllowance.server";
+import {
   failFromUnknown,
   formFail,
   zodFieldErrors,
@@ -27,6 +32,7 @@ const optionSchema = z.object({
   priceAud: z.coerce.number().min(0).max(100_000),
   sortOrder: z.coerce.number().int().min(0).max(999).default(0),
   active: z.boolean().default(true),
+  sellAsCargo: z.boolean().default(true),
   origins: z.array(z.string().trim().toUpperCase()).default([]),
 });
 
@@ -66,6 +72,7 @@ export async function saveCargoWeightOptionAction(
     priceAud: formData.get("priceAud") || 0,
     sortOrder: formData.get("sortOrder") || 0,
     active: formData.get("active") === "true",
+    sellAsCargo: formData.get("sellAsCargo") !== "false",
     origins: parseOrigins(formData),
   });
   if (!parsed.success) {
@@ -81,16 +88,34 @@ export async function saveCargoWeightOptionAction(
       maxKg: "Must be at least the lower kg",
     });
   }
-  if (data.priceAud <= 0) {
-    return formFail("Enter a price greater than zero", { priceAud: "Required" });
+  const sellAsCargoRequested = formData.get("sellAsCargo") !== "false";
+  if (sellAsCargoRequested && data.priceAud <= 0) {
+    return formFail("Enter a price greater than zero, or turn off cargo shop sale", {
+      priceAud: "Required to sell on the cargo page",
+    });
   }
 
   const chargeableKg =
     data.kind === "fixed"
       ? data.chargeableKg || data.minKg || 1
       : 0;
+  const sellAsCargo = data.sellAsCargo && data.priceAud > 0;
+  const picks = formData
+    .getAll("ticketType")
+    .map((v) => parseTicketTypeKey(String(v)))
+    .filter((v): v is NonNullable<typeof v> => Boolean(v));
+  const customName = String(formData.get("customTicketTypeName") ?? "").trim();
+  const customCabin =
+    String(formData.get("customTicketTypeCabin") ?? "economy") === "business"
+      ? "business"
+      : "economy";
+  if (customName) {
+    const extra = parseTicketTypeKey(`${customCabin}:${customName}`);
+    if (extra && !picks.some((p) => p.key === extra.key)) picks.push(extra);
+  }
 
   try {
+    let optionId = id ?? "";
     if (id) {
       const existing = await prisma.cargoWeightOption.findUnique({
         where: { id },
@@ -110,6 +135,7 @@ export async function saveCargoWeightOptionAction(
           origins: data.origins,
           sortOrder: data.sortOrder,
           active: data.active,
+          sellAsCargo,
         },
       });
     } else {
@@ -119,7 +145,7 @@ export async function saveCargoWeightOptionAction(
       const last = await prisma.cargoWeightOption.aggregate({
         _max: { sortOrder: true },
       });
-      await prisma.cargoWeightOption.create({
+      const created = await prisma.cargoWeightOption.create({
         data: {
           code,
           name: data.name,
@@ -132,9 +158,21 @@ export async function saveCargoWeightOptionAction(
           origins: data.origins,
           sortOrder: data.sortOrder || (last._max.sortOrder ?? 0) + 1,
           active: data.active,
+          sellAsCargo,
         },
       });
+      optionId = created.id;
     }
+
+    await replaceAllocationsForOption({
+      optionId,
+      includedKg: optionAllowanceKg({
+        kind: data.kind,
+        chargeableKg,
+        minKg: data.minKg,
+      }),
+      picks,
+    });
   } catch (error) {
     console.error("saveCargoWeightOptionAction", error);
     return failFromUnknown(error, "Could not save the weight option");

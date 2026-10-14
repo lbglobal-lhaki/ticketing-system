@@ -5,6 +5,7 @@ import { SelectedFlightSummary } from "@/components/fares/SelectedFlightSummary"
 import { getBrand } from "@/lib/branding";
 import { prisma } from "@/lib/db";
 import { fareProductsForCustomer } from "@/lib/fares/customerPrice";
+import { listTicketTypeBaggageAllocations } from "@/lib/fares/baggageAllowance.server";
 import { productsPricedForTrip } from "@/lib/fares/products";
 import {
   cabinsOnFlight,
@@ -70,10 +71,12 @@ export default async function TripReviewPage({
     seatsByCabin(outbound.fareReleases)[cabinClass].remainingSeats < 1 ||
     seatsByCabin(returnFlight.fareReleases)[cabinClass].remainingSeats < 1;
 
+  const allocations = await listTicketTypeBaggageAllocations();
   const products = fareProductsForCustomer({
     cabinClass,
     releases: outbound.fareReleases,
     available: !soldOut,
+    allocations,
   });
   const roundTripProducts = productsPricedForTrip(
     products,

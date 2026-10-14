@@ -17,6 +17,11 @@ import {
   retryOnUniqueConflict,
 } from "@/lib/booking/documentIds";
 import { extraBaggageCentsForBags } from "@/lib/pricing/baggage";
+import { listTicketTypeBaggageAllocations } from "@/lib/fares/baggageAllowance.server";
+import {
+  resolveBaggageAllowance,
+  snapshotFromAllowance,
+} from "@/lib/fares/baggageAllowance";
 import { recordDeletion } from "@/lib/audit/deletionLog";
 import { prisma } from "@/lib/db";
 import {
@@ -582,6 +587,14 @@ export async function createWalkInBookingAction(
             ? " · GST inclusive 10%"
             : "";
 
+    const baggageSnap = snapshotFromAllowance(
+      resolveBaggageAllowance(
+        await listTicketTypeBaggageAllocations(),
+        parseCabin(outboundCurrent.cabinClass),
+        fareProductName || outboundReleaseName,
+      ),
+    );
+
     const created = await retryOnUniqueConflict(() =>
       prisma.$transaction(async (tx) => {
       await decrementSeats(
@@ -642,6 +655,8 @@ export async function createWalkInBookingAction(
           fareProductCode,
           fareProductName,
           extraBaggageKg: data.extraBaggageKg,
+          includedBaggageKg: baggageSnap.includedBaggageKg,
+          includedBaggageLabel: baggageSnap.includedBaggageLabel,
           specialAssistance: specialAssistanceToJson(formData),
           passengerName: data.passengerName,
           email: data.email,
@@ -1219,6 +1234,8 @@ export async function updateBookingAction(
     });
   }
 
+  const baggageAllocations = await listTicketTypeBaggageAllocations();
+
   try {
     await prisma.$transaction(async (tx) => {
       const booking = await tx.booking.findUnique({
@@ -1328,6 +1345,15 @@ export async function updateBookingAction(
         holdExpiresAt = readHoldExpiresAt(formData);
       }
 
+      const nextFareName = data.fareReleaseName || booking.fareReleaseName;
+      const baggageSnap = snapshotFromAllowance(
+        resolveBaggageAllowance(
+          baggageAllocations,
+          parseCabin(booking.fareRelease?.cabinClass ?? "economy"),
+          nextFareName,
+        ),
+      );
+
       await tx.booking.update({
         where: { id: booking.id },
         data: {
@@ -1338,7 +1364,9 @@ export async function updateBookingAction(
           nationality: data.nationality || "",
           seatsBooked,
           extraBaggageKg: data.extraBaggageKg,
-          fareReleaseName: data.fareReleaseName || booking.fareReleaseName,
+          fareReleaseName: nextFareName,
+          includedBaggageKg: baggageSnap.includedBaggageKg,
+          includedBaggageLabel: baggageSnap.includedBaggageLabel,
           specialAssistance: specialAssistanceToJson(formData),
           amountPaidCents,
           ...(holdExpiresAt ? { holdExpiresAt } : {}),

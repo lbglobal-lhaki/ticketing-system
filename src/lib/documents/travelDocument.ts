@@ -4,7 +4,7 @@ import { getBrand } from "@/lib/branding";
 import {
   cityName,
   computeInvoiceTotals,
-  defaultBaggageLabel,
+  includedBaggageDisplay,
   displayTicketCode,
   charterWelcomeRoute,
   ICON_GLOBE,
@@ -311,9 +311,12 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
   const invoice = data.invoice;
   const seat = invoice?.seatLabel?.trim() || "–";
   const fareName = data.fareProductName || data.fareReleaseName || "";
-  const includedBaggage =
-    defaultBaggageLabel(data.flight.cabinClass, fareName).split("(")[0]?.trim() ||
-    "1 PIECE";
+  const includedBaggage = includedBaggageDisplay({
+    includedBaggageLabel: data.includedBaggageLabel,
+    includedBaggageKg: data.includedBaggageKg,
+    cabinClass: data.flight.cabinClass,
+    fareName,
+  });
   const unpaid = data.status !== "confirmed" && invoice?.status !== "paid";
 
   const lines = {
@@ -571,16 +574,10 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
           <h3>${assets.icoBaggage ? `<img src="${assets.icoBaggage}" alt="" />` : ""}BAGGAGE ALLOWANCE</h3>
           <div class="bag-cards">
             <div class="bag-card">
-              <div class="cls">ECONOMY CLASS</div>
+              <div class="cls">${esc((fareName || cabinLabel(data.flight.cabinClass)).toUpperCase())}</div>
               <div class="sub">Check-In Baggage</div>
-              <div class="kg">23 KG</div>
-              <div class="sub">1 &times; 23kg</div>
-            </div>
-            <div class="bag-card">
-              <div class="cls">BUSINESS CLASS</div>
-              <div class="sub">Check-In Baggage</div>
-              <div class="kg">40 KG</div>
-              <div class="sub">1 &times; 40kg</div>
+              <div class="kg">${esc(includedBaggage.toUpperCase())}</div>
+              <div class="sub">${esc(includedBaggage)}</div>
             </div>
           </div>
         </div>
