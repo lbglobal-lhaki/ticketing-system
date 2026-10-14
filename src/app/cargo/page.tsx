@@ -9,7 +9,7 @@ import { flightPayloadFromRow, formatKg } from "@/lib/cargo/capacity";
 import { formatFlightDate } from "@/lib/datetime";
 import { prisma } from "@/lib/db";
 import { airportCity } from "@/lib/format";
-import { getCargoShopRates } from "@/lib/cargo/products";
+import { listSellableCargoWeightOptions } from "@/lib/cargo/weightOptions.server";
 import { getSiteSettings } from "@/lib/settings";
 
 export const metadata: Metadata = {
@@ -31,19 +31,19 @@ const HIGHLIGHTS = [
   },
   {
     title: "Pay the listed freight rate",
-    body: "Enter the weight and the freight charge is locked on the booking. Type of goods, packaging and the rest stay on the enquiry.",
+    body: "Pick a weight option — documents, a fixed bag size, or a per-kilogram band. The price you see is the price you pay.",
   },
 ];
 
 export default async function CargoPage() {
-  const [settings, rates] = await Promise.all([
+  const [settings, weightOptions] = await Promise.all([
     getSiteSettings(),
-    getCargoShopRates(),
+    listSellableCargoWeightOptions(),
   ]);
 
   const now = new Date();
   const flights = await prisma.flight.findMany({
-    where: { active: true, departureAt: { gte: now } },
+    where: { active: true, deletedAt: null, departureAt: { gte: now } },
     orderBy: { departureAt: "asc" },
     take: 40,
   });
@@ -53,6 +53,7 @@ export default async function CargoPage() {
       const payload = flightPayloadFromRow(flight, settings.passengerPayloadKg);
       return {
         id: flight.id,
+        origin: flight.origin,
         route: `${airportCity(flight.origin)} → ${airportCity(flight.destination)}`,
         departureLabel: formatFlightDate(flight.departureAt),
         flightNumber: `${flight.airline} ${flight.flightNumber}`.trim(),
@@ -111,8 +112,8 @@ export default async function CargoPage() {
               Cargo booking form
             </h2>
             <p className="mt-2 text-sm text-muted">
-              Choose a departure, tell us what you are sending, then fill
-              sender and receiver details. The price you see is what you pay.
+              Choose a departure, pick a weight option, then fill sender and
+              receiver details. The price you see is what you pay.
               Booking is subject to the{" "}
               <Link
                 href="/cargo/terms"
@@ -125,7 +126,7 @@ export default async function CargoPage() {
           </div>
 
           <div className="mt-6 max-w-3xl">
-            <CargoBookingForm flights={options} rates={rates} />
+            <CargoBookingForm flights={options} weightOptions={weightOptions} />
           </div>
         </div>
       </main>

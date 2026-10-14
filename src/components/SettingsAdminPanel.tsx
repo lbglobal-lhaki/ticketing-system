@@ -205,21 +205,14 @@ export function SettingsAdminPanel({
 
       <Card
         title="Cargo rates"
-        description="The one freight rate customers pay on the cargo page. Type of goods is collected on the enquiry, not as separate products."
+        description="Freight prices now live on the Cargo tab as weight options (Documents, 5 kg, 100 kg+, and the rest). That is what customers pay."
       >
-        <MoneyField
-          name="cargoRatePerKgAud"
-          label="Rate per kg"
-          cents={settings.cargoRatePerKgCents}
-          error={err("cargoRatePerKgAud")}
-        />
-        <MoneyField
-          name="cargoMinChargeAud"
-          label="Minimum charge"
-          hint="Applied when the per-kg total falls below it"
-          cents={settings.cargoMinChargeCents}
-          error={err("cargoMinChargeAud")}
-        />
+        <p className="text-sm text-muted sm:col-span-2">
+          Edit the tariff there so Perth and Paro can offer different bands.
+          The old per-kilogram fields are unused.
+        </p>
+        <input type="hidden" name="cargoRatePerKgAud" value="0" />
+        <input type="hidden" name="cargoMinChargeAud" value="0" />
       </Card>
 
       {sticky.formError ? (

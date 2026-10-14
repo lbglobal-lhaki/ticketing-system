@@ -46,7 +46,14 @@ export default async function CargoBookedPage({
         : shipment.flightDate || "To be confirmed",
     },
     { label: "Packages", value: String(cargo.pieces || shipment.packages) },
-    { label: "Weight", value: formatKg(cargo.weightKg) },
+    {
+      label: "Weight option",
+      value: cargo.productName
+        ? cargo.productName.includes("+")
+          ? `${cargo.productName} · ${formatKg(cargo.weightKg)}`
+          : cargo.productName
+        : formatKg(cargo.weightKg),
+    },
     {
       label: "Type of goods",
       value:

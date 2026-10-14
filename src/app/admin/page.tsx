@@ -17,7 +17,7 @@ import {
 import { getSystemAnalytics } from "@/lib/analytics/systemAnalytics";
 import { expireStaleHoldsForAdminLoad } from "@/lib/booking/expireHolds";
 import { prisma } from "@/lib/db";
-import { getCargoShopRates } from "@/lib/cargo/products";
+import { listCargoWeightOptionsAdmin } from "@/lib/cargo/weightOptions.server";
 import { getSiteSettings } from "@/lib/settings";
 import { adminLoginSchema } from "@/lib/validation";
 
@@ -183,7 +183,7 @@ export default async function AdminPage({
     deletedRecords,
     analytics,
     settings,
-    cargoRates,
+    cargoWeightOptions,
   ] = await Promise.all([
       prisma.flight.findMany({
         where: { deletedAt: null },
@@ -279,7 +279,7 @@ export default async function AdminPage({
       }),
       getSystemAnalytics(),
       getSiteSettings(),
-      getCargoShopRates(),
+      listCargoWeightOptionsAdmin(),
     ]);
 
   const SAVED_MESSAGES: Record<string, string> = {
@@ -329,6 +329,10 @@ export default async function AdminPage({
     "cargo-deleted": "Cargo booking deleted — logged in the Deleted tab.",
     "cargo-bulk-deleted": "Cargo bookings deleted — logged in the Deleted tab.",
     "cargo-rates-updated": "Cargo price saved — customers pay this rate.",
+    "cargo-weight-saved": "Weight option saved — live on the cargo page.",
+    "cargo-weight-deleted": "Weight option removed.",
+    "cargo-weight-retired":
+      "Weight option hidden — existing bookings still show it.",
     "settings-updated": "Pricing and capacity settings saved.",
     "cargo-paid": "Cargo marked as paid.",
     "cargo-unpaid": "Cargo marked as unpaid.",
@@ -548,7 +552,7 @@ export default async function AdminPage({
               deletedBy: row.deletedBy,
               snapshot: null,
             }))}
-            cargoRates={cargoRates}
+            cargoWeightOptions={cargoWeightOptions}
             cargoSubmissions={cargoSubmissions.map((row) => {
               const answers =
                 row.answers &&

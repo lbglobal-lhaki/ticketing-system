@@ -7,7 +7,7 @@ import {
   buildCargoAnswers,
   cargoBookingFromForm,
 } from "@/lib/cargo/bookingForm";
-import { cargoQuoteCents, flightPayloadFromRow, formatKg } from "@/lib/cargo/capacity";
+import { flightPayloadFromRow, formatKg } from "@/lib/cargo/capacity";
 import { allocateCargoParcelNumber } from "@/lib/cargo/parcelNumber";
 import { formatFlightDateTime } from "@/lib/datetime";
 import { prisma } from "@/lib/db";
@@ -18,8 +18,11 @@ import {
   zodFieldErrors,
   type FormActionResult,
 } from "@/lib/forms/formAction";
-import { getCargoShopRates } from "@/lib/cargo/products";
 import { getSiteSettings } from "@/lib/settings";
+import {
+  optionSoldOnOrigin,
+  quoteCargoWeightOption,
+} from "@/lib/cargo/weightOptions";
 
 /**
  * Public cargo booking. Weight is checked against the payload left on the
@@ -41,12 +44,9 @@ export async function submitCargoBookingAction(
 
   let parcelNumber = "";
   try {
-    const [settings, rates] = await Promise.all([
-      getSiteSettings(),
-      getCargoShopRates(),
-    ]);
+    const settings = await getSiteSettings();
     const flight = await prisma.flight.findFirst({
-      where: { id: input.flightId, active: true },
+      where: { id: input.flightId, active: true, deletedAt: null },
     });
     if (!flight) {
       return formFail("That flight is no longer available", {
@@ -54,32 +54,57 @@ export async function submitCargoBookingAction(
       });
     }
 
-    if (rates.cargoRatePerKgCents <= 0) {
-      return formFail("Cargo is not on sale right now. Please email us.");
+    const option = await prisma.cargoWeightOption.findFirst({
+      where: { id: input.weightOptionId, active: true },
+    });
+    if (!option) {
+      return formFail("That weight option is no longer on sale", {
+        weightOptionId: "Choose another weight option",
+      });
+    }
+    if (!optionSoldOnOrigin(option, flight.origin)) {
+      return formFail(
+        `${option.name} is not sold on ${airportCity(flight.origin)} departures`,
+        { weightOptionId: "Pick an option offered on this flight" },
+      );
+    }
+
+    const quoted = quoteCargoWeightOption(option, input.actualKg);
+    if (!quoted.ok) {
+      return formFail(quoted.error, {
+        actualKg: quoted.error,
+        weightOptionId: quoted.error,
+      });
     }
 
     const payload = flightPayloadFromRow(flight, settings.passengerPayloadKg);
-    if (input.weightKg > payload.availableKg) {
+    if (quoted.weightKg > payload.availableKg) {
       return formFail(
         `Only ${formatKg(payload.availableKg)} of cargo space is left on this flight`,
         {
-          weightKg:
+          weightOptionId:
             payload.availableKg > 0
-              ? `Reduce to ${formatKg(payload.availableKg)} or choose another flight`
+              ? `Choose a smaller option, or another flight`
               : "This flight is full — choose another departure",
         },
       );
     }
 
-    const answers = buildCargoAnswers(input, {
-      flightNumber: `${flight.airline} ${flight.flightNumber}`.trim(),
-      originLabel: airportCity(flight.origin),
-      destinationLabel: airportCity(flight.destination),
-      departureLabel: formatFlightDateTime(flight.departureAt),
-    });
+    const answers = buildCargoAnswers(
+      input,
+      {
+        flightNumber: `${flight.airline} ${flight.flightNumber}`.trim(),
+        originLabel: airportCity(flight.origin),
+        destinationLabel: airportCity(flight.destination),
+        departureLabel: formatFlightDateTime(flight.departureAt),
+      },
+      option,
+      quoted.weightKg,
+    );
 
     parcelNumber = await allocateCargoParcelNumber();
-    const quotedCents = cargoQuoteCents(input.weightKg, rates);
+    const quotedCents = quoted.quotedCents;
+    const weightKg = quoted.weightKg;
 
     await prisma.$transaction(async (tx) => {
       // Re-check under the same guard we validated with — another booking may
@@ -89,9 +114,9 @@ export async function submitCargoBookingAction(
         where: {
           id: flight.id,
           active: true,
-          cargoBookedKg: { lte: maxCargoKg - input.weightKg },
+          cargoBookedKg: { lte: maxCargoKg - weightKg },
         },
-        data: { cargoBookedKg: { increment: input.weightKg } },
+        data: { cargoBookedKg: { increment: weightKg } },
       });
       if (claimed.count !== 1) {
         throw new Error(
@@ -104,10 +129,11 @@ export async function submitCargoBookingAction(
           parcelNumber,
           status: "new",
           flightId: flight.id,
-          weightKg: input.weightKg,
+          weightKg,
           pieces: input.pieces,
           quotedCents,
-          productName: "",
+          cargoWeightOptionId: option.id,
+          productName: option.name,
           answers: answers as Prisma.InputJsonValue,
           submitterName: input.senderName,
           email: input.senderEmail,

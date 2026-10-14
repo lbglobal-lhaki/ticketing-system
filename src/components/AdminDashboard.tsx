@@ -44,6 +44,7 @@ import {
 } from "@/components/CargoAdminPanel";
 import { SystemAnalyticsSection } from "@/components/SystemAnalyticsSection";
 import { flightPayloadFromRow, formatKg } from "@/lib/cargo/capacity";
+import type { CargoWeightOptionRow } from "@/lib/cargo/weightOptions";
 import { MoneyInput } from "@/components/MoneyInput";
 import {
   PassengerGroupFields,
@@ -613,7 +614,7 @@ export function AdminDashboard({
   bookings,
   invoices,
   cargoSubmissions,
-  cargoRates,
+  cargoWeightOptions,
   deletedFlights,
   deletedRecords,
   analytics,
@@ -627,7 +628,7 @@ export function AdminDashboard({
   bookings: BookingRow[];
   invoices: InvoiceRow[];
   cargoSubmissions: AdminCargoRow[];
-  cargoRates: { cargoRatePerKgCents: number; cargoMinChargeCents: number };
+  cargoWeightOptions: CargoWeightOptionRow[];
   deletedRecords: AdminDeletedRecordRow[];
   analytics: SystemAnalytics;
   settings: AdminSiteSettings;
@@ -3122,7 +3123,7 @@ export function AdminDashboard({
       {tab === "cargo" && (
         <CargoAdminPanel
           submissions={cargoSubmissions}
-          rates={cargoRates}
+          weightOptions={cargoWeightOptions}
         />
       )}
 

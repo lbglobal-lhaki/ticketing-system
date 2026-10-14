@@ -15,6 +15,7 @@ export const CARGO_Q = {
 
   pieces: "Number of Packages",
   weight: "Estimated Weight (kg)",
+  weightOption: "Weight option",
   dimensions: "Dimensions (Length × Width × Height)",
   declaredValue: "Declared Cargo Value",
   description: "Cargo description",
@@ -101,17 +102,19 @@ const required = (label: string, max: number) =>
 
 export const cargoBookingSchema = z.object({
   flightId: required("Flight", 40),
+  weightOptionId: required("Weight option", 40),
 
   pieces: z.coerce
     .number({ message: "Enter the number of packages" })
     .int("Use a whole number")
     .min(1, "At least one package")
     .max(500, "Contact us directly for shipments over 500 packages"),
-  weightKg: z.coerce
+  actualKg: z.coerce
     .number({ message: "Enter the total weight" })
     .int("Round to the nearest kilogram")
-    .min(1, "Enter a weight of at least 1 kg")
-    .max(13_000, "That exceeds the aircraft payload"),
+    .min(0)
+    .max(13_000, "That exceeds the aircraft payload")
+    .default(0),
   dimensions: trimmed(200),
   declaredValueAud: z.coerce
     .number({ message: "Enter the declared value" })
@@ -180,6 +183,8 @@ export function buildCargoAnswers(
     destinationLabel: string;
     departureLabel: string;
   },
+  option: { name: string; description?: string },
+  weightKg: number,
 ): Record<string, string> {
   return {
     [CARGO_Q.direction]: `${flight.originLabel} → ${flight.destinationLabel}`,
@@ -187,7 +192,10 @@ export function buildCargoAnswers(
     [CARGO_Q.flightNumber]: flight.flightNumber,
 
     [CARGO_Q.pieces]: String(input.pieces),
-    [CARGO_Q.weight]: String(input.weightKg),
+    [CARGO_Q.weight]: String(weightKg),
+    [CARGO_Q.weightOption]: option.description
+      ? `${option.name} · ${option.description}`
+      : option.name,
     [CARGO_Q.dimensions]: input.dimensions,
     [CARGO_Q.declaredValue]: aud(input.declaredValueAud),
     [CARGO_Q.description]: input.description,
@@ -233,8 +241,9 @@ export function cargoBookingFromForm(formData: FormData) {
 
   return cargoBookingSchema.safeParse({
     flightId: str("flightId"),
+    weightOptionId: str("weightOptionId"),
     pieces: str("pieces"),
-    weightKg: str("weightKg"),
+    actualKg: str("actualKg") || "0",
     dimensions: str("dimensions"),
     declaredValueAud: str("declaredValueAud") || "0",
     description: str("description"),

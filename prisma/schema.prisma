@@ -467,6 +467,9 @@ model CargoSubmission {
   /// Catalogue type the customer bought. Null on older enquiry-only rows.
   cargoProductId   String?
   cargoProduct     CargoProduct?         @relation(fields: [cargoProductId], references: [id], onDelete: SetNull)
+  /// Weight band the customer picked (Documents / 5 kg / 100 kg+ …).
+  cargoWeightOptionId String?
+  cargoWeightOption   CargoWeightOption? @relation(fields: [cargoWeightOptionId], references: [id], onDelete: SetNull)
   /// Snapshot of the type name at booking time.
   productName      String                @default("")
   /// Full map of form question title → answer
@@ -487,6 +490,7 @@ model CargoSubmission {
   @@index([parcelNumber])
   @@index([flightId])
   @@index([cargoProductId])
+  @@index([cargoWeightOptionId])
 }
 
 /// Admin-priced cargo types sold on /cargo (Personal effects, Documents, …).
@@ -507,6 +511,42 @@ model CargoProduct {
   updatedAt       DateTime @updatedAt
 
   bookings        CargoSubmission[]
+
+  @@index([active, sortOrder])
+}
+
+enum CargoWeightKind {
+  /// Locked AUD total for this band (Documents, 5 kg, 10 kg, …).
+  fixed
+  /// AUD per kilogram inside this band (100 kg+, 300 kg+, …).
+  per_kg
+}
+
+/// Published freight tariff: customers pick a band, they pay this price.
+/// Origins (PER / PBH) are the two flight categories on this charter —
+/// Paro lifts less than Perth, so a band can be offered on one sector only.
+model CargoWeightOption {
+  id            String          @id @default(cuid())
+  code          String          @unique
+  name          String
+  description   String          @default("")
+  kind          CargoWeightKind
+  /// Inclusive lower bound (kg). Documents use 0.
+  minKg         Int             @default(0)
+  /// Inclusive upper bound (kg). Null = no cap besides remaining payload.
+  maxKg         Int?
+  /// Kilograms reserved on the aircraft for a fixed band. Per-kg uses entered kg.
+  chargeableKg  Int             @default(0)
+  /// Fixed: total AUD cents. Per-kg: cents per kilogram.
+  priceCents    Int
+  /// Airport codes this band is sold on. Empty = every departure.
+  origins       String[]        @default([])
+  sortOrder     Int             @default(0)
+  active        Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  bookings      CargoSubmission[]
 
   @@index([active, sortOrder])
 }

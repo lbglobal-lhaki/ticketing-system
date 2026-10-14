@@ -14,11 +14,21 @@ import {
   CARGO_PAYMENT_METHODS,
   CARGO_RESTRICTED,
 } from "@/lib/cargo/bookingForm";
-import { cargoQuoteCents, formatKg } from "@/lib/cargo/capacity";
+import { formatKg } from "@/lib/cargo/capacity";
 import { formatAud } from "@/lib/pricing";
+import {
+  optionFitsPayload,
+  optionHoldKg,
+  optionPriceLabel,
+  optionRangeLabel,
+  optionSoldOnOrigin,
+  quoteCargoWeightOption,
+  type CargoWeightOptionRow,
+} from "@/lib/cargo/weightOptions";
 
 export type CargoFlightOption = {
   id: string;
+  origin: string;
   route: string;
   departureLabel: string;
   flightNumber: string;
@@ -125,16 +135,17 @@ function CheckGroup({
 
 export function CargoBookingForm({
   flights,
-  rates,
+  weightOptions,
 }: {
   flights: CargoFlightOption[];
-  rates: { cargoRatePerKgCents: number; cargoMinChargeCents: number };
+  weightOptions: CargoWeightOptionRow[];
 }) {
   const sticky = useStickyAction(submitCargoBookingAction);
   const err = (key: string) => sticky.fieldErrors[key];
 
   const [flightId, setFlightId] = useState(flights[0]?.id ?? "");
-  const [weight, setWeight] = useState("");
+  const [optionId, setOptionId] = useState("");
+  const [actualKg, setActualKg] = useState("");
   const [insurance, setInsurance] = useState<"Yes" | "No">("No");
 
   const flight = useMemo(
@@ -142,10 +153,31 @@ export function CargoBookingForm({
     [flights, flightId],
   );
 
-  const weightKg = Number(weight) || 0;
-  const overCapacity = Boolean(flight && weightKg > flight.availableKg);
-  const quoteCents = weightKg > 0 ? cargoQuoteCents(weightKg, rates) : 0;
-  const priced = rates.cargoRatePerKgCents > 0;
+  const offered = useMemo(() => {
+    if (!flight) return [];
+    return weightOptions.filter(
+      (option) =>
+        optionSoldOnOrigin(option, flight.origin) &&
+        optionFitsPayload(option, flight.availableKg),
+    );
+  }, [weightOptions, flight]);
+
+  const selected = offered.find((o) => o.id === optionId) ?? null;
+  const enteredKg = Number(actualKg) || 0;
+  const quote = selected
+    ? quoteCargoWeightOption(
+        selected,
+        selected.kind === "per_kg" ? enteredKg : selected.chargeableKg,
+      )
+    : null;
+  const quoteCents = quote?.ok ? quote.quotedCents : 0;
+  const holdKg = selected
+    ? optionHoldKg(selected, selected.kind === "per_kg" ? enteredKg : 0)
+    : 0;
+  const overCapacity = Boolean(
+    flight && selected && holdKg > 0 && holdKg > flight.availableKg,
+  );
+  const priced = weightOptions.some((o) => o.active && o.priceCents > 0);
 
   if (!priced) {
     return (
@@ -186,7 +218,11 @@ export function CargoBookingForm({
           <select
             name="flightId"
             value={flightId}
-            onChange={(e) => setFlightId(e.target.value)}
+            onChange={(e) => {
+              setFlightId(e.target.value);
+              setOptionId("");
+              setActualKg("");
+            }}
             data-field-key="flightId"
             aria-invalid={err("flightId") ? true : undefined}
             className={labeledControlClass(fieldClass, err("flightId"))}
@@ -249,40 +285,103 @@ export function CargoBookingForm({
           />
         </Field>
 
-        <Field
-          label="Total weight (kg)"
-          required
-          error={err("weightKg")}
-          hint={
-            flight
-              ? `Up to ${formatKg(flight.availableKg)} on this departure`
-              : undefined
-          }
-        >
-          <input
-            name="weightKg"
-            type="number"
-            min={1}
-            max={flight?.availableKg || undefined}
-            value={weight}
-            onChange={(e) => setWeight(e.target.value)}
+        <div className="sm:col-span-2">
+          <p className="text-sm font-medium text-foreground">
+            Weight option
+            <span className="text-accent-red"> *</span>
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            {flight
+              ? `Options that fit the ${formatKg(flight.availableKg)} left on this ${flight.origin === "PBH" ? "Paro" : "Perth"} departure.`
+              : "Pick a departure first."}
+          </p>
+          <input type="hidden" name="weightOptionId" value={optionId} />
+          {offered.length === 0 ? (
+            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-950">
+              No weight options fit this departure. Choose another flight.
+            </p>
+          ) : (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {offered.map((option) => {
+                const active = option.id === optionId;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => {
+                      setOptionId(option.id);
+                      if (option.kind !== "per_kg") setActualKg("");
+                    }}
+                    className={`rounded-xl border px-4 py-3 text-left transition ${
+                      active
+                        ? "border-accent-deep bg-accent/5 shadow-[0_8px_24px_rgba(30,58,138,0.08)]"
+                        : "border-line bg-white hover:border-accent/50"
+                    }`}
+                  >
+                    <span className="flex items-start justify-between gap-3">
+                      <span>
+                        <span className="block text-sm font-semibold text-foreground">
+                          {option.name}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-muted">
+                          {optionRangeLabel(option)}
+                        </span>
+                      </span>
+                      <span className="shrink-0 font-[family-name:var(--font-syne)] text-base font-bold text-accent-deep">
+                        {optionPriceLabel(option)}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <FieldError error={err("weightOptionId")} />
+        </div>
+
+        {selected?.kind === "per_kg" ? (
+          <Field
+            label="Actual weight (kg)"
             required
-            data-field-key="weightKg"
-            aria-invalid={err("weightKg") || overCapacity ? true : undefined}
-            className={labeledControlClass(
-              fieldClass,
-              err("weightKg") || (overCapacity ? "over" : undefined),
-            )}
-          />
-        </Field>
+            error={err("actualKg")}
+            hint={
+              selected.maxKg != null
+                ? `Enter ${selected.minKg}–${selected.maxKg} kg`
+                : `Enter at least ${selected.minKg} kg`
+            }
+            wide
+          >
+            <input
+              name="actualKg"
+              type="number"
+              min={selected.minKg}
+              max={
+                flight
+                  ? Math.min(
+                      flight.availableKg,
+                      selected.maxKg ?? flight.availableKg,
+                    )
+                  : selected.maxKg ?? undefined
+              }
+              value={actualKg}
+              onChange={(e) => setActualKg(e.target.value)}
+              required
+              data-field-key="actualKg"
+              aria-invalid={err("actualKg") ? true : undefined}
+              className={labeledControlClass(fieldClass, err("actualKg"))}
+            />
+          </Field>
+        ) : (
+          <input type="hidden" name="actualKg" value="0" />
+        )}
 
         {overCapacity && flight ? (
           <p
             role="alert"
             className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-800 sm:col-span-2"
           >
-            Only {formatKg(flight.availableKg)} is left on this departure. Reduce
-            the weight or pick another flight.
+            Only {formatKg(flight.availableKg)} is left on this departure. Choose
+            a smaller option or another flight.
           </p>
         ) : null}
 
@@ -293,11 +392,12 @@ export function CargoBookingForm({
               {formatAud(quoteCents)}
             </span>
             <span className="mt-1 block text-xs text-muted">
-              {formatAud(rates.cargoRatePerKgCents)} per kg
-              {rates.cargoMinChargeCents > 0
-                ? ` · minimum ${formatAud(rates.cargoMinChargeCents)}`
-                : ""}
-              . This is the amount due on this booking.
+              {selected
+                ? selected.kind === "per_kg"
+                  ? `${formatAud(selected.priceCents)} per kg for ${holdKg} kg.`
+                  : `${selected.name} is a locked total.`
+                : null}{" "}
+              This is the amount due on this booking.
             </span>
           </p>
         ) : null}
@@ -581,8 +681,15 @@ export function CargoBookingForm({
             <p className="mt-1 font-[family-name:var(--font-syne)] text-2xl font-bold text-accent-deep">
               {formatAud(quoteCents)}
             </p>
-            {weightKg > 0 ? (
-              <p className="mt-1 text-xs text-muted">{weightKg} kg</p>
+            {selected ? (
+              <p className="mt-1 text-xs text-muted">
+                {selected.name}
+                {selected.kind === "per_kg" && holdKg > 0
+                  ? ` · ${formatKg(holdKg)}`
+                  : selected.description
+                    ? ` · ${selected.description}`
+                    : ""}
+              </p>
             ) : null}
           </div>
         ) : null}
@@ -657,6 +764,7 @@ export function CargoBookingForm({
         <SubmitButton
           pending={sticky.pending}
           pendingLabel="Submitting…"
+          disabled={!selected || quoteCents <= 0 || overCapacity}
           className="btn-cta min-h-12 w-full px-10 text-sm disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
         >
           Confirm and book cargo

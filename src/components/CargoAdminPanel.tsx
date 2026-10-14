@@ -21,6 +21,7 @@ import { ListFilterBar, NoMatches } from "@/components/admin/ListFilterBar";
 import { SegmentedField } from "@/components/admin/SegmentedField";
 import { FieldError, labeledControlClass } from "@/components/forms/FieldError";
 import { CargoTypesAdmin } from "@/components/CargoTypesAdmin";
+import type { CargoWeightOptionRow } from "@/lib/cargo/weightOptions";
 import { formatAud } from "@/lib/pricing";
 import { useStickyAction } from "@/components/forms/useStickyAction";
 
@@ -178,10 +179,10 @@ function AnswerFieldsEditor({
 
 export function CargoAdminPanel({
   submissions,
-  rates,
+  weightOptions,
 }: {
   submissions: AdminCargoRow[];
-  rates: { cargoRatePerKgCents: number; cargoMinChargeCents: number };
+  weightOptions: CargoWeightOptionRow[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -384,7 +385,7 @@ export function CargoAdminPanel({
         />
       ) : (
         <>
-      <CargoTypesAdmin rates={rates} />
+      <CargoTypesAdmin options={weightOptions} />
 
       <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -520,6 +521,7 @@ export function CargoAdminPanel({
                   {row.flightLabel ? (
                     <p className="text-sm font-medium text-foreground">
                       {row.flightLabel}
+                      {row.productName ? ` · ${row.productName}` : ""}
                       {row.weightKg > 0 ? ` · ${row.weightKg} kg` : ""}
                       {row.pieces > 0
                         ? ` · ${row.pieces} package${row.pieces === 1 ? "" : "s"}`
