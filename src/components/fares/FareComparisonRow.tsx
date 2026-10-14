@@ -247,7 +247,7 @@ function FareCard({
         />
         <RuleRow
           icon={<BaggageIcon className="text-accent" />}
-          label="Cabin Baggage"
+          label="Carry-on"
           value={product.highlights.cabinBaggage}
         />
         <RuleRow

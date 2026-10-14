@@ -53,7 +53,7 @@ export function buildTicketTypeFareProducts(input: {
         refund: { permitted: false, feeLabel: null, bullets: [] },
         baggageBullets: [
           `Checked baggage ${bag.checkedLabel}`,
-          `Cabin baggage ${bag.cabinBagLabel}`,
+          `Carry-on (hand luggage) ${bag.cabinBagLabel}`,
         ],
         nameChangeBullets: [],
         noShowBullets: [],

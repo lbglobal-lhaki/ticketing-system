@@ -63,8 +63,13 @@ export function optionAllowanceKg(option: {
   return Math.max(0, option.minKg);
 }
 
-export function cabinBagKgForCabin(cabin: string) {
-  return parseCabin(cabin) === "business" ? 10 : 7;
+/** Every passenger ticket includes this carry-on / hand luggage allowance. */
+export const CARRY_ON_KG = 7;
+export const CARRY_ON_LABEL = `${CARRY_ON_KG} kg`;
+export const CARRY_ON_NAME = "Carry-on (hand luggage)";
+
+export function cabinBagKgForCabin(_cabin?: string) {
+  return CARRY_ON_KG;
 }
 
 export function defaultIncludedKgForCabin(cabin: string) {
@@ -114,9 +119,13 @@ export function resolveBaggageAllowance(
       parseCabin(row.cabinClass) === wanted && row.ticketTypeKey === key,
   );
   if (hit && hit.includedKg > 0) {
-    return allowanceFromKg(hit.includedKg, hit.cabinBaggageKg);
+    return allowanceFromKg(hit.includedKg, CARRY_ON_KG);
   }
   return fallbackAllowance(cabin);
+}
+
+export function baggageSummaryLine(checkedLabel: string) {
+  return `${checkedLabel} checked · ${CARRY_ON_LABEL} carry-on`;
 }
 
 export function snapshotFromAllowance(allowance: BaggageAllowance) {

@@ -13,6 +13,7 @@ import {
 } from "@/lib/documents/invoiceFields";
 import { formatFlightClock, formatFlightDate } from "@/lib/datetime";
 import { formatAud } from "@/lib/pricing";
+import { CARRY_ON_LABEL, CARRY_ON_NAME } from "@/lib/fares/baggageAllowance";
 import { PDF_FONT_FAMILY, pdfFontFaceCss } from "@/lib/documents/pdfFonts";
 import type {
   BookingDocumentData,
@@ -251,7 +252,7 @@ function passCard(
         <div><span>Arrival</span><strong>${esc(ticketFlightTime(flight.arrivalAt))}</strong><i>${esc(to)} Time</i></div>
         <div><span>Class</span><strong>${esc(cabinLabel(flight.cabinClass))}</strong></div>
         <div><span>Seat</span><strong>${esc(opts.seat)}</strong></div>
-        <div><span>Included Baggage</span><strong>${esc(opts.baggage)}</strong></div>
+        <div><span>Checked baggage</span><strong>${esc(opts.baggage)}</strong><i>${esc(CARRY_ON_LABEL)} carry-on</i></div>
       </div>
 
       <div class="pass-perks">
@@ -457,7 +458,7 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
       <ul>
         <li>Arrive at the airport at least ${esc(String(brand.arriveHoursBefore))} hours before departure.</li>
         <li>Carry a valid passport and any required travel documents.</li>
-        <li>Ensure your baggage complies with the airline&#39;s baggage allowance.</li>
+        <li>Checked baggage is as per your fare. Carry-on (hand luggage) is ${esc(CARRY_ON_LABEL)} on every ticket.</li>
         <li>Please comply with all immigration, customs, and biosecurity requirements.</li>
       </ul>
 
@@ -564,7 +565,7 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
             <li>This e-ticket is non-transferable and valid only for the named passenger</li>
             <li>Please arrive at the airport at least ${esc(String(brand.arriveHoursBefore))} hours before departure</li>
             <li>Check-in closes 60 minutes prior to departure</li>
-            <li>Baggage allowance as per the purchased fare</li>
+            <li>Checked baggage as per the purchased fare. Carry-on (hand luggage) is ${esc(CARRY_ON_LABEL)} on every ticket.</li>
             <li>Changes or cancellations are subject to the fare rules</li>
             <li>${esc(brand.issuingAgent)} reserves the right to make operational changes due to unforeseen circumstances</li>
             <li>For assistance, contact ${esc(brand.issuingAgent)}</li>
@@ -578,6 +579,12 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
               <div class="sub">Check-In Baggage</div>
               <div class="kg">${esc(includedBaggage.toUpperCase())}</div>
               <div class="sub">${esc(includedBaggage)}</div>
+            </div>
+            <div class="bag-card">
+              <div class="cls">EVERY TICKET</div>
+              <div class="sub">${esc(CARRY_ON_NAME)}</div>
+              <div class="kg">${esc(CARRY_ON_LABEL.toUpperCase())}</div>
+              <div class="sub">1 &times; ${esc(CARRY_ON_LABEL)}</div>
             </div>
           </div>
         </div>

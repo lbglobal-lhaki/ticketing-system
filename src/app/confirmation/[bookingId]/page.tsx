@@ -6,6 +6,10 @@ import { canAccessBooking, withAccessToken } from "@/lib/documentAccess";
 import { prisma } from "@/lib/db";
 import { airportLabel, formatFlightTime } from "@/lib/format";
 import { formatAud } from "@/lib/pricing";
+import {
+  CARRY_ON_LABEL,
+  baggageSummaryLine,
+} from "@/lib/fares/baggageAllowance";
 import { getBankTransferDetails } from "@/lib/payments/bank";
 import {
   formatSpecialAssistance,
@@ -196,12 +200,15 @@ export default async function ConfirmationPage({
               <span className="text-muted">Fare</span>{" "}
               {booking.fareReleaseName || "—"}
             </p>
-            {booking.includedBaggageLabel || booking.includedBaggageKg > 0 ? (
-              <p>
-                <span className="text-muted">Included baggage</span>{" "}
-                {booking.includedBaggageLabel || `${booking.includedBaggageKg} kg`}
-              </p>
-            ) : null}
+            <p>
+              <span className="text-muted">Included baggage</span>{" "}
+              {booking.includedBaggageLabel || booking.includedBaggageKg > 0
+                ? baggageSummaryLine(
+                    booking.includedBaggageLabel ||
+                      `${booking.includedBaggageKg} kg`,
+                  )
+                : `${CARRY_ON_LABEL} carry-on`}
+            </p>
             <p>
               <span className="text-muted">Seats</span> {booking.seatsBooked}
             </p>

@@ -4,6 +4,7 @@ import {
   computeInvoiceTotals,
   includedBaggageDisplay,
 } from "@/lib/documents/invoiceFields";
+import { baggageSummaryLine } from "@/lib/fares/baggageAllowance";
 import {
   CONTENT_SIDE_PADDING_MM,
   screenChromeCss,
@@ -309,12 +310,14 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
             : ""
         }
         <div class="row"><span>Included baggage:</span><span>${esc(
-          includedBaggageDisplay({
-            includedBaggageLabel: data.includedBaggageLabel,
-            includedBaggageKg: data.includedBaggageKg,
-            cabinClass: data.flight.cabinClass,
-            fareName: data.fareProductName || data.fareReleaseName,
-          }),
+          baggageSummaryLine(
+            includedBaggageDisplay({
+              includedBaggageLabel: data.includedBaggageLabel,
+              includedBaggageKg: data.includedBaggageKg,
+              cabinClass: data.flight.cabinClass,
+              fareName: data.fareProductName || data.fareReleaseName,
+            }),
+          ),
         )}</span></div>
       </div>`;
 

@@ -11,6 +11,17 @@ import {
   formatSpecialAssistance,
   hasSpecialAssistance,
 } from "@/lib/booking/specialAssistance";
+import {
+  CARRY_ON_LABEL,
+  baggageSummaryLine,
+} from "@/lib/fares/baggageAllowance";
+
+function baggageEmailLine(data: BookingDocumentData) {
+  const checked =
+    data.includedBaggageLabel?.trim() ||
+    (data.includedBaggageKg ? `${data.includedBaggageKg} kg` : "");
+  return checked ? baggageSummaryLine(checked) : `${CARRY_ON_LABEL} carry-on`;
+}
 
 function specialAssistanceEmailHtml(data: BookingDocumentData) {
   if (!hasSpecialAssistance(data.specialAssistance)) return "";
@@ -57,7 +68,7 @@ export function eTicketEmail(data: BookingDocumentData) {
     <p><strong>Booking Reference:</strong> ${esc(data.bookingRef)}<br/>
     <strong>Route:</strong> ${esc(route)}<br/>
     <strong>Fare:</strong> ${esc(data.fareProductName || data.fareReleaseName || "—")}<br/>
-    <strong>Included baggage:</strong> ${esc(data.includedBaggageLabel || (data.includedBaggageKg ? `${data.includedBaggageKg} kg` : "As per fare"))}<br/>
+    <strong>Included baggage:</strong> ${esc(baggageEmailLine(data))}<br/>
     <strong>Departure:</strong> ${esc(formatFlightDateTime(data.flight.departureAt))} ${esc(airportTzAbbr(data.flight.origin, data.flight.departureAt))}</p>
     ${specialAssistanceEmailHtml(data)}
     <p><a href="${travelUrl}">View travel document online</a></p>
@@ -76,7 +87,7 @@ Thank you for your payment. Your travel document for booking ${data.bookingRef} 
 Booking Reference: ${data.bookingRef}
 Route: ${route}
 Fare: ${data.fareProductName || data.fareReleaseName || "—"}
-Included baggage: ${data.includedBaggageLabel || (data.includedBaggageKg ? `${data.includedBaggageKg} kg` : "As per fare")}
+Included baggage: ${baggageEmailLine(data)}
 Departure: ${formatFlightDateTime(data.flight.departureAt)} ${airportTzAbbr(data.flight.origin, data.flight.departureAt)}
 ${specialAssistanceEmailText(data)}
 

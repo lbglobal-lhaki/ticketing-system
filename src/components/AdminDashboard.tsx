@@ -45,7 +45,10 @@ import {
 import { SystemAnalyticsSection } from "@/components/SystemAnalyticsSection";
 import { flightPayloadFromRow, formatKg } from "@/lib/cargo/capacity";
 import type { CargoWeightOptionRow } from "@/lib/cargo/weightOptions";
-import { ticketTypeChoicesFromNames } from "@/lib/fares/baggageAllowance";
+import {
+  CARRY_ON_LABEL,
+  ticketTypeChoicesFromNames,
+} from "@/lib/fares/baggageAllowance";
 import { MoneyInput } from "@/components/MoneyInput";
 import {
   PassengerGroupFields,
@@ -2997,9 +3000,14 @@ export function AdminDashboard({
                           : ""}
                         {b.includedBaggageLabel ? (
                           <p className="mt-0.5 text-xs text-muted">
-                            Included {b.includedBaggageLabel}
+                            Included {b.includedBaggageLabel} · {CARRY_ON_LABEL}{" "}
+                            carry-on
                           </p>
-                        ) : null}
+                        ) : (
+                          <p className="mt-0.5 text-xs text-muted">
+                            {CARRY_ON_LABEL} carry-on
+                          </p>
+                        )}
                         {b.extraBaggageKg > 0 ? (
                           <p className="mt-0.5 text-xs text-muted">
                             +{b.extraBaggageKg} extra bag

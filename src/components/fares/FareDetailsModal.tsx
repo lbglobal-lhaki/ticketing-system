@@ -122,7 +122,7 @@ export function FareDetailsModal({
               title="Inclusions"
               bullets={[
                 `Checked baggage: ${product.highlights.baggage}`,
-                `Cabin baggage: ${product.highlights.cabinBaggage}`,
+                `Carry-on (hand luggage): ${product.highlights.cabinBaggage}`,
                 `Seat: ${product.highlights.seatSelection}`,
                 `Meal: ${product.highlights.meal}`,
                 ...product.perkLines,
