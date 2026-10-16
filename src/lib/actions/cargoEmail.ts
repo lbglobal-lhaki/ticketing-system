@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/adminAuth";
 import { extractCargoShipment, type CargoAnswers } from "@/lib/cargo/parties";
 import { prisma } from "@/lib/db";
 import { cargoNotificationEmail } from "@/lib/email/cargoTemplates";
+import { sendCargoBookingEmails } from "@/lib/email/cargoMail";
 import { sendEmail } from "@/lib/email/send";
 import { z } from "zod";
 
@@ -328,4 +329,28 @@ export async function listCargoEmailNoticesAction(cargoId: string) {
     orderBy: [{ role: "asc" }, { createdAt: "desc" }],
   });
   return rows.map(serializeNotice);
+}
+
+/** Re-send the cargo invoice to the customer and a staff acknowledgement. */
+export async function sendCargoInvoiceEmailsAction(parcelNumber: string) {
+  await requireAdmin();
+  const result = await sendCargoBookingEmails(parcelNumber);
+  if (!result.ok) {
+    return {
+      ok: false as const,
+      error: result.error || "Could not send cargo invoice emails",
+    };
+  }
+  const parts: string[] = [];
+  if (result.customerSent) parts.push("customer invoice");
+  if (result.staffSent > 0) {
+    parts.push(
+      `staff acknowledgement${result.staffSent > 1 ? ` (${result.staffSent})` : ""}`,
+    );
+  }
+  revalidatePath("/admin");
+  return {
+    ok: true as const,
+    message: `Sent ${parts.join(" and ")}.`,
+  };
 }

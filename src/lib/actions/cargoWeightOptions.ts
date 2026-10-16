@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { requireAdmin } from "@/lib/adminAuth";
+import { requireFullAdmin } from "@/lib/adminAuth";
 import { prisma } from "@/lib/db";
 import { slugifyCargoName } from "@/lib/cargo/productPricing";
 import { CARGO_FLIGHT_CATEGORIES } from "@/lib/cargo/weightOptions";
@@ -56,7 +56,7 @@ export async function saveCargoWeightOptionAction(
   _prev: FormActionResult | null,
   formData: FormData,
 ): Promise<FormActionResult> {
-  await requireAdmin();
+  await requireFullAdmin();
 
   const id = String(formData.get("id") ?? "").trim() || undefined;
   const kind = String(formData.get("kind") ?? "fixed") === "per_kg" ? "per_kg" : "fixed";
@@ -184,7 +184,7 @@ export async function saveCargoWeightOptionAction(
 }
 
 export async function deleteCargoWeightOptionAction(formData: FormData) {
-  await requireAdmin();
+  await requireFullAdmin();
   const id = String(formData.get("id") ?? "").trim();
   if (!id) redirect("/admin?tab=cargo&error=Missing+weight+option");
 

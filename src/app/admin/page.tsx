@@ -4,9 +4,14 @@ import { redirect } from "next/navigation";
 import { AdminDashboard } from "@/components/AdminDashboard";
 import { SubmitButton } from "@/components/SubmitButton";
 import {
+  canAccessAdminTab,
   clearAdminSessionCookie,
-  isAdminAuthed,
+  getAdminSession,
+  homeTabForRole,
+  isSubAdminPasswordConfigured,
   setAdminSessionCookie,
+  type AdminRole,
+  type AdminTab,
 } from "@/lib/adminAuth";
 import {
   clearAdminLoginFailures,
@@ -14,7 +19,10 @@ import {
   getAdminLoginThrottle,
   recordAdminLoginFailure,
 } from "@/lib/adminLoginRateLimit";
-import { getSystemAnalytics } from "@/lib/analytics/systemAnalytics";
+import {
+  emptySystemAnalytics,
+  getSystemAnalytics,
+} from "@/lib/analytics/systemAnalytics";
 import { expireStaleHoldsForAdminLoad } from "@/lib/booking/expireHolds";
 import { prisma } from "@/lib/db";
 import { listCargoWeightOptionsAdmin } from "@/lib/cargo/weightOptions.server";
@@ -32,18 +40,7 @@ function passwordMatches(input: string, expected: string) {
   return timingSafeEqual(a, b);
 }
 
-function parseTab(
-  value?: string,
-):
-  | "analytics"
-  | "flights"
-  | "form"
-  | "bookings"
-  | "invoices"
-  | "cargo"
-  | "settings"
-  | "deleted"
-  | undefined {
+function parseTab(value?: string): AdminTab | undefined {
   if (
     value === "analytics" ||
     value === "flights" ||
@@ -59,6 +56,19 @@ function parseTab(
   return undefined;
 }
 
+function matchLoginRole(password: string): AdminRole | null {
+  const adminExpected = process.env.ADMIN_PASSWORD?.trim() || "";
+  if (adminExpected && passwordMatches(password, adminExpected)) return "admin";
+  const subExpected = process.env.SUB_ADMIN_PASSWORD?.trim() || "";
+  if (
+    isSubAdminPasswordConfigured() &&
+    passwordMatches(password, subExpected)
+  ) {
+    return "sub_admin";
+  }
+  return null;
+}
+
 export default async function AdminPage({
   searchParams,
 }: {
@@ -70,7 +80,7 @@ export default async function AdminPage({
   }>;
 }) {
   const params = await searchParams;
-  const authed = await isAdminAuthed();
+  const session = await getAdminSession();
 
   async function login(formData: FormData) {
     "use server";
@@ -85,17 +95,17 @@ export default async function AdminPage({
     const parsed = adminLoginSchema.safeParse({
       password: formData.get("password"),
     });
-    const expected = process.env.ADMIN_PASSWORD;
-    if (!expected) {
+    if (!process.env.ADMIN_PASSWORD?.trim()) {
       redirect("/admin?error=ADMIN_PASSWORD+is+not+configured");
     }
-    if (!parsed.success || !passwordMatches(parsed.data.password, expected)) {
+    const role = parsed.success ? matchLoginRole(parsed.data.password) : null;
+    if (!role) {
       await recordAdminLoginFailure(ip);
       redirect("/admin?error=Invalid+password");
     }
     await clearAdminLoginFailures(ip);
-    await setAdminSessionCookie();
-    redirect("/admin?tab=flights");
+    await setAdminSessionCookie(role);
+    redirect(`/admin?tab=${homeTabForRole(role)}`);
   }
 
   async function logout() {
@@ -104,7 +114,7 @@ export default async function AdminPage({
     redirect("/admin");
   }
 
-  if (!authed) {
+  if (!session) {
     return (
       <main className="relative flex min-h-[calc(100svh-4rem)] items-center justify-center overflow-hidden px-4 py-16">
         <div
@@ -135,7 +145,7 @@ export default async function AdminPage({
             Operations
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-muted">
-            Sign in to manage flights, fixed ticket prices, bookings, and cargo.
+            Sign in with the admin or sub-admin password.
           </p>
           <form
             action={login}
@@ -148,7 +158,7 @@ export default async function AdminPage({
               <input
                 type="password"
                 name="password"
-                placeholder="Enter admin password"
+                placeholder="Enter password"
                 required
                 className="w-full border-0 border-b border-line bg-transparent py-3 outline-none transition focus:border-accent"
               />
@@ -168,6 +178,12 @@ export default async function AdminPage({
         </div>
       </main>
     );
+  }
+
+  const role = session.role;
+  const requestedTab = parseTab(params.tab);
+  if (requestedTab && !canAccessAdminTab(role, requestedTab)) {
+    redirect(`/admin?tab=${homeTabForRole(role)}`);
   }
 
   // Best-effort hold expiry — never block dashboard TTFB on it. The hourly
@@ -277,7 +293,9 @@ export default async function AdminPage({
           deletedBy: true,
         },
       }),
-      getSystemAnalytics(),
+      role === "admin"
+        ? getSystemAnalytics()
+        : Promise.resolve(emptySystemAnalytics()),
       getSiteSettings(),
       listCargoWeightOptionsAdmin(),
     ]);
@@ -350,7 +368,12 @@ export default async function AdminPage({
 
   // Prefer explicit ?tab= — action redirects already include the right tab.
   // Do not infer tab from leftover ?saved= (that caused refresh jumps).
-  const initialTab = parseTab(params.tab) ?? "analytics";
+  const initialTab =
+    requestedTab && canAccessAdminTab(role, requestedTab)
+      ? requestedTab
+      : role === "admin"
+        ? "analytics"
+        : "bookings";
 
   return (
     <main className="admin-ui min-h-[calc(100svh-4rem)] [background-image:var(--grad-admin-page)]">
@@ -371,6 +394,12 @@ export default async function AdminPage({
               <span className="text-muted/70"> · Operations</span>
             </p>
           </div>
+          <div className="flex items-center gap-3">
+            {role === "sub_admin" ? (
+              <span className="rounded-full border border-line bg-white px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted">
+                Sub-admin
+              </span>
+            ) : null}
           <form action={logout}>
             <SubmitButton
               pendingLabel="Signing out…"
@@ -379,6 +408,7 @@ export default async function AdminPage({
               Sign out
             </SubmitButton>
           </form>
+          </div>
         </div>
       </div>
 
@@ -390,6 +420,7 @@ export default async function AdminPage({
             }
           >
           <AdminDashboard
+            adminRole={role}
             initialTab={initialTab}
             settings={settings}
             savedMessage={savedMessage}

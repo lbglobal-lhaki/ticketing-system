@@ -1,5 +1,6 @@
 "use server";
 
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@/generated/prisma/client";
@@ -23,6 +24,7 @@ import {
   optionSoldOnOrigin,
   quoteCargoWeightOption,
 } from "@/lib/cargo/weightOptions";
+import { sendCargoBookingEmails } from "@/lib/email/cargoMail";
 
 /**
  * Public cargo booking. Weight is checked against the payload left on the
@@ -146,6 +148,15 @@ export async function submitCargoBookingAction(
     console.error("submitCargoBookingAction", error);
     return failFromUnknown(error, "Could not submit your cargo booking");
   }
+
+  const bookedParcel = parcelNumber;
+  after(async () => {
+    try {
+      await sendCargoBookingEmails(bookedParcel);
+    } catch (error) {
+      console.error("cargo booking email failed", error);
+    }
+  });
 
   revalidatePath("/admin");
   revalidatePath("/cargo");

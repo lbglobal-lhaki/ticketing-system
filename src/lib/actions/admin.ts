@@ -1,6 +1,6 @@
 "use server";
 
-import { requireAdmin } from "@/lib/adminAuth";
+import { requireAdmin, requireFullAdmin } from "@/lib/adminAuth";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -41,7 +41,7 @@ export async function createFlightAction(
   _prev: FormActionResult | null,
   formData: FormData,
 ): Promise<FormActionResult> {
-  await requireAdmin();
+  await requireFullAdmin();
 
   const parsed = flightFormSchema.safeParse({
     airline: formData.get("airline"),
@@ -141,7 +141,7 @@ export async function updateFlightAction(
   _prev: FormActionResult | null,
   formData: FormData,
 ): Promise<FormActionResult> {
-  await requireAdmin();
+  await requireFullAdmin();
 
   const id = String(formData.get("id") ?? "");
   if (!id) return formError("Missing flight");
@@ -310,7 +310,7 @@ export async function updateFlightAction(
 
 /** Quick price update for one fare release (one-way or round-trip). */
 export async function updateFarePriceAction(formData: FormData) {
-  await requireAdmin();
+  await requireFullAdmin();
 
   const parsed = z
     .object({
@@ -353,7 +353,7 @@ export async function updateFarePriceAction(formData: FormData) {
  * pricing the reseeded schedule" case) or forced onto every match.
  */
 export async function bulkUpdateFareTierPriceAction(formData: FormData) {
-  await requireAdmin();
+  await requireFullAdmin();
 
   const parsed = z
     .object({
@@ -410,7 +410,7 @@ export async function bulkUpdateFareTierPriceAction(formData: FormData) {
 }
 
 export async function removeFlightAction(formData: FormData) {
-  await requireAdmin();
+  await requireFullAdmin();
   const id = String(formData.get("id") ?? "");
   if (!id) redirect("/admin?error=Missing+flight");
 
@@ -426,7 +426,7 @@ export async function removeFlightAction(formData: FormData) {
 }
 
 export async function restoreFlightAction(formData: FormData) {
-  await requireAdmin();
+  await requireFullAdmin();
   const id = String(formData.get("id") ?? "");
   if (!id) redirect("/admin?error=Missing+flight");
 
@@ -460,7 +460,7 @@ function revalidateFlightPages() {
  * invoice and fare on it stays exactly as it is, so Restore puts it back.
  */
 export async function deleteFlightAction(formData: FormData) {
-  await requireAdmin();
+  await requireFullAdmin();
   const ids = flightIdsFrom(formData);
   if (ids.length === 0) redirect("/admin?tab=flights&error=Missing+flight");
 
@@ -635,5 +635,6 @@ export async function purgeFlightAction(formData: FormData) {
 }
 
 export async function getDefaultFareTemplateAction(cabin: string) {
+  await requireFullAdmin();
   return fareTemplateForCabin(cabin);
 }

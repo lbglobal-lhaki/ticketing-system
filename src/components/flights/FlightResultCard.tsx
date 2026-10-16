@@ -121,6 +121,13 @@ function TripBadge({ flight }: { flight: FlightResultRow }) {
       </span>
     );
   }
+  if (flight.roleLabel === "outbound") {
+    return (
+      <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-sky-900">
+        Outbound
+      </span>
+    );
+  }
   if (flight.roundTripAvailable) {
     return (
       <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-emerald-900">

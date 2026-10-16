@@ -8,6 +8,7 @@ import {
   setCargoPaidAction,
   updateCargoSubmissionAction,
 } from "@/lib/actions/cargo";
+import { sendCargoInvoiceEmailsAction } from "@/lib/actions/cargoEmail";
 import { CargoEmailNotices } from "@/components/CargoEmailNotices";
 import { formatCargoAnswer } from "@/lib/cargo/submit";
 import {
@@ -182,10 +183,12 @@ export function CargoAdminPanel({
   submissions,
   weightOptions,
   ticketTypes,
+  canEditCatalogue = true,
 }: {
   submissions: AdminCargoRow[];
   weightOptions: CargoWeightOptionRow[];
   ticketTypes: TicketTypeChoice[];
+  canEditCatalogue?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -388,7 +391,9 @@ export function CargoAdminPanel({
         />
       ) : (
         <>
-      <CargoTypesAdmin options={weightOptions} ticketTypes={ticketTypes} />
+      {canEditCatalogue ? (
+        <CargoTypesAdmin options={weightOptions} ticketTypes={ticketTypes} />
+      ) : null}
 
       <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -1161,7 +1166,7 @@ function CargoDocumentsWorkspace({
 
           <p className="px-4 pt-3 text-xs text-muted sm:px-5">
             {docTab === "invoice"
-              ? "Uses the current airfare invoice template filled with this cargo booking. We will swap in a cargo-specific invoice soon."
+              ? "Cargo invoice/receipt for this parcel. New website bookings email this to the sender and notify staff automatically. Use Email invoice if you need to send it again."
               : "Cargo declaration for drop-off and clearance."}
           </p>
 
@@ -1181,6 +1186,12 @@ function CargoDocumentsWorkspace({
             >
               Download PDF
             </a>
+            {docTab === "invoice" ? (
+              <EmailCargoInvoiceButton
+                parcelNumber={selected.parcelNumber}
+                hasEmail={Boolean(selected.email)}
+              />
+            ) : null}
             <button
               type="button"
               onClick={onReload}
@@ -1203,5 +1214,47 @@ function CargoDocumentsWorkspace({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function EmailCargoInvoiceButton({
+  parcelNumber,
+  hasEmail,
+}: {
+  parcelNumber: string;
+  hasEmail: boolean;
+}) {
+  const [pending, start] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        disabled={pending}
+        className={btnClass}
+        onClick={() => {
+          setMessage(null);
+          setError(null);
+          start(async () => {
+            const result = await sendCargoInvoiceEmailsAction(parcelNumber);
+            if (result.ok) setMessage(result.message);
+            else setError(result.error);
+          });
+        }}
+      >
+        {pending ? "Sending…" : "Email invoice"}
+      </button>
+      {message ? (
+        <span className="text-xs text-emerald-800">{message}</span>
+      ) : null}
+      {error ? <span className="text-xs text-red-700">{error}</span> : null}
+      {!hasEmail && !message && !error ? (
+        <span className="text-xs text-muted">
+          No sender email on file — staff still get a copy.
+        </span>
+      ) : null}
+    </span>
   );
 }

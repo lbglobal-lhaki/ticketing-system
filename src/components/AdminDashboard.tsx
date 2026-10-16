@@ -106,6 +106,10 @@ import {
 import { Alert } from "@/components/ui/Feedback";
 import { FieldError, labeledControlClass } from "@/components/forms/FieldError";
 import { useStickyAction } from "@/components/forms/useStickyAction";
+import {
+  canAccessAdminTab,
+  type AdminRole,
+} from "@/lib/adminAuth";
 
 const CUSTOM_FLIGHT_VALUE = "__custom__";
 
@@ -624,6 +628,7 @@ export function AdminDashboard({
   deletedRecords,
   analytics,
   settings,
+  adminRole = "admin",
   initialTab,
   savedMessage,
   errorMessage,
@@ -637,6 +642,7 @@ export function AdminDashboard({
   deletedRecords: AdminDeletedRecordRow[];
   analytics: SystemAnalytics;
   settings: AdminSiteSettings;
+  adminRole?: AdminRole;
   initialTab?: Tab;
   savedMessage?: string | null;
   errorMessage?: string | null;
@@ -646,8 +652,13 @@ export function AdminDashboard({
   const searchParams = useSearchParams();
 
   // URL ?tab= is the source of truth so refresh / back always stays put.
-  const tab =
+  const requestedTab =
     parseClientTab(searchParams.get("tab")) ?? initialTab ?? "analytics";
+  const tab = canAccessAdminTab(adminRole, requestedTab)
+    ? requestedTab
+    : adminRole === "admin"
+      ? "analytics"
+      : "bookings";
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const walkInSticky = useStickyAction(createWalkInBookingAction);
@@ -938,13 +949,15 @@ export function AdminDashboard({
       id === "invoices" && unpaidInvoiceCount > 0 ? unpaidInvoiceCount : undefined;
     return NAV_GROUPS.map((group) => ({
       label: group.label,
-      items: group.ids.map((id) => ({
-        id,
-        label: labelFor(id),
-        count: countFor(id),
-      })),
-    }));
-  }, [editing, unpaidInvoiceCount]);
+      items: group.ids
+        .filter((id) => canAccessAdminTab(adminRole, id))
+        .map((id) => ({
+          id,
+          label: labelFor(id),
+          count: countFor(id),
+        })),
+    })).filter((group) => group.items.length > 0);
+  }, [adminRole, editing, unpaidInvoiceCount]);
 
   const pageMeta = PAGE_META[tab];
 
@@ -1049,8 +1062,8 @@ export function AdminDashboard({
     () => [
       {
         value: "",
-        label: "No pairing — sells as one-way only",
-        keywords: "none no pairing one way",
+        label: "No suggested pairing — customers can still pick any later return",
+        keywords: "none no pairing one way suggested",
       },
       ...flights.filter((f) => f.id !== editingId).map((f) => flightOption(f)),
     ],
@@ -1349,11 +1362,11 @@ export function AdminDashboard({
       {savedMessage && <Alert tone="success">{savedMessage}</Alert>}
       {errorMessage && <Alert tone="danger">{errorMessage}</Alert>}
 
-      {tab === "analytics" && (
+      {tab === "analytics" && canAccessAdminTab(adminRole, "analytics") && (
         <SystemAnalyticsSection analytics={analytics} />
       )}
 
-      {tab === "flights" && (
+      {tab === "flights" && canAccessAdminTab(adminRole, "flights") && (
         <section className="space-y-6">
 
           <div>
@@ -1854,7 +1867,7 @@ export function AdminDashboard({
         </section>
       )}
 
-      {tab === "form" && (
+      {tab === "form" && canAccessAdminTab(adminRole, "form") && (
         <section>
           {/* The shell already renders the page heading for this section. */}
           <p className="max-w-2xl text-sm text-muted">
@@ -2036,15 +2049,16 @@ export function AdminDashboard({
                 name="returnLegFlightId"
                 value={partnerFlightId}
                 onChange={setPartnerFlightId}
-                placeholder="No pairing — sells as one-way only"
+                placeholder="No suggested pairing — customers can still pick any later return"
                 searchPlaceholder="Search the return leg…"
                 options={partnerFlightOptions}
               />
               <span className="block text-xs text-muted">
-                Pick the return leg this flight is chartered with. Customers
-                booking this flight will see a &ldquo;Round trip&rdquo; option
-                that auto-attaches the partner — no separate return search.
-                Set this on the earlier-departing (outbound) leg only.
+                Optional suggested return. Customers can still pick any later
+                reverse-route flight on the published schedule (November,
+                December, January, …) — this pairing is only the typical
+                month shown first. Set it on the earlier-departing (outbound)
+                leg.
               </span>
             </label>
 
@@ -3152,10 +3166,13 @@ export function AdminDashboard({
           submissions={cargoSubmissions}
           weightOptions={cargoWeightOptions}
           ticketTypes={ticketTypeChoices}
+          canEditCatalogue={adminRole === "admin"}
         />
       )}
 
-      {tab === "settings" && <SettingsAdminPanel settings={settings} />}
+      {tab === "settings" && canAccessAdminTab(adminRole, "settings") && (
+        <SettingsAdminPanel settings={settings} />
+      )}
 
       {tab === "deleted" && (
         <DeletedRecordsPanel

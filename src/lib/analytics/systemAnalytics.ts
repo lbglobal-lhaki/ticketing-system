@@ -121,6 +121,57 @@ export type SystemAnalytics = {
   }>;
 };
 
+export function emptySystemAnalytics(): SystemAnalytics {
+  const seats = { totalSeats: 0, remainingSeats: 0, bookedSeats: 0 };
+  return {
+    generatedAt: new Date().toISOString(),
+    flights: {
+      total: 0,
+      active: 0,
+      inactive: 0,
+      seatsRemaining: 0,
+      seatsSold: 0,
+      upcoming: 0,
+      economy: seats,
+      business: seats,
+    },
+    flightInventory: [],
+    bookings: {
+      total: 0,
+      confirmed: 0,
+      pendingPayment: 0,
+      cancelled: 0,
+      holdExpired: 0,
+      online: 0,
+      walkIn: 0,
+      ticketsSold: 0,
+    },
+    sales: {
+      revenueCents: 0,
+      pendingCents: 0,
+      paidInvoiceCents: 0,
+      unpaidInvoiceCents: 0,
+      avgTicketCents: 0,
+    },
+    payments: {
+      unpaidInvoices: 0,
+      paidInvoices: 0,
+      bankPendingBookings: 0,
+      cardPaidBookings: 0,
+    },
+    cargo: {
+      total: 0,
+      newCount: 0,
+      reviewed: 0,
+      closed: 0,
+      paid: 0,
+      unpaid: 0,
+    },
+    recentBookings: [],
+    upcomingFlights: [],
+  };
+}
+
 export async function getSystemAnalytics(): Promise<SystemAnalytics> {
   const now = new Date();
 

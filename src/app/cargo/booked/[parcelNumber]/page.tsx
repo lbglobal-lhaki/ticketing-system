@@ -97,6 +97,9 @@ export default async function CargoBookedPage({
               {cargo.quotedCents > 0 && !cargo.paid
                 ? " The freight charge below is locked on this booking."
                 : ""}
+              {shipment.sender.email
+                ? ` We are emailing the invoice and a confirmation to ${shipment.sender.email}.`
+                : ""}
             </p>
 
             <div className="mt-6 rounded-xl border border-line bg-background px-5 py-4">

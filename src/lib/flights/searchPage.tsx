@@ -4,6 +4,7 @@ import { searchWindow } from "@/lib/datetime";
 import { prisma } from "@/lib/db";
 import {
   addDaysIso,
+  buildScheduleDateStrip,
   dayKey,
   groupFlightResults,
   type DateStripDay,
@@ -58,6 +59,36 @@ function partyQuery(adults: number, children: number, infants: number) {
     passengers: String(adults + children),
   });
   return qs.toString();
+}
+
+function roundTripReturnHref(input: {
+  outboundId: string;
+  origin: string;
+  destination: string;
+  outboundDate: string;
+  returnDate?: string;
+  cabinClass: string;
+  adults: number;
+  children: number;
+  infants: number;
+}) {
+  const params = new URLSearchParams(
+    withPartyParams(
+      {
+        origin: input.origin,
+        destination: input.destination,
+        date: input.outboundDate,
+        tripType: "round_trip",
+        outboundId: input.outboundId,
+        cabinClass: input.cabinClass,
+      },
+      input.adults,
+      input.children,
+      input.infants,
+    ),
+  );
+  if (input.returnDate) params.set("returnDate", input.returnDate);
+  return `/?${params.toString()}`;
 }
 
 function withPartyParams(
@@ -351,19 +382,12 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
       isRoundTrip,
     );
     const activeReturnDate = returnDate ?? date;
-    const { windowStart, windowEnd } = searchWindow(activeReturnDate);
     const returns = await prisma.flight.findMany({
       where: {
         active: true,
         origin: destination,
         destination: origin,
-        departureAt: {
-          gte:
-            outbound.arrivalAt > windowStart
-              ? outbound.arrivalAt
-              : windowStart,
-          lte: windowEnd,
-        },
+        departureAt: { gt: outbound.arrivalAt },
       },
       orderBy: { departureAt: "asc" },
       include: {
@@ -386,17 +410,31 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
 
     const priced = returns.flatMap(cabinRowsFor);
 
-    const dayFares = await buildDayFares(
-      priced.map(({ flight, price }) => ({
-        departureAt: flight.departureAt,
-        price,
-      })),
-      activeReturnDate,
-    );
-
+    const fareMap = new Map<
+      string,
+      { lowestFareCents: number | null; flightCount: number }
+    >();
+    for (const row of priced) {
+      if (!row.price.farePriced) continue;
+      const key = dayKey(row.flight.departureAt);
+      const current = fareMap.get(key);
+      const nextCount = (current?.flightCount ?? 0) + 1;
+      const lowest =
+        current?.lowestFareCents == null
+          ? row.price.displayPriceCents
+          : Math.min(current.lowestFareCents, row.price.displayPriceCents);
+      fareMap.set(key, { lowestFareCents: lowest, flightCount: nextCount });
+    }
     const onSelectedDay = priced.filter(
       ({ flight }) => dayKey(flight.departureAt) === activeReturnDate,
     );
+    const highlightDate =
+      onSelectedDay.length > 0
+        ? activeReturnDate
+        : priced[0]
+          ? dayKey(priced[0].flight.departureAt)
+          : activeReturnDate;
+    const dayFares = buildScheduleDateStrip(fareMap, highlightDate);
     const returnRows = onSelectedDay.length > 0 ? onSelectedDay : priced;
 
     const grouped = groupFlightResults(
@@ -473,14 +511,14 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
       children,
       infants,
     );
-    if (returnDate) baseParams.returnDate = returnDate;
+    baseParams.returnDate = highlightDate;
 
     return (
       <FlightResultsClient
         origin={origin}
         destination={destination}
         date={date}
-        returnDate={activeReturnDate}
+        returnDate={highlightDate}
         tripType="round_trip"
         passengers={passengers}
         adults={adults}
@@ -489,14 +527,14 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
         cabinClass={cabinClass}
         allTickets={allTickets}
         summaryTitle="Choose your return"
-        stripDate={activeReturnDate}
+        stripDate={highlightDate}
         dateParam="returnDate"
         showingNearbyDates={onSelectedDay.length === 0 && returnRows.length > 0}
         dayFares={dayFares}
         baseParams={baseParams}
         flights={withTripTotals}
         airports={airports}
-        outboundSummary={`${outbound.airline} ${outbound.flightNumber} · ${airportLabel(outbound.origin)} → ${airportLabel(outbound.destination)} · ${formatFlightTime(outbound.departureAt, outbound.origin)} · ${formatAud(outboundPrice.displayPriceCents)}`}
+        outboundSummary={`${outbound.airline} ${outbound.flightNumber} · ${airportLabel(outbound.origin)} → ${airportLabel(outbound.destination)} · ${formatFlightTime(outbound.departureAt, outbound.origin)} · ${formatAud(outboundPrice.displayPriceCents)}. Choose any later return on the published schedule — November, December, January or another available month.`}
       />
     );
   }
@@ -541,18 +579,26 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
   );
   const displayRows = onSelectedDay.length > 0 ? onSelectedDay : priced;
 
-  // This charter route sells one fixed round-trip pair a month — the fare
-  // step on /flights/[id] offers "Round trip" inline (auto-attaching the
-  // paired return leg), so there's no separate manual return-flight search
-  // to send customers through here, even when they searched "Round trip".
   const partyQs = partyQuery(adults, children, infants);
   const grouped = groupFlightResults(
     displayRows.map(({ flight, cabin, price }) => ({
       flight,
       cabin,
       price,
-      href: `/flights/${flight.id}?${partyQs}&cabinClass=${cabin.cabinClass}`,
-      ctaLabel: "Select",
+      href: isRoundTrip
+        ? roundTripReturnHref({
+            outboundId: flight.id,
+            origin,
+            destination,
+            outboundDate: dayKey(flight.departureAt),
+            returnDate,
+            cabinClass: cabin.cabinClass,
+            adults,
+            children,
+            infants,
+          })
+        : `/flights/${flight.id}?${partyQs}&cabinClass=${cabin.cabinClass}`,
+      ctaLabel: isRoundTrip ? "Choose return" : "Select",
     })),
   ).map((row) =>
     isRoundTrip
@@ -562,19 +608,6 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
         }
       : row,
   );
-
-  // When customers searched round-trip, surface paired charters first so the
-  // fixed return leg is easy to find (manual return picker is secondary).
-  if (isRoundTrip) {
-    grouped.sort((a, b) => {
-      if (a.roundTripAvailable !== b.roundTripAvailable) {
-        return a.roundTripAvailable ? -1 : 1;
-      }
-      return (
-        new Date(a.departureAt).getTime() - new Date(b.departureAt).getTime()
-      );
-    });
-  }
 
   const baseParams: Record<string, string> = withPartyParams(
     {

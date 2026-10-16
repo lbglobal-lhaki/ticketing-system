@@ -159,6 +159,22 @@ export function addDaysIso(date: string, days: number) {
   return d.toISOString().slice(0, 10);
 }
 
+/** One strip cell per published flight day — used for sparse monthly charters. */
+export function buildScheduleDateStrip(
+  days: Map<string, { lowestFareCents: number | null; flightCount: number }>,
+  selectedDate?: string,
+): DateStripDay[] {
+  const keys = new Set(days.keys());
+  if (selectedDate) keys.add(selectedDate);
+  return [...keys]
+    .sort()
+    .map((date) => ({
+      date,
+      lowestFareCents: days.get(date)?.lowestFareCents ?? null,
+      flightCount: days.get(date)?.flightCount ?? 0,
+    }));
+}
+
 export function buildDateStrip(
   centerDate: string,
   dayFares: Map<string, { lowestFareCents: number | null; flightCount: number }>,

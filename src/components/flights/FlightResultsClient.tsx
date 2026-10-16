@@ -71,11 +71,7 @@ export function FlightResultsClient({
   );
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [nonstopOnly, setNonstopOnly] = useState(false);
-  const [tripFilter, setTripFilter] = useState<TripFilter>(() => {
-    if (allTickets) return "all";
-    if (preferRoundTrip) return "round_trip";
-    return "all";
-  });
+  const [tripFilter, setTripFilter] = useState<TripFilter>("all");
 
   const roundTripCount = useMemo(
     () => flights.filter((f) => f.roundTripAvailable).length,
@@ -138,8 +134,9 @@ export function FlightResultsClient({
     return prices.length ? Math.min(...prices) : globalLowestFareCents;
   }, [visible, globalLowestFareCents]);
 
-  // Hide trip filter on the dedicated "choose return" step — every card is a return.
-  const showTripFilter = !outboundSummary;
+  // Hide trip filter on round-trip search: every listed outbound can take any
+  // later reverse-route return, and the return step is all returns.
+  const showTripFilter = !outboundSummary && tripType !== "round_trip";
   const isReturnStep = dateParam === "returnDate";
   const legFrom = isReturnStep ? destination : origin;
   const legTo = isReturnStep ? origin : destination;
@@ -166,7 +163,7 @@ export function FlightResultsClient({
         airports={airports}
         searchParams={baseParams}
         fromPriceCents={filteredLowestFareCents}
-        flightDates={isReturnStep ? undefined : flightDates}
+        flightDates={flightDates}
       />
 
       <TravelNotice />
@@ -232,9 +229,11 @@ export function FlightResultsClient({
               <span className="font-semibold">
                 No flights on {selectedDayLabel(stripDate ?? date)}.
               </span>{" "}
-              Showing the nearest available{" "}
-              {visible.length === 1 ? "flight" : "flights"} instead — check
-              the date on each one, or pick a day with a plane icon above.
+              {isReturnStep
+                ? "Showing every later return on the published schedule. Use the date strip to jump to November, December or another available month."
+                : `Showing the nearest available ${
+                    visible.length === 1 ? "flight" : "flights"
+                  } instead — check the date on each one, or pick a day with a plane icon above.`}
             </p>
           </div>
         ) : null}

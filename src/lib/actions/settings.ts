@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireAdmin } from "@/lib/adminAuth";
+import { requireFullAdmin } from "@/lib/adminAuth";
 import { prisma } from "@/lib/db";
 import {
   failFromUnknown,
@@ -35,7 +35,7 @@ export async function updateSiteSettingsAction(
   _prev: FormActionResult | null,
   formData: FormData,
 ): Promise<FormActionResult> {
-  await requireAdmin();
+  await requireFullAdmin();
 
   const parsed = settingsSchema.safeParse({
     seatWindowAud: formData.get("seatWindowAud") || 0,
@@ -84,7 +84,7 @@ export async function updateCargoRatesAction(
   _prev: FormActionResult | null,
   formData: FormData,
 ): Promise<FormActionResult> {
-  await requireAdmin();
+  await requireFullAdmin();
 
   const parsed = z
     .object({

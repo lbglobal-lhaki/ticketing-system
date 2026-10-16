@@ -1,6 +1,7 @@
 import { getBrand } from "@/lib/branding";
 import type { CargoShipmentSummary } from "@/lib/cargo/parties";
 import { emailLogoImgHtml } from "@/lib/email/inlineLogo";
+import { formatAud } from "@/lib/pricing";
 
 function esc(value: string) {
   return value
@@ -175,4 +176,99 @@ ${brand.agentEmail}`;
     pickupLocation: pickup,
     arrivalNote: arrival,
   };
+}
+
+export function cargoCustomerBookingEmail(input: {
+  shipment: CargoShipmentSummary;
+  quotedCents: number;
+  paid: boolean;
+}) {
+  const brand = getBrand();
+  const { shipment } = input;
+  const amount =
+    input.quotedCents > 0
+      ? `${formatAud(input.quotedCents)}${input.paid ? " (paid)" : " due"}`
+      : "Quoted on this booking";
+  const greeting = shipment.sender.name || "Customer";
+  const subject = `Cargo booking ${shipment.parcelNumber} — invoice attached`;
+  const html = `
+  <div style="font-family:Georgia,serif;color:#0F172A;line-height:1.55;max-width:640px">
+    <p style="margin:0 0 12px">${emailLogoImgHtml(brand.shortName)}</p>
+    <p style="color:#0b2c5a;letter-spacing:0.12em;text-transform:uppercase;font-size:12px">${esc(brand.issuingAgent)} · Cargo</p>
+    <h1 style="font-size:22px;margin:8px 0 16px">Your cargo booking is confirmed</h1>
+    <p>Dear ${esc(greeting)},</p>
+    <p>Thank you. We have received your cargo booking. Your invoice is attached to this email — quote parcel <strong>${esc(shipment.parcelNumber)}</strong> at drop-off and when you pay.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin:8px 0 16px">
+      ${line("Parcel number", shipment.parcelNumber)}
+      ${line("Route", `${shipment.originLabel} → ${shipment.destinationLabel}`)}
+      ${line("Flight / timing", shipment.flightDate)}
+      ${line("Packages", shipment.packages)}
+      ${line("Weight", shipment.weight ? `${shipment.weight} kg` : "")}
+      ${line("Amount", amount)}
+    </table>
+    <p>If any detail is wrong, reply to this email or call ${esc(brand.agentPhonePrimary)}.</p>
+    <p>Kind regards,<br/>${esc(brand.reservationsTeam)}<br/>${esc(brand.issuingAgent)}<br/>
+    ${esc(brand.agentEmail)}</p>
+  </div>`;
+  const text = `Dear ${greeting},
+
+Your cargo booking is confirmed. Invoice attached.
+
+Parcel number: ${shipment.parcelNumber}
+Route: ${shipment.originLabel} → ${shipment.destinationLabel}
+${textLine("Flight / timing", shipment.flightDate)}${textLine("Packages", shipment.packages)}${textLine("Weight", shipment.weight ? `${shipment.weight} kg` : "")}Amount: ${amount}
+
+Kind regards,
+${brand.reservationsTeam}
+${brand.issuingAgent}
+${brand.agentEmail}`;
+
+  return {
+    subject,
+    html,
+    text,
+    toEmail: shipment.sender.email,
+    toName: shipment.sender.name,
+  };
+}
+
+export function cargoStaffBookingEmail(input: {
+  shipment: CargoShipmentSummary;
+  quotedCents: number;
+  paid: boolean;
+}) {
+  const brand = getBrand();
+  const { shipment } = input;
+  const amount =
+    input.quotedCents > 0
+      ? `${formatAud(input.quotedCents)}${input.paid ? " paid" : " unpaid"}`
+      : "No amount locked";
+  const subject = `New cargo booking ${shipment.parcelNumber} — ${shipment.originLabel} to ${shipment.destinationLabel}`;
+  const html = `
+  <div style="font-family:Georgia,serif;color:#0F172A;line-height:1.55;max-width:640px">
+    <p style="color:#0b2c5a;letter-spacing:0.12em;text-transform:uppercase;font-size:12px">${esc(brand.issuingAgent)} · Cargo desk</p>
+    <h1 style="font-size:20px;margin:8px 0 16px">New cargo booking</h1>
+    <p>A customer just booked cargo on the website. Invoice was emailed to the sender.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin:8px 0 16px">
+      ${line("Parcel number", shipment.parcelNumber)}
+      ${line("Route", `${shipment.originLabel} → ${shipment.destinationLabel}`)}
+      ${line("Flight / timing", shipment.flightDate)}
+      ${line("Packages", shipment.packages)}
+      ${line("Weight", shipment.weight ? `${shipment.weight} kg` : "")}
+      ${line("Amount", amount)}
+      ${line("Sender", shipment.sender.name)}
+      ${line("Sender email", shipment.sender.email)}
+      ${line("Sender phone", shipment.sender.phone)}
+      ${line("Receiver", shipment.receiver.name)}
+      ${line("Receiver phone", shipment.receiver.phone)}
+    </table>
+  </div>`;
+  const text = `New cargo booking ${shipment.parcelNumber}
+
+Route: ${shipment.originLabel} → ${shipment.destinationLabel}
+${textLine("Flight / timing", shipment.flightDate)}${textLine("Packages", shipment.packages)}${textLine("Weight", shipment.weight ? `${shipment.weight} kg` : "")}Amount: ${amount}
+Sender: ${shipment.sender.name} ${shipment.sender.email} ${shipment.sender.phone}
+Receiver: ${shipment.receiver.name} ${shipment.receiver.phone}
+`;
+  return { subject, html, text };
 }
