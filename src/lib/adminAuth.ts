@@ -1,38 +1,17 @@
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import type { AdminRole } from "@/lib/adminAccess";
+
+export type { AdminRole, AdminTab } from "@/lib/adminAccess";
+export {
+  canAccessAdminTab,
+  homeTabForRole,
+  SUB_ADMIN_TABS,
+  tabsForRole,
+} from "@/lib/adminAccess";
 
 export const ADMIN_COOKIE = "ts_admin";
-
-export type AdminRole = "admin" | "sub_admin";
-
-export type AdminTab =
-  | "analytics"
-  | "flights"
-  | "form"
-  | "bookings"
-  | "invoices"
-  | "cargo"
-  | "settings"
-  | "deleted";
-
-export const SUB_ADMIN_TABS: readonly AdminTab[] = [
-  "bookings",
-  "invoices",
-  "cargo",
-  "deleted",
-];
-
-const ALL_TABS: readonly AdminTab[] = [
-  "analytics",
-  "flights",
-  "form",
-  "bookings",
-  "invoices",
-  "cargo",
-  "settings",
-  "deleted",
-];
 
 function adminSecret() {
   return process.env.ADMIN_PASSWORD?.trim() || "";
@@ -61,19 +40,6 @@ export function isSubAdminPasswordConfigured() {
   const sub = subAdminSecret();
   const admin = adminSecret();
   return Boolean(sub) && sub !== admin;
-}
-
-export function canAccessAdminTab(role: AdminRole, tab: AdminTab) {
-  if (role === "admin") return true;
-  return (SUB_ADMIN_TABS as readonly string[]).includes(tab);
-}
-
-export function homeTabForRole(role: AdminRole): AdminTab {
-  return role === "admin" ? "flights" : "bookings";
-}
-
-export function tabsForRole(role: AdminRole): readonly AdminTab[] {
-  return role === "admin" ? ALL_TABS : SUB_ADMIN_TABS;
 }
 
 /** Signed opaque session: token.role.hmac — never stores the password. */

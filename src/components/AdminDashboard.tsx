@@ -109,7 +109,7 @@ import { useStickyAction } from "@/components/forms/useStickyAction";
 import {
   canAccessAdminTab,
   type AdminRole,
-} from "@/lib/adminAuth";
+} from "@/lib/adminAccess";
 
 const CUSTOM_FLIGHT_VALUE = "__custom__";
 
