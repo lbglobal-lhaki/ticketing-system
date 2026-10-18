@@ -4,6 +4,7 @@ import {
   extractCargoShipment,
   type CargoAnswers,
 } from "@/lib/cargo/parties";
+import { renderCargoConfirmationHtml } from "@/lib/documents/cargoConfirmation";
 import {
   renderCargoInvoiceHtml,
   type CargoInvoiceSource,
@@ -45,20 +46,28 @@ function cargoStaffRecipients(customerEmail: string) {
   return [...unique];
 }
 
-async function invoiceAttachment(
+async function pdfAttachment(
   row: CargoInvoiceSource,
+  kind: "invoice" | "confirmation",
 ): Promise<EmailAttachment> {
-  const html = renderCargoInvoiceHtml(row);
+  const html =
+    kind === "confirmation"
+      ? renderCargoConfirmationHtml(row)
+      : renderCargoInvoiceHtml(row);
+  const stem =
+    kind === "confirmation"
+      ? `Cargo-Confirmation-${row.parcelNumber}`
+      : `Cargo-Invoice-${row.parcelNumber}`;
   try {
     return {
-      filename: `Cargo-Invoice-${row.parcelNumber}.pdf`,
+      filename: `${stem}.pdf`,
       content: await htmlToPdf(html, cargoInvoicePdfOptions()),
       contentType: "application/pdf",
     };
   } catch (error) {
-    console.error("[email] cargo invoice PDF failed; attaching HTML", error);
+    console.error(`[email] cargo ${kind} PDF failed; attaching HTML`, error);
     return {
-      filename: `Cargo-Invoice-${row.parcelNumber}.html`,
+      filename: `${stem}.html`,
       content: html,
       contentType: "text/html",
     };
@@ -107,7 +116,10 @@ export async function sendCargoBookingEmails(
     submitterName: row.submitterName,
     answers: asAnswers(row.answers),
   });
-  const invoice = await invoiceAttachment(row);
+  const [invoice, confirmation] = await Promise.all([
+    pdfAttachment(row, "invoice"),
+    pdfAttachment(row, "confirmation"),
+  ]);
   const customerTpl = cargoCustomerBookingEmail({
     shipment,
     quotedCents: row.quotedCents,
@@ -135,7 +147,7 @@ export async function sendCargoBookingEmails(
         html: customerTpl.html,
         text: customerTpl.text,
         mailbox: "accounts",
-        attachments: [invoice],
+        attachments: [confirmation, invoice],
       }).then((result) => ({ role: "customer" as const, result })),
     );
   }

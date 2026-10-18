@@ -53,7 +53,7 @@ export type AdminCargoRow = {
 type AnswerPair = { key: string; value: string };
 type Mode = "closed" | "view" | "edit" | "create" | "emails";
 type CargoSection = "bookings" | "documents";
-type CargoDocTab = "declaration" | "invoice";
+type CargoDocTab = "declaration" | "invoice" | "confirmation";
 
 function cargoDocUrl(
   id: string,
@@ -63,7 +63,9 @@ function cargoDocUrl(
   const base =
     tab === "invoice"
       ? `/documents/cargo/${id}/invoice`
-      : `/documents/cargo/${id}`;
+      : tab === "confirmation"
+        ? `/documents/cargo/${id}/confirmation`
+        : `/documents/cargo/${id}`;
   const q = new URLSearchParams();
   if (opts?.preview) q.set("preview", String(opts.preview));
   if (opts?.download) q.set("download", "1");
@@ -1162,12 +1164,25 @@ function CargoDocumentsWorkspace({
             >
               Invoice
             </button>
+            <button
+              type="button"
+              onClick={() => onDocTab("confirmation")}
+              className={`px-3 py-2 text-sm font-semibold transition ${
+                docTab === "confirmation"
+                  ? "bg-accent-deep text-white"
+                  : "border border-line text-muted hover:border-accent hover:text-foreground"
+              }`}
+            >
+              Confirmation
+            </button>
           </div>
 
           <p className="px-4 pt-3 text-xs text-muted sm:px-5">
             {docTab === "invoice"
-              ? "Cargo invoice/receipt for this parcel. New website bookings email this to the sender and notify staff automatically. Use Email invoice if you need to send it again."
-              : "Cargo declaration for drop-off and clearance."}
+              ? "Cargo invoice/receipt for this parcel — charges, payment details, and the goods table."
+              : docTab === "confirmation"
+                ? "Booking confirmation pack: cover letter, invoice, and customer terms. This is what customers are emailed."
+                : "Cargo declaration for drop-off and clearance."}
           </p>
 
           <div className="flex flex-wrap gap-2 px-4 py-3 sm:px-5">
@@ -1186,7 +1201,7 @@ function CargoDocumentsWorkspace({
             >
               Download PDF
             </a>
-            {docTab === "invoice" ? (
+            {docTab === "invoice" || docTab === "confirmation" ? (
               <EmailCargoInvoiceButton
                 parcelNumber={selected.parcelNumber}
                 hasEmail={Boolean(selected.email)}
@@ -1206,7 +1221,9 @@ function CargoDocumentsWorkspace({
             title={
               docTab === "invoice"
                 ? "Cargo invoice preview"
-                : "Cargo document preview"
+                : docTab === "confirmation"
+                  ? "Cargo confirmation preview"
+                  : "Cargo document preview"
             }
             src={cargoDocUrl(selected.id, docTab, { preview: previewBust })}
             className="h-[70svh] w-full border-t border-line bg-white"
@@ -1244,7 +1261,7 @@ function EmailCargoInvoiceButton({
           });
         }}
       >
-        {pending ? "Sending…" : "Email invoice"}
+        {pending ? "Sending…" : "Email confirmation"}
       </button>
       {message ? (
         <span className="text-xs text-emerald-800">{message}</span>

@@ -189,15 +189,18 @@ export function cargoCustomerBookingEmail(input: {
     input.quotedCents > 0
       ? `${formatAud(input.quotedCents)}${input.paid ? " (paid)" : " due"}`
       : "Quoted on this booking";
-  const greeting = shipment.sender.name || "Customer";
-  const subject = `Cargo booking ${shipment.parcelNumber} — invoice attached`;
+  const greeting = shipment.sender.name || "Valued Customer";
+  const subject = `Cargo booking confirmation ${shipment.parcelNumber}`;
+  const lead = input.paid
+    ? "Thank you for choosing L&amp;B Global Cargo Services. We have successfully received your payment, and your cargo booking is now confirmed for our upcoming chartered flight. Your Cargo Booking Confirmation/Receipt is attached to this email."
+    : "Thank you for choosing L&amp;B Global Cargo Services. We have received your cargo booking for our upcoming chartered flight. Your Cargo Booking Confirmation/Receipt is attached to this email. If a balance is due, please follow the payment instructions on the invoice.";
   const html = `
   <div style="font-family:Georgia,serif;color:#0F172A;line-height:1.55;max-width:640px">
     <p style="margin:0 0 12px">${emailLogoImgHtml(brand.shortName)}</p>
     <p style="color:#0b2c5a;letter-spacing:0.12em;text-transform:uppercase;font-size:12px">${esc(brand.issuingAgent)} · Cargo</p>
-    <h1 style="font-size:22px;margin:8px 0 16px">Your cargo booking is confirmed</h1>
     <p>Dear ${esc(greeting)},</p>
-    <p>Thank you. We have received your cargo booking. Your invoice is attached to this email — quote parcel <strong>${esc(shipment.parcelNumber)}</strong> at drop-off and when you pay.</p>
+    <p>${lead}</p>
+    <p>Please review all cargo details carefully, including sender and receiver contact details, cargo route, flight/dispatch date, total weight, number of packages, cargo description and booking/reference number. If you notice any incorrect information, please contact us immediately so we can update the details before cargo acceptance and departure.</p>
     <table style="width:100%;border-collapse:collapse;font-size:14px;margin:8px 0 16px">
       ${line("Parcel number", shipment.parcelNumber)}
       ${line("Route", `${shipment.originLabel} → ${shipment.destinationLabel}`)}
@@ -206,21 +209,30 @@ export function cargoCustomerBookingEmail(input: {
       ${line("Weight", shipment.weight ? `${shipment.weight} kg` : "")}
       ${line("Amount", amount)}
     </table>
-    <p>If any detail is wrong, reply to this email or call ${esc(brand.agentPhonePrimary)}.</p>
-    <p>Kind regards,<br/>${esc(brand.reservationsTeam)}<br/>${esc(brand.issuingAgent)}<br/>
+    <p><strong>Important Cargo Reminders</strong></p>
+    <ul>
+      <li>Please ensure all items are properly packed, sealed, labelled, and ready for transport.</li>
+      <li>The sender is responsible for providing an accurate description of all items contained in the package.</li>
+      <li>Please do not include prohibited, dangerous, restricted, undeclared, or unlawful goods.</li>
+      <li>All cargo is subject to aviation security screening, customs and biosecurity requirements.</li>
+    </ul>
+    <p>Please keep your Cargo Booking Reference and payment receipt for your records. For any questions, reply to this email or call ${esc(brand.agentPhonePrimary)} before the cargo acceptance deadline.</p>
+    <p>Kind regards,<br/>L&amp;B Global<br/>Chartered Flight &amp; Cargo Team<br/>
     ${esc(brand.agentEmail)}</p>
   </div>`;
   const text = `Dear ${greeting},
 
-Your cargo booking is confirmed. Invoice attached.
+${input.paid
+    ? "Thank you for choosing L&B Global Cargo Services. We have successfully received your payment, and your cargo booking is now confirmed. Your Cargo Booking Confirmation/Receipt is attached."
+    : "Thank you for choosing L&B Global Cargo Services. We have received your cargo booking. Your Cargo Booking Confirmation/Receipt is attached. If a balance is due, please follow the payment instructions on the invoice."}
 
 Parcel number: ${shipment.parcelNumber}
 Route: ${shipment.originLabel} → ${shipment.destinationLabel}
 ${textLine("Flight / timing", shipment.flightDate)}${textLine("Packages", shipment.packages)}${textLine("Weight", shipment.weight ? `${shipment.weight} kg` : "")}Amount: ${amount}
 
 Kind regards,
-${brand.reservationsTeam}
-${brand.issuingAgent}
+L&B Global
+Chartered Flight & Cargo Team
 ${brand.agentEmail}`;
 
   return {
@@ -248,7 +260,7 @@ export function cargoStaffBookingEmail(input: {
   <div style="font-family:Georgia,serif;color:#0F172A;line-height:1.55;max-width:640px">
     <p style="color:#0b2c5a;letter-spacing:0.12em;text-transform:uppercase;font-size:12px">${esc(brand.issuingAgent)} · Cargo desk</p>
     <h1 style="font-size:20px;margin:8px 0 16px">New cargo booking</h1>
-    <p>A customer just booked cargo on the website. Invoice was emailed to the sender.</p>
+    <p>A customer just booked cargo on the website. The booking confirmation and invoice were emailed to the sender.</p>
     <table style="width:100%;border-collapse:collapse;font-size:14px;margin:8px 0 16px">
       ${line("Parcel number", shipment.parcelNumber)}
       ${line("Route", `${shipment.originLabel} → ${shipment.destinationLabel}`)}

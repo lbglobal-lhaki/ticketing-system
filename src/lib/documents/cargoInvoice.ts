@@ -123,7 +123,7 @@ function flightDateLabel(date: Date | null | undefined, fallback: string) {
   }).format(date);
 }
 
-function headerDataUri() {
+export function headerDataUri() {
   const filePath = path.join(
     process.cwd(),
     "public",
@@ -245,7 +245,7 @@ export function cargoToInvoiceData(row: CargoInvoiceSource): BookingDocumentData
   };
 }
 
-function headerHtml(headerUri: string) {
+export function headerHtml(headerUri: string) {
   if (headerUri) {
     return `<div class="brand"><img src="${headerUri}" alt="L&amp;B Global · Drukair" /></div>`;
   }
@@ -278,7 +278,12 @@ function chargeRow(label: string, cents: number, strong = false) {
   return `<div class="charge${strong ? " strong" : ""}"><span>${esc(label)}</span><span class="amt">${esc(money(cents))}</span></div>`;
 }
 
-export function renderCargoInvoiceHtml(row: CargoInvoiceSource) {
+export type CargoInvoiceLayout = "standalone" | "rates";
+
+export function renderCargoInvoiceHtml(
+  row: CargoInvoiceSource,
+  layout: CargoInvoiceLayout = "standalone",
+) {
   const answers = asAnswers(row.answers);
   const shipment = extractCargoShipment({
     id: row.id,
@@ -340,10 +345,90 @@ export function renderCargoInvoiceHtml(row: CargoInvoiceSource) {
       <td>${esc(rate.aud)}</td>
     </tr>`,
   ).join("");
+  const showRates = layout === "rates";
+  const ratesTable = showRates
+    ? `<table class="rates">
+        <thead>
+          <tr><th colspan="3">CARGO RATES</th></tr>
+          <tr>
+            <th>WEIGHT</th>
+            <th>BHUTAN RATE</th>
+            <th>APPROX. AUD RATE</th>
+          </tr>
+        </thead>
+        <tbody>${rateRows}</tbody>
+      </table>`
+    : "";
+  const bank = getBankTransferDetails();
+  const proofEmail =
+    process.env.BRAND_PAYMENT_PROOF_EMAIL?.trim() ||
+    "accounts@lbglobal.com.au";
+  const paymentBlock =
+    layout === "standalone"
+      ? `<section class="payinfo">
+        <h3>Payment Information</h3>
+        ${
+          bank
+            ? `<p>Account Name :${esc(bank.accountName)}</p>
+        <p>Bank:${esc(bank.bankName)}</p>
+        <p>BSB:${esc(bank.bsb)}</p>
+        <p>Account no. :${esc(bank.accountNumber)}</p>
+        <p>Swift Code:${esc(bank.swiftCode)}</p>
+        <p>Bank Address:${esc(bank.bankAddress)}</p>`
+            : ""
+        }
+        <p style="margin-top:6px"><strong>Reference:</strong> Invoice Number / Sender Name</p>
+        <p>Please use Invoice Number / Sender Name as the payment reference.</p>
+        <p class="note">${
+          row.paid
+            ? "This invoice has been paid."
+            : `Transaction instructions: This invoice is unpaid. After you transfer the funds, email a screenshot of the payment to ${esc(proofEmail)} so your booking can be confirmed.`
+        }</p>
+      </section>`
+    : "";
 
   const blankLines = Array.from({ length: 15 }, () => "<tr><td colspan=\"4\"></td></tr>").join(
     "",
   );
+  const goodsPage =
+    layout === "standalone"
+      ? `<article class="sheet sheet-2">
+    ${headerHtml(headerUri)}
+    <div class="pad">
+      <h1>CARGO DETAILS</h1>
+      <table class="goods">
+        <thead>
+          <tr>
+            <th class="no">NO</th>
+            <th>DESCRIPTION OF GOODS</th>
+            <th class="qty">QTY</th>
+            <th class="val">DECLARED VALUE</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="fill">
+            <td>1</td>
+            <td>${esc(description)}</td>
+            <td>${esc(pieces)}</td>
+            <td>${esc(declaredValue)}</td>
+          </tr>
+          ${blankLines}
+        </tbody>
+      </table>
+    </div>
+    <footer class="foot">
+      <div class="rule"></div>
+      <div class="contacts">
+        <div class="item">
+          <span class="dot">${ICON_PHONE}</span>
+          <span class="phones">+61 424 919 833 | +61 451 106 077<br>+975 1756 6856 | +975 7778 1399</span>
+        </div>
+        <div class="item"><span class="dot">${ICON_GLOBE}</span>www.lbglobal.com.au</div>
+        <div class="item"><span class="dot">${ICON_MAIL}</span>ticketing@lbglobal.com.au</div>
+      </div>
+    </footer>
+  </article>`
+      : "";
 
   return `<!DOCTYPE html>
 <html lang="en-AU">
@@ -438,6 +523,12 @@ export function renderCargoInvoiceHtml(row: CargoInvoiceSource) {
       margin-top: 7mm; display: flex; justify-content: space-between;
       align-items: center; font-size: 12.5px; font-weight: 700; gap: 12px;
     }
+    .payinfo {
+      margin-top: 7mm; font-size: 12px; line-height: 1.5; color: #111;
+    }
+    .payinfo h3 { margin: 0 0 4px; font-size: 13.5px; font-weight: 800; }
+    .payinfo p { margin: 0 0 2px; }
+    .payinfo .note { margin-top: 6px; font-size: 11.5px; line-height: 1.45; }
     .modes { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
     .tick {
       display: inline-flex; align-items: center; justify-content: center;
@@ -472,6 +563,15 @@ export function renderCargoInvoiceHtml(row: CargoInvoiceSource) {
     }
     .dot svg { display: block; }
     .phones { line-height: 1.35; }
+    .letter-meta { font-size: 13.5px; font-weight: 700; margin: 3mm 0 5mm; line-height: 1.55; }
+    .letter p { font-size: 12.4px; line-height: 1.5; margin: 0 0 3.2mm; }
+    .letter h2 { font-size: 14px; margin: 3.5mm 0 2mm; }
+    .letter ul { margin: 0 0 3.5mm; padding-left: 5mm; }
+    .letter li { font-size: 12.4px; line-height: 1.45; margin: 0 0 1.4mm; }
+    .terms h1 { font-size: 22px; margin-top: 7mm; }
+    .terms h2 { font-size: 13px; margin: 3.2mm 0 1.4mm; }
+    .terms p, .terms li { font-size: 11.6px; line-height: 1.45; margin: 0 0 2.2mm; }
+    .terms ul { margin: 0 0 2.5mm; padding-left: 5mm; }
     @media print {
       html, body { background: #fff; }
       .sheet { margin: 0; box-shadow: none; }
@@ -514,17 +614,7 @@ export function renderCargoInvoiceHtml(row: CargoInvoiceSource) {
           <div><span class="k">Declared Value:</span> ${esc(declaredValue)}</div>
         </div>
       </section>
-      <table class="rates">
-        <thead>
-          <tr><th colspan="3">CARGO RATES</th></tr>
-          <tr>
-            <th>WEIGHT</th>
-            <th>BHUTAN RATE</th>
-            <th>APPROX. AUD RATE</th>
-          </tr>
-        </thead>
-        <tbody>${rateRows}</tbody>
-      </table>
+      ${ratesTable}
       <section class="summary">
         <h2>CHARGES SUMMARY:</h2>
         ${chargeRow("Cargo/Freight Charge", freight)}
@@ -546,44 +636,10 @@ export function renderCargoInvoiceHtml(row: CargoInvoiceSource) {
         </div>
         <div>Reference: ${esc(row.parcelNumber)}</div>
       </div>
+      ${paymentBlock}
     </div>
   </article>
-  <article class="sheet sheet-2">
-    ${headerHtml(headerUri)}
-    <div class="pad">
-      <h1>CARGO DETAILS</h1>
-      <table class="goods">
-        <thead>
-          <tr>
-            <th class="no">NO</th>
-            <th>DESCRIPTION OF GOODS</th>
-            <th class="qty">QTY</th>
-            <th class="val">DECLARED VALUE</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr class="fill">
-            <td>1</td>
-            <td>${esc(description)}</td>
-            <td>${esc(pieces)}</td>
-            <td>${esc(declaredValue)}</td>
-          </tr>
-          ${blankLines}
-        </tbody>
-      </table>
-    </div>
-    <footer class="foot">
-      <div class="rule"></div>
-      <div class="contacts">
-        <div class="item">
-          <span class="dot">${ICON_PHONE}</span>
-          <span class="phones">+61 424 919 833 | +61 451 106 077<br>+975 1756 6856 | +975 7778 1399</span>
-        </div>
-        <div class="item"><span class="dot">${ICON_GLOBE}</span>www.lbglobal.com.au</div>
-        <div class="item"><span class="dot">${ICON_MAIL}</span>ticketing@lbglobal.com.au</div>
-      </div>
-    </footer>
-  </article>
+  ${goodsPage}
 </body>
 </html>`;
 }
