@@ -1,3 +1,4 @@
+import { canIssueCargoConfirmation } from "@/lib/cargo/lifecycle";
 import {
   extractCargoShipment,
   type CargoAnswers,
@@ -99,9 +100,8 @@ function letterArticle(row: CargoInvoiceSource) {
     shipment.sender.name || row.submitterName || "Valued Customer";
   const to = shipment.sender.email || row.email || "";
   const date = longDate(row.submittedAt || row.createdAt);
-  const paidLead = row.paid
-    ? "Thank you for choosing L&B Global Cargo Services. We have successfully received your payment, and your cargo booking is now confirmed for our upcoming chartered flight. Your Cargo Booking Confirmation/Receipt is attached to this email."
-    : "Thank you for choosing L&B Global Cargo Services. We have received your cargo booking for our upcoming chartered flight. Your Cargo Booking Confirmation/Receipt is attached to this email. If a balance is due, please follow the payment instructions on the invoice.";
+  const paidLead =
+    "Thank you for choosing L&B Global Cargo Services. We have successfully received your payment, and your cargo booking is now confirmed for our upcoming chartered flight. Your Cargo Booking Confirmation/Receipt is attached to this email.";
 
   return `<article class="sheet letter">
     ${headerHtml(headerDataUri())}
@@ -159,6 +159,18 @@ function termsArticles() {
 
 /** Cover letter + rates invoice page + terms — matches Cargo Booking Confirmation.pdf */
 export function renderCargoConfirmationHtml(row: CargoInvoiceSource) {
+  if (
+    !canIssueCargoConfirmation({
+      paid: row.paid,
+      paymentStatus: row.paymentStatus || (row.paid ? "paid" : "unpaid"),
+      bookingStatus:
+        row.bookingStatus || (row.paid ? "confirmed" : "pending_payment"),
+    })
+  ) {
+    throw new Error(
+      "Official cargo confirmation cannot be generated until payment is verified",
+    );
+  }
   const invoiceDoc = renderCargoInvoiceHtml(row, "rates");
   return invoiceDoc
     .replace(

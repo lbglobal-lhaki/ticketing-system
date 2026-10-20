@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/adminAuth";
 import { extractCargoShipment, type CargoAnswers } from "@/lib/cargo/parties";
 import { prisma } from "@/lib/db";
+import { processCargoLifecycleEvent } from "@/lib/cargo/notifications";
 import { cargoNotificationEmail } from "@/lib/email/cargoTemplates";
-import { sendCargoBookingEmails } from "@/lib/email/cargoMail";
 import { sendEmail } from "@/lib/email/send";
 import { z } from "zod";
 
@@ -331,26 +331,83 @@ export async function listCargoEmailNoticesAction(cargoId: string) {
   return rows.map(serializeNotice);
 }
 
-/** Re-send the cargo invoice to the customer and a staff acknowledgement. */
+/** Re-send the cargo invoice / acknowledgement. Never sends confirmation. */
 export async function sendCargoInvoiceEmailsAction(parcelNumber: string) {
   await requireAdmin();
-  const result = await sendCargoBookingEmails(parcelNumber);
+  const result = await processCargoLifecycleEvent(
+    parcelNumber,
+    "BOOKING_CREATED",
+    { forceResend: true },
+  );
   if (!result.ok) {
     return {
       ok: false as const,
       error: result.error || "Could not send cargo invoice emails",
     };
   }
-  const parts: string[] = [];
-  if (result.customerSent) parts.push("customer invoice");
-  if (result.staffSent > 0) {
-    parts.push(
-      `staff acknowledgement${result.staffSent > 1 ? ` (${result.staffSent})` : ""}`,
-    );
+  revalidatePath("/admin");
+  return {
+    ok: true as const,
+    message: "Acknowledgement and invoice sent.",
+  };
+}
+
+/** Official confirmation — refused unless payment is verified. */
+export async function sendCargoConfirmationEmailsAction(parcelNumber: string) {
+  await requireAdmin();
+  const row = await prisma.cargoSubmission.findUnique({
+    where: { parcelNumber },
+    select: { paid: true, paymentStatus: true, bookingStatus: true },
+  });
+  if (!row) {
+    return { ok: false as const, error: "Cargo booking not found" };
+  }
+  if (
+    !row.paid ||
+    row.paymentStatus !== "paid" ||
+    row.bookingStatus !== "confirmed"
+  ) {
+    return {
+      ok: false as const,
+      error: "Official confirmation can only be sent after payment is verified",
+    };
+  }
+  const result = await processCargoLifecycleEvent(
+    parcelNumber,
+    "PAYMENT_VERIFIED",
+    { forceResend: true },
+  );
+  if (!result.ok) {
+    return {
+      ok: false as const,
+      error: result.error || "Could not send cargo confirmation",
+    };
   }
   revalidatePath("/admin");
   return {
     ok: true as const,
-    message: `Sent ${parts.join(" and ")}.`,
+    message: "Booking confirmation sent.",
+  };
+}
+
+export async function retryCargoNotificationsAction(parcelNumber: string) {
+  await requireAdmin();
+  const result = await processCargoLifecycleEvent(
+    parcelNumber,
+    "NOTIFICATION_FAILED",
+  );
+  if (!result.ok) {
+    return {
+      ok: false as const,
+      error: result.error || "Could not retry notifications",
+    };
+  }
+  revalidatePath("/admin");
+  return {
+    ok: true as const,
+    message:
+      result.sent > 0
+        ? "Failed notifications were retried."
+        : "No failed notifications to retry.",
   };
 }

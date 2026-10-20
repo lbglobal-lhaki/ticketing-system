@@ -277,6 +277,16 @@ export default async function AdminPage({
               departureAt: true,
             },
           },
+          notifications: {
+            select: {
+              kind: true,
+              status: true,
+              lastError: true,
+              sentAt: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: "desc" },
+          },
         },
       }),
       prisma.deletedRecord.findMany({
@@ -353,7 +363,13 @@ export default async function AdminPage({
       "Weight option hidden — existing bookings still show it.",
     "settings-updated": "Pricing and capacity settings saved.",
     "cargo-paid": "Cargo marked as paid.",
+    "cargo-confirmed":
+      "Payment verified. Official booking confirmation is being emailed.",
+    "cargo-payment-recorded":
+      "Payment recorded. Confirmation is sent only when the invoice is paid in full.",
     "cargo-unpaid": "Cargo marked as unpaid.",
+    "cargo-cancelled": "Cargo booking cancelled.",
+    "cargo-reopened": "Cargo booking reopened.",
     "deleted-record-purged":
       "Entry purged permanently — freed from the database.",
     "deleted-records-purged":
@@ -595,10 +611,18 @@ export default async function AdminPage({
                       string | number | boolean | string[]
                     >)
                   : {};
+              const ack = row.notifications.find(
+                (n) => n.kind === "acknowledgement",
+              );
+              const conf = row.notifications.find(
+                (n) => n.kind === "confirmation",
+              );
               return {
                 id: row.id,
                 parcelNumber: row.parcelNumber,
                 status: row.status,
+                bookingStatus: row.bookingStatus,
+                paymentStatus: row.paymentStatus,
                 paid: row.paid,
                 paidAt: row.paidAt?.toISOString() ?? null,
                 submitterName: row.submitterName,
@@ -608,6 +632,16 @@ export default async function AdminPage({
                 weightKg: row.weightKg,
                 pieces: row.pieces,
                 quotedCents: row.quotedCents,
+                freightCents: row.freightCents,
+                gstCents: row.gstCents,
+                paidAmountCents: row.paidAmountCents,
+                paymentMethod: row.paymentMethod,
+                paymentReference: row.paymentReference,
+                paidVerifiedBy: row.paidVerifiedBy,
+                acknowledgementStatus: ack?.status ?? null,
+                acknowledgementError: ack?.lastError ?? null,
+                confirmationStatus: conf?.status ?? null,
+                confirmationError: conf?.lastError ?? null,
                 productName: row.productName,
                 flightLabel: row.flight
                   ? `${row.flight.airline} ${row.flight.flightNumber} · ${row.flight.origin}→${row.flight.destination} · ${row.flight.departureAt.toISOString().slice(0, 10)}`

@@ -15,6 +15,7 @@ import {
   CARGO_RESTRICTED,
 } from "@/lib/cargo/bookingForm";
 import { formatKg } from "@/lib/cargo/capacity";
+import { priceCargoCharges } from "@/lib/cargo/gst";
 import { formatAud } from "@/lib/pricing";
 import {
   optionFitsPayload,
@@ -136,12 +137,19 @@ function CheckGroup({
 export function CargoBookingForm({
   flights,
   weightOptions,
+  gstRateBps,
 }: {
   flights: CargoFlightOption[];
   weightOptions: CargoWeightOptionRow[];
+  gstRateBps?: number;
 }) {
   const sticky = useStickyAction(submitCargoBookingAction);
   const err = (key: string) => sticky.fieldErrors[key];
+  const [requestId] = useState(() =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `cargo-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  );
 
   const [flightId, setFlightId] = useState(flights[0]?.id ?? "");
   const [optionId, setOptionId] = useState("");
@@ -170,7 +178,13 @@ export function CargoBookingForm({
         selected.kind === "per_kg" ? enteredKg : selected.chargeableKg,
       )
     : null;
-  const quoteCents = quote?.ok ? quote.quotedCents : 0;
+  const quoteMoney = quote?.ok
+    ? priceCargoCharges({
+        exclusiveCents: quote.quotedCents,
+        gstRateBps,
+      })
+    : null;
+  const quoteCents = quoteMoney?.totalCents ?? 0;
   const holdKg = selected
     ? optionHoldKg(selected, selected.kind === "per_kg" ? enteredKg : 0)
     : 0;
@@ -209,6 +223,7 @@ export function CargoBookingForm({
 
   return (
     <form onSubmit={sticky.onSubmit} className="space-y-5">
+      <input type="hidden" name="clientRequestId" value={requestId} />
       <Section
         step={1}
         title="Flight"
@@ -385,19 +400,22 @@ export function CargoBookingForm({
           </p>
         ) : null}
 
-        {quoteCents > 0 ? (
+        {quoteMoney && quoteCents > 0 ? (
           <p className="rounded-lg border border-line bg-background px-3.5 py-2.5 text-sm text-foreground sm:col-span-2">
-            Freight charge:{" "}
+            Total including GST:{" "}
             <span className="font-[family-name:var(--font-syne)] text-lg font-bold text-accent-deep">
               {formatAud(quoteCents)}
             </span>
             <span className="mt-1 block text-xs text-muted">
-              {selected
+              {formatAud(quoteMoney.freightCents)} excluding GST
+              {quoteMoney.gstCents > 0
+                ? ` + ${formatAud(quoteMoney.gstCents)} GST (10%)`
+                : ""}
+              . {selected
                 ? selected.kind === "per_kg"
-                  ? `${formatAud(selected.priceCents)} per kg for ${holdKg} kg.`
-                  : `${selected.name} is a locked total.`
-                : null}{" "}
-              This is the amount due on this booking.
+                  ? `${formatAud(selected.priceCents)} per kg for ${holdKg} kg (GST exclusive).`
+                  : `${selected.name} is a locked GST-exclusive freight total.`
+                : null}
             </span>
           </p>
         ) : null}
@@ -671,9 +689,9 @@ export function CargoBookingForm({
       <Section
         step={6}
         title="Payment"
-        description="The freight charge is locked when you submit. Pay by bank transfer or at drop-off — admin marks the booking paid once the money is in."
+        description="Submitting this form requests a booking. You will receive an invoice by email. The booking is officially confirmed only after payment is verified."
       >
-        {quoteCents > 0 ? (
+        {quoteMoney && quoteCents > 0 ? (
           <div className="rounded-xl border border-line bg-background px-4 py-3 sm:col-span-2">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
               Amount due
@@ -681,16 +699,19 @@ export function CargoBookingForm({
             <p className="mt-1 font-[family-name:var(--font-syne)] text-2xl font-bold text-accent-deep">
               {formatAud(quoteCents)}
             </p>
-            {selected ? (
-              <p className="mt-1 text-xs text-muted">
-                {selected.name}
-                {selected.kind === "per_kg" && holdKg > 0
-                  ? ` · ${formatKg(holdKg)}`
-                  : selected.description
-                    ? ` · ${selected.description}`
-                    : ""}
-              </p>
-            ) : null}
+            <p className="mt-1 text-xs text-muted">
+              {formatAud(quoteMoney.freightCents)} excluding GST
+              {quoteMoney.gstCents > 0
+                ? ` + ${formatAud(quoteMoney.gstCents)} GST (10%)`
+                : ""}
+              {selected
+                ? ` · ${selected.name}${
+                    selected.kind === "per_kg" && holdKg > 0
+                      ? ` · ${formatKg(holdKg)}`
+                      : ""
+                  }`
+                : ""}
+            </p>
           </div>
         ) : null}
 
@@ -767,11 +788,11 @@ export function CargoBookingForm({
           disabled={!selected || quoteCents <= 0 || overCapacity}
           className="btn-cta min-h-12 w-full px-10 text-sm disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
         >
-          Confirm and book cargo
+          Submit booking request
         </SubmitButton>
         <p className="text-center text-xs text-muted">
-          You get a parcel number straight away. Quote it at drop-off and when
-          you pay.
+          You get a booking reference straight away. An invoice will be emailed.
+          Official confirmation follows once payment is verified.
         </p>
       </div>
     </form>

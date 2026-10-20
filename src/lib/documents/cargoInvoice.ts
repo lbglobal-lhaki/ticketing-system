@@ -1,7 +1,9 @@
 import { existsSync, readFileSync } from "fs";
 import path from "path";
+import { getBrand } from "@/lib/branding";
 import { CARGO_Q } from "@/lib/cargo/bookingForm";
 import { formatKg } from "@/lib/cargo/capacity";
+import { cargoMoneySnapshot } from "@/lib/cargo/gst";
 import { extractCargoShipment, type CargoAnswers } from "@/lib/cargo/parties";
 import { formatCargoAnswer } from "@/lib/cargo/submit";
 import {
@@ -27,6 +29,12 @@ export type CargoInvoiceSource = {
   weightKg: number;
   pieces: number;
   quotedCents: number;
+  freightCents?: number | null;
+  gstCents?: number | null;
+  gstRateBps?: number | null;
+  paidAmountCents?: number | null;
+  paymentStatus?: string | null;
+  bookingStatus?: string | null;
   productName: string;
   createdAt: Date;
   submittedAt: Date | null;
@@ -170,7 +178,8 @@ export function cargoToInvoiceData(row: CargoInvoiceSource): BookingDocumentData
   });
   const bank = getBankTransferDetails();
   const identity = defaultInvoiceIdentity();
-  const amount = Math.max(0, row.quotedCents);
+  const money = cargoMoneySnapshot(row);
+  const amount = money.totalCents;
   const name =
     shipment.sender.name || row.submitterName || "Cargo customer";
   const origin = row.flight?.origin || shipment.originLabel || "PER";
@@ -222,8 +231,8 @@ export function cargoToInvoiceData(row: CargoInvoiceSource): BookingDocumentData
       extraBaggageCents: 0,
       travelInsuranceCents: 0,
       otherChargesCents: 0,
-      gstRateBps: 0,
-      gstIncluded: false,
+      gstRateBps: money.gstRateBps,
+      gstIncluded: money.gstIncluded,
       accountNumber: identity.accountNumber,
       businessTpn: identity.businessTpn,
       routeLabel: `${cityName(origin)}-${cityName(destination)}`,
@@ -325,9 +334,26 @@ export function renderCargoInvoiceHtml(
   const weight =
     row.weightKg > 0 ? formatKg(row.weightKg) : shipment.weight;
   const chargeable = weight;
-  const freight = Math.max(0, row.quotedCents);
-  const paid = row.paid ? freight : 0;
-  const balance = Math.max(0, freight - paid);
+  const money = cargoMoneySnapshot(row);
+  const freight = money.freightCents;
+  const gst = money.gstCents;
+  const total = money.totalCents;
+  const paid = Math.max(
+    0,
+    row.paidAmountCents ?? (row.paid ? total : 0),
+  );
+  const balance = Math.max(0, total - paid);
+  const gstLabel =
+    gst > 0 && money.gstRateBps === 1000
+      ? "GST (10%)"
+      : gst > 0
+        ? `GST (${(money.gstRateBps / 100).toFixed(1)}%)`
+        : "GST (if applicable)";
+  const freightLabel =
+    gst > 0 ? "Cargo charges excluding GST" : "Cargo/Freight Charge";
+  const totalLabel = gst > 0 ? "Total including GST" : "Total Charges";
+  const brand = getBrand();
+  const abn = brand.invoiceBusinessAbn.trim();
   const pay = paymentMode(
     takeAnswer(answers, CARGO_Q.paymentMethod, "Payment Method", "Form of Payment"),
   );
@@ -512,6 +538,9 @@ export function renderCargoInvoiceHtml(
     .summary h2 {
       margin: 0 0 3mm; font-size: 16px; letter-spacing: 0.04em;
     }
+    .summary .tax-id {
+      margin: 0 0 3mm; font-size: 11.5px; font-weight: 600;
+    }
     .charge {
       display: flex; justify-content: space-between; align-items: baseline;
       border-bottom: 1px solid #111; padding: 5px 0 3px;
@@ -617,12 +646,19 @@ export function renderCargoInvoiceHtml(
       ${ratesTable}
       <section class="summary">
         <h2>CHARGES SUMMARY:</h2>
-        ${chargeRow("Cargo/Freight Charge", freight)}
+        ${
+          abn
+            ? `<p class="tax-id">${esc(brand.issuingAgent)} · ABN ${esc(abn)}${
+                gst > 0 ? " · Tax invoice" : ""
+              }</p>`
+            : ""
+        }
+        ${chargeRow(freightLabel, freight)}
         ${chargeRow("Handling Charge", 0)}
         ${chargeRow("Security/Screening Charge", 0)}
         ${chargeRow("Other Charges", 0)}
-        ${chargeRow("GST (if applicable)", 0)}
-        ${chargeRow("Total Charges", freight, true)}
+        ${chargeRow(gstLabel, gst)}
+        ${chargeRow(totalLabel, total, true)}
         ${chargeRow("Amount Paid", paid, true)}
         ${chargeRow("Balance Due", balance, true)}
       </section>

@@ -74,6 +74,32 @@ enum CargoSubmissionStatus {
   closed
 }
 
+/// Booking lifecycle — separate from payment and from ops review status.
+enum CargoBookingStatus {
+  pending_payment
+  confirmed
+  cancelled
+}
+
+enum CargoPaymentStatus {
+  unpaid
+  partially_paid
+  paid
+  refunded
+}
+
+enum CargoNotificationKind {
+  acknowledgement
+  confirmation
+}
+
+enum CargoNotificationStatus {
+  pending
+  processing
+  sent
+  failed
+}
+
 enum CargoEmailRole {
   sender
   receiver
@@ -467,8 +493,27 @@ model CargoSubmission {
   weightKg         Int                   @default(0)
   /// Number of packages / pieces.
   pieces           Int                   @default(0)
-  /// Quoted amount at booking time (cents), from the chosen cargo type.
+  /// Quoted amount at booking time (cents). Total payable including GST.
   quotedCents      Int                   @default(0)
+  /// GST-exclusive freight snapshot at issue. 0 on older rows that predate GST.
+  freightCents     Int                   @default(0)
+  /// GST snapshot at issue (cents). 0 when GST-free or not itemised historically.
+  gstCents         Int                   @default(0)
+  /// Rate used when the invoice was issued (1000 = 10%). 0 = not itemised.
+  gstRateBps       Int                   @default(0)
+  bookingStatus    CargoBookingStatus    @default(pending_payment)
+  paymentStatus    CargoPaymentStatus    @default(unpaid)
+  /// Cumulative verified receipts (cents). Confirmation requires this >= quotedCents.
+  paidAmountCents  Int                   @default(0)
+  paymentMethod    String                @default("")
+  paymentReference String                @default("")
+  /// Admin role that verified payment (`admin` / `sub_admin`).
+  paidVerifiedBy   String                @default("")
+  invoiceSentAt    DateTime?
+  confirmationSentAt DateTime?
+  cancelledAt      DateTime?
+  /// Browser-generated key so a double submit cannot create two bookings.
+  clientRequestId  String?               @unique
   /// Catalogue type the customer bought. Null on older enquiry-only rows.
   cargoProductId   String?
   cargoProduct     CargoProduct?         @relation(fields: [cargoProductId], references: [id], onDelete: SetNull)
@@ -487,15 +532,36 @@ model CargoSubmission {
   updatedAt        DateTime              @updatedAt
 
   emailNotices     CargoEmailNotice[]
+  notifications    CargoNotification[]
 
   @@index([status])
   @@index([paid])
+  @@index([bookingStatus])
+  @@index([paymentStatus])
   @@index([createdAt])
   @@index([email])
   @@index([parcelNumber])
   @@index([flightId])
   @@index([cargoProductId])
   @@index([cargoWeightOptionId])
+}
+
+/// Durable outbox for cargo acknowledgement and confirmation emails.
+model CargoNotification {
+  id             String                   @id @default(cuid())
+  cargoId        String
+  cargo          CargoSubmission          @relation(fields: [cargoId], references: [id], onDelete: Cascade)
+  kind           CargoNotificationKind
+  status         CargoNotificationStatus  @default(pending)
+  attempts       Int                      @default(0)
+  lastError      String?
+  sentAt         DateTime?
+  idempotencyKey String                   @unique
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  @@index([cargoId, kind])
+  @@index([status])
 }
 
 /// Admin-priced cargo types sold on /cargo (Personal effects, Documents, …).

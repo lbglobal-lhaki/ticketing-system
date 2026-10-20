@@ -178,57 +178,66 @@ ${brand.agentEmail}`;
   };
 }
 
-export function cargoCustomerBookingEmail(input: {
+function moneyLines(input: {
+  quotedCents: number;
+  freightCents?: number;
+  gstCents?: number;
+}) {
+  const total =
+    input.quotedCents > 0 ? formatAud(input.quotedCents) : "Quoted on this booking";
+  const freight =
+    input.freightCents && input.freightCents > 0
+      ? formatAud(input.freightCents)
+      : "";
+  const gst =
+    input.gstCents && input.gstCents > 0 ? formatAud(input.gstCents) : "";
+  return { total, freight, gst };
+}
+
+export function cargoCustomerAcknowledgementEmail(input: {
   shipment: CargoShipmentSummary;
   quotedCents: number;
-  paid: boolean;
+  freightCents?: number;
+  gstCents?: number;
 }) {
   const brand = getBrand();
   const { shipment } = input;
-  const amount =
-    input.quotedCents > 0
-      ? `${formatAud(input.quotedCents)}${input.paid ? " (paid)" : " due"}`
-      : "Quoted on this booking";
+  const money = moneyLines(input);
   const greeting = shipment.sender.name || "Valued Customer";
-  const subject = `Cargo booking confirmation ${shipment.parcelNumber}`;
-  const lead = input.paid
-    ? "Thank you for choosing L&amp;B Global Cargo Services. We have successfully received your payment, and your cargo booking is now confirmed for our upcoming chartered flight. Your Cargo Booking Confirmation/Receipt is attached to this email."
-    : "Thank you for choosing L&amp;B Global Cargo Services. We have received your cargo booking for our upcoming chartered flight. Your Cargo Booking Confirmation/Receipt is attached to this email. If a balance is due, please follow the payment instructions on the invoice.";
+  const subject = `Cargo booking received ${shipment.parcelNumber} — invoice attached`;
+  const lead =
+    "Thank you for choosing L&amp;B Global Cargo Services. We have received your cargo booking request. An invoice is attached. This booking is awaiting payment and is not yet officially confirmed.";
   const html = `
   <div style="font-family:Georgia,serif;color:#0F172A;line-height:1.55;max-width:640px">
     <p style="margin:0 0 12px">${emailLogoImgHtml(brand.shortName)}</p>
     <p style="color:#0b2c5a;letter-spacing:0.12em;text-transform:uppercase;font-size:12px">${esc(brand.issuingAgent)} · Cargo</p>
     <p>Dear ${esc(greeting)},</p>
     <p>${lead}</p>
-    <p>Please review all cargo details carefully, including sender and receiver contact details, cargo route, flight/dispatch date, total weight, number of packages, cargo description and booking/reference number. If you notice any incorrect information, please contact us immediately so we can update the details before cargo acceptance and departure.</p>
+    <p>Please pay the amount below using the instructions on the invoice. Your booking will be officially confirmed once payment has been received and verified.</p>
     <table style="width:100%;border-collapse:collapse;font-size:14px;margin:8px 0 16px">
-      ${line("Parcel number", shipment.parcelNumber)}
+      ${line("Booking reference", shipment.parcelNumber)}
       ${line("Route", `${shipment.originLabel} → ${shipment.destinationLabel}`)}
       ${line("Flight / timing", shipment.flightDate)}
       ${line("Packages", shipment.packages)}
       ${line("Weight", shipment.weight ? `${shipment.weight} kg` : "")}
-      ${line("Amount", amount)}
+      ${line("Cargo charges excluding GST", money.freight)}
+      ${line("GST (10%)", money.gst)}
+      ${line("Total including GST", money.total)}
     </table>
-    <p><strong>Important Cargo Reminders</strong></p>
-    <ul>
-      <li>Please ensure all items are properly packed, sealed, labelled, and ready for transport.</li>
-      <li>The sender is responsible for providing an accurate description of all items contained in the package.</li>
-      <li>Please do not include prohibited, dangerous, restricted, undeclared, or unlawful goods.</li>
-      <li>All cargo is subject to aviation security screening, customs and biosecurity requirements.</li>
-    </ul>
-    <p>Please keep your Cargo Booking Reference and payment receipt for your records. For any questions, reply to this email or call ${esc(brand.agentPhonePrimary)} before the cargo acceptance deadline.</p>
+    <p><strong>This is not a booking confirmation.</strong> Space is held pending payment verification.</p>
+    <p>Please keep your booking reference for your records. For any questions, reply to this email or call ${esc(brand.agentPhonePrimary)}.</p>
     <p>Kind regards,<br/>L&amp;B Global<br/>Chartered Flight &amp; Cargo Team<br/>
     ${esc(brand.agentEmail)}</p>
   </div>`;
   const text = `Dear ${greeting},
 
-${input.paid
-    ? "Thank you for choosing L&B Global Cargo Services. We have successfully received your payment, and your cargo booking is now confirmed. Your Cargo Booking Confirmation/Receipt is attached."
-    : "Thank you for choosing L&B Global Cargo Services. We have received your cargo booking. Your Cargo Booking Confirmation/Receipt is attached. If a balance is due, please follow the payment instructions on the invoice."}
+Thank you for choosing L&B Global Cargo Services. We have received your cargo booking request. An invoice is attached. This booking is awaiting payment and is not yet officially confirmed.
 
-Parcel number: ${shipment.parcelNumber}
+Booking reference: ${shipment.parcelNumber}
 Route: ${shipment.originLabel} → ${shipment.destinationLabel}
-${textLine("Flight / timing", shipment.flightDate)}${textLine("Packages", shipment.packages)}${textLine("Weight", shipment.weight ? `${shipment.weight} kg` : "")}Amount: ${amount}
+${textLine("Flight / timing", shipment.flightDate)}${textLine("Packages", shipment.packages)}${textLine("Weight", shipment.weight ? `${shipment.weight} kg` : "")}${textLine("Cargo charges excluding GST", money.freight)}${textLine("GST (10%)", money.gst)}Total including GST: ${money.total}
+
+This is not a booking confirmation. Space is held pending payment verification.
 
 Kind regards,
 L&B Global
@@ -244,30 +253,88 @@ ${brand.agentEmail}`;
   };
 }
 
-export function cargoStaffBookingEmail(input: {
+export function cargoCustomerConfirmationEmail(input: {
   shipment: CargoShipmentSummary;
   quotedCents: number;
-  paid: boolean;
+  freightCents?: number;
+  gstCents?: number;
 }) {
   const brand = getBrand();
   const { shipment } = input;
-  const amount =
-    input.quotedCents > 0
-      ? `${formatAud(input.quotedCents)}${input.paid ? " paid" : " unpaid"}`
-      : "No amount locked";
-  const subject = `New cargo booking ${shipment.parcelNumber} — ${shipment.originLabel} to ${shipment.destinationLabel}`;
+  const money = moneyLines(input);
+  const greeting = shipment.sender.name || "Valued Customer";
+  const subject = `Cargo booking confirmed ${shipment.parcelNumber}`;
+  const lead =
+    "Thank you for choosing L&amp;B Global Cargo Services. We have successfully received your payment, and your cargo booking is now confirmed for our upcoming chartered flight. Your Cargo Booking Confirmation is attached to this email.";
   const html = `
   <div style="font-family:Georgia,serif;color:#0F172A;line-height:1.55;max-width:640px">
-    <p style="color:#0b2c5a;letter-spacing:0.12em;text-transform:uppercase;font-size:12px">${esc(brand.issuingAgent)} · Cargo desk</p>
-    <h1 style="font-size:20px;margin:8px 0 16px">New cargo booking</h1>
-    <p>A customer just booked cargo on the website. The booking confirmation and invoice were emailed to the sender.</p>
+    <p style="margin:0 0 12px">${emailLogoImgHtml(brand.shortName)}</p>
+    <p style="color:#0b2c5a;letter-spacing:0.12em;text-transform:uppercase;font-size:12px">${esc(brand.issuingAgent)} · Cargo</p>
+    <p>Dear ${esc(greeting)},</p>
+    <p>${lead}</p>
+    <p>Please review all cargo details carefully, including sender and receiver contact details, cargo route, flight/dispatch date, total weight, number of packages, cargo description and booking/reference number. If you notice any incorrect information, please contact us immediately so we can update the details before cargo acceptance and departure.</p>
     <table style="width:100%;border-collapse:collapse;font-size:14px;margin:8px 0 16px">
-      ${line("Parcel number", shipment.parcelNumber)}
+      ${line("Booking reference", shipment.parcelNumber)}
       ${line("Route", `${shipment.originLabel} → ${shipment.destinationLabel}`)}
       ${line("Flight / timing", shipment.flightDate)}
       ${line("Packages", shipment.packages)}
       ${line("Weight", shipment.weight ? `${shipment.weight} kg` : "")}
-      ${line("Amount", amount)}
+      ${line("Amount paid", money.total)}
+    </table>
+    <p><strong>Important Cargo Reminders</strong></p>
+    <ul>
+      <li>Please ensure all items are properly packed, sealed, labelled, and ready for transport.</li>
+      <li>The sender is responsible for providing an accurate description of all items contained in the package.</li>
+      <li>Please do not include prohibited, dangerous, restricted, undeclared, or unlawful goods.</li>
+      <li>All cargo is subject to aviation security screening, customs and biosecurity requirements.</li>
+    </ul>
+    <p>Please keep your Cargo Booking Reference and payment receipt for your records. For any questions, reply to this email or call ${esc(brand.agentPhonePrimary)} before the cargo acceptance deadline.</p>
+    <p>Kind regards,<br/>L&amp;B Global<br/>Chartered Flight &amp; Cargo Team<br/>
+    ${esc(brand.agentEmail)}</p>
+  </div>`;
+  const text = `Dear ${greeting},
+
+Thank you for choosing L&B Global Cargo Services. We have successfully received your payment, and your cargo booking is now confirmed. Your Cargo Booking Confirmation is attached.
+
+Booking reference: ${shipment.parcelNumber}
+Route: ${shipment.originLabel} → ${shipment.destinationLabel}
+${textLine("Flight / timing", shipment.flightDate)}${textLine("Packages", shipment.packages)}${textLine("Weight", shipment.weight ? `${shipment.weight} kg` : "")}Amount paid: ${money.total}
+
+Kind regards,
+L&B Global
+Chartered Flight & Cargo Team
+${brand.agentEmail}`;
+
+  return {
+    subject,
+    html,
+    text,
+    toEmail: shipment.sender.email,
+    toName: shipment.sender.name,
+  };
+}
+
+export function cargoStaffAcknowledgementEmail(input: {
+  shipment: CargoShipmentSummary;
+  quotedCents: number;
+}) {
+  const brand = getBrand();
+  const { shipment } = input;
+  const amount =
+    input.quotedCents > 0 ? `${formatAud(input.quotedCents)} unpaid` : "No amount locked";
+  const subject = `New cargo booking ${shipment.parcelNumber} — awaiting payment`;
+  const html = `
+  <div style="font-family:Georgia,serif;color:#0F172A;line-height:1.55;max-width:640px">
+    <p style="color:#0b2c5a;letter-spacing:0.12em;text-transform:uppercase;font-size:12px">${esc(brand.issuingAgent)} · Cargo desk</p>
+    <h1 style="font-size:20px;margin:8px 0 16px">New cargo booking — awaiting payment</h1>
+    <p>A customer submitted a cargo booking. The acknowledgement and invoice were emailed to the sender. Do not treat this as confirmed until payment is verified.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin:8px 0 16px">
+      ${line("Booking reference", shipment.parcelNumber)}
+      ${line("Route", `${shipment.originLabel} → ${shipment.destinationLabel}`)}
+      ${line("Flight / timing", shipment.flightDate)}
+      ${line("Packages", shipment.packages)}
+      ${line("Weight", shipment.weight ? `${shipment.weight} kg` : "")}
+      ${line("Amount due", amount)}
       ${line("Sender", shipment.sender.name)}
       ${line("Sender email", shipment.sender.email)}
       ${line("Sender phone", shipment.sender.phone)}
@@ -275,12 +342,43 @@ export function cargoStaffBookingEmail(input: {
       ${line("Receiver phone", shipment.receiver.phone)}
     </table>
   </div>`;
-  const text = `New cargo booking ${shipment.parcelNumber}
+  const text = `New cargo booking ${shipment.parcelNumber} — awaiting payment
 
 Route: ${shipment.originLabel} → ${shipment.destinationLabel}
-${textLine("Flight / timing", shipment.flightDate)}${textLine("Packages", shipment.packages)}${textLine("Weight", shipment.weight ? `${shipment.weight} kg` : "")}Amount: ${amount}
+${textLine("Flight / timing", shipment.flightDate)}${textLine("Packages", shipment.packages)}${textLine("Weight", shipment.weight ? `${shipment.weight} kg` : "")}Amount due: ${amount}
 Sender: ${shipment.sender.name} ${shipment.sender.email} ${shipment.sender.phone}
 Receiver: ${shipment.receiver.name} ${shipment.receiver.phone}
+`;
+  return { subject, html, text };
+}
+
+export function cargoStaffConfirmationEmail(input: {
+  shipment: CargoShipmentSummary;
+  quotedCents: number;
+}) {
+  const brand = getBrand();
+  const { shipment } = input;
+  const amount =
+    input.quotedCents > 0 ? `${formatAud(input.quotedCents)} paid` : "Paid";
+  const subject = `Cargo booking confirmed ${shipment.parcelNumber} — payment verified`;
+  const html = `
+  <div style="font-family:Georgia,serif;color:#0F172A;line-height:1.55;max-width:640px">
+    <p style="color:#0b2c5a;letter-spacing:0.12em;text-transform:uppercase;font-size:12px">${esc(brand.issuingAgent)} · Cargo desk</p>
+    <h1 style="font-size:20px;margin:8px 0 16px">Payment verified — booking confirmed</h1>
+    <p>Payment has been verified for this cargo booking. The official confirmation was emailed to the sender.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin:8px 0 16px">
+      ${line("Booking reference", shipment.parcelNumber)}
+      ${line("Route", `${shipment.originLabel} → ${shipment.destinationLabel}`)}
+      ${line("Flight / timing", shipment.flightDate)}
+      ${line("Amount paid", amount)}
+      ${line("Sender", shipment.sender.name)}
+      ${line("Sender email", shipment.sender.email)}
+    </table>
+  </div>`;
+  const text = `Cargo booking confirmed ${shipment.parcelNumber}
+
+Payment verified. Official confirmation emailed to ${shipment.sender.email}.
+Amount paid: ${amount}
 `;
   return { subject, html, text };
 }

@@ -9,6 +9,9 @@ import {
   cargoBookingFromForm,
 } from "@/lib/cargo/bookingForm";
 import { flightPayloadFromRow, formatKg } from "@/lib/cargo/capacity";
+import { cargoGstRateBpsFromEnv, priceCargoCharges } from "@/lib/cargo/gst";
+import { canonicalNotificationKey } from "@/lib/cargo/lifecycle";
+import { processCargoNotifications } from "@/lib/cargo/notifications";
 import { allocateCargoParcelNumber } from "@/lib/cargo/parcelNumber";
 import { formatFlightDateTime } from "@/lib/datetime";
 import { prisma } from "@/lib/db";
@@ -24,7 +27,6 @@ import {
   optionSoldOnOrigin,
   quoteCargoWeightOption,
 } from "@/lib/cargo/weightOptions";
-import { sendCargoBookingEmails } from "@/lib/email/cargoMail";
 
 /**
  * Public cargo booking. Weight is checked against the payload left on the
@@ -43,6 +45,21 @@ export async function submitCargoBookingAction(
     );
   }
   const input = parsed.data;
+  const clientRequestId = String(formData.get("clientRequestId") || "")
+    .trim()
+    .slice(0, 80);
+
+  if (clientRequestId) {
+    const existing = await prisma.cargoSubmission.findUnique({
+      where: { clientRequestId },
+      select: { parcelNumber: true },
+    });
+    if (existing) {
+      revalidatePath("/admin");
+      revalidatePath("/cargo");
+      redirect(`/cargo/booked/${encodeURIComponent(existing.parcelNumber)}`);
+    }
+  }
 
   let parcelNumber = "";
   try {
@@ -105,7 +122,11 @@ export async function submitCargoBookingAction(
     );
 
     parcelNumber = await allocateCargoParcelNumber();
-    const quotedCents = quoted.quotedCents;
+    const priced = priceCargoCharges({
+      exclusiveCents: quoted.quotedCents,
+      gstRateBps: cargoGstRateBpsFromEnv(),
+    });
+    const quotedCents = priced.totalCents;
     const weightKg = quoted.weightKg;
 
     await prisma.$transaction(async (tx) => {
@@ -126,14 +147,19 @@ export async function submitCargoBookingAction(
         );
       }
 
-      await tx.cargoSubmission.create({
+      const created = await tx.cargoSubmission.create({
         data: {
           parcelNumber,
           status: "new",
+          bookingStatus: "pending_payment",
+          paymentStatus: "unpaid",
           flightId: flight.id,
           weightKg,
           pieces: input.pieces,
           quotedCents,
+          freightCents: priced.freightCents,
+          gstCents: priced.gstCents,
+          gstRateBps: priced.gstRateBps,
           cargoWeightOptionId: option.id,
           productName: option.name,
           answers: answers as Prisma.InputJsonValue,
@@ -141,20 +167,49 @@ export async function submitCargoBookingAction(
           email: input.senderEmail,
           phone: input.senderPhone,
           submittedAt: new Date(),
+          clientRequestId: clientRequestId || null,
+        },
+      });
+      await tx.cargoNotification.create({
+        data: {
+          cargoId: created.id,
+          kind: "acknowledgement",
+          status: "pending",
+          idempotencyKey: canonicalNotificationKey(
+            created.id,
+            "acknowledgement",
+          ),
         },
       });
     });
   } catch (error) {
-    console.error("submitCargoBookingAction", error);
-    return failFromUnknown(error, "Could not submit your cargo booking");
+    if (
+      clientRequestId &&
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      const existing = await prisma.cargoSubmission.findUnique({
+        where: { clientRequestId },
+        select: { parcelNumber: true },
+      });
+      if (existing) {
+        parcelNumber = existing.parcelNumber;
+      } else {
+        console.error("submitCargoBookingAction", error);
+        return failFromUnknown(error, "Could not submit your cargo booking");
+      }
+    } else {
+      console.error("submitCargoBookingAction", error);
+      return failFromUnknown(error, "Could not submit your cargo booking");
+    }
   }
 
   const bookedParcel = parcelNumber;
   after(async () => {
     try {
-      await sendCargoBookingEmails(bookedParcel);
+      await processCargoNotifications(bookedParcel);
     } catch (error) {
-      console.error("cargo booking email failed", error);
+      console.error("cargo booking acknowledgement failed", error);
     }
   });
 

@@ -3,12 +3,23 @@
 import { useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
+  cancelCargoBookingAction,
   createCargoSubmissionAction,
   deleteCargoSubmissionAction,
+  reopenCargoBookingAction,
   setCargoPaidAction,
   updateCargoSubmissionAction,
 } from "@/lib/actions/cargo";
-import { sendCargoInvoiceEmailsAction } from "@/lib/actions/cargoEmail";
+import {
+  retryCargoNotificationsAction,
+  sendCargoConfirmationEmailsAction,
+  sendCargoInvoiceEmailsAction,
+} from "@/lib/actions/cargoEmail";
+import {
+  bookingStatusLabel,
+  paymentStatusLabel,
+  notificationStatusLabel,
+} from "@/lib/cargo/lifecycle";
 import { CargoEmailNotices } from "@/components/CargoEmailNotices";
 import { formatCargoAnswer } from "@/lib/cargo/submit";
 import {
@@ -31,6 +42,8 @@ export type AdminCargoRow = {
   id: string;
   parcelNumber: string;
   status: "new" | "reviewed" | "closed";
+  bookingStatus: "pending_payment" | "confirmed" | "cancelled";
+  paymentStatus: "unpaid" | "partially_paid" | "paid" | "refunded";
   paid: boolean;
   paidAt: string | null;
   submitterName: string | null;
@@ -41,6 +54,16 @@ export type AdminCargoRow = {
   weightKg: number;
   pieces: number;
   quotedCents: number;
+  freightCents: number;
+  gstCents: number;
+  paidAmountCents: number;
+  paymentMethod: string;
+  paymentReference: string;
+  paidVerifiedBy: string;
+  acknowledgementStatus: string | null;
+  acknowledgementError: string | null;
+  confirmationStatus: string | null;
+  confirmationError: string | null;
   productName: string;
   /** Departure this cargo is booked onto, when it came from the website. */
   flightLabel: string | null;
@@ -98,6 +121,36 @@ function statusClass(status: AdminCargoRow["status"]) {
   if (status === "reviewed") return "bg-sky-50 text-sky-900 border-sky-200";
   return "bg-slate-100 text-slate-700 border-slate-200";
 }
+
+function bookingClass(status: AdminCargoRow["bookingStatus"]) {
+  if (status === "confirmed") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  }
+  if (status === "cancelled") {
+    return "border-red-200 bg-red-50 text-red-800";
+  }
+  return "border-amber-200 bg-amber-50 text-amber-900";
+}
+
+function paymentClass(status: AdminCargoRow["paymentStatus"]) {
+  if (status === "paid") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  }
+  if (status === "partially_paid") {
+    return "border-amber-200 bg-amber-50 text-amber-900";
+  }
+  if (status === "refunded") {
+    return "border-slate-200 bg-slate-100 text-slate-700";
+  }
+  return "border-amber-200 bg-amber-50 text-amber-900";
+}
+
+type CargoFilter =
+  | "all"
+  | "pending_payment"
+  | "confirmed"
+  | "cancelled"
+  | "email_failed";
 
 function answersToPairs(answers: AdminCargoRow["answers"]): AnswerPair[] {
   const pairs = Object.entries(answers).map(([key, value]) => ({
@@ -201,7 +254,7 @@ export function CargoAdminPanel({
   const [pending, startTransition] = useTransition();
   const [mode, setMode] = useState<Mode>("closed");
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [filter, setFilter] = useState<"all" | AdminCargoRow["status"]>("all");
+  const [filter, setFilter] = useState<CargoFilter>("all");
   const [pairs, setPairs] = useState<AnswerPair[]>(DEFAULT_FIELDS);
   const [localError, setLocalError] = useState<string | null>(null);
   const [docTab, setDocTab] = useState<CargoDocTab>("declaration");
@@ -218,7 +271,16 @@ export function CargoAdminPanel({
   const filtered = useMemo(() => {
     const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return submissions.filter((s) => {
-      if (filter !== "all" && s.status !== filter) return false;
+      if (filter === "email_failed") {
+        if (
+          s.acknowledgementStatus !== "failed" &&
+          s.confirmationStatus !== "failed"
+        ) {
+          return false;
+        }
+      } else if (filter !== "all" && s.bookingStatus !== filter) {
+        return false;
+      }
       if (tokens.length === 0) return true;
       // Answers are free-form Google Form fields, so search their values too —
       // that's where the route, weight, and description actually live.
@@ -309,14 +371,46 @@ export function CargoAdminPanel({
     });
   }
 
-  function handleSetPaid(id: string, paid: boolean) {
+  function handleSetPaid(id: string, paid: boolean, extra?: FormData) {
+    if (
+      paid &&
+      !extra &&
+      !confirm(
+        "Verify that the full invoice amount has been received? This will confirm the booking and email the official confirmation.",
+      )
+    ) {
+      return;
+    }
     setLocalError(null);
     setPendingKey(`${id}:paid`);
-    const fd = new FormData();
+    const fd = extra ?? new FormData();
     fd.set("id", id);
     fd.set("paid", paid ? "true" : "false");
     startTransition(() => {
       void setCargoPaidAction(fd);
+    });
+  }
+
+  function handleCancel(id: string) {
+    if (!confirm("Cancel this cargo booking? It cannot be confirmed until it is reopened.")) {
+      return;
+    }
+    setLocalError(null);
+    setPendingKey(`${id}:cancel`);
+    const fd = new FormData();
+    fd.set("id", id);
+    startTransition(() => {
+      void cancelCargoBookingAction(fd);
+    });
+  }
+
+  function handleReopen(id: string) {
+    setLocalError(null);
+    setPendingKey(`${id}:reopen`);
+    const fd = new FormData();
+    fd.set("id", id);
+    startTransition(() => {
+      void reopenCargoBookingAction(fd);
     });
   }
 
@@ -401,8 +495,9 @@ export function CargoAdminPanel({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="max-w-2xl text-sm text-muted">
-            Customer cargo purchases and manual entries. Each booking gets a
-            parcel number. Use Emails for sender/receiver notices.
+            Booking received → invoice issued → awaiting payment → payment
+            verified → booking confirmed. Use Emails for sender/receiver
+            notices. Official confirmation is never sent on unpaid bookings.
           </p>
         </div>
         <button
@@ -421,25 +516,35 @@ export function CargoAdminPanel({
         chips={[
           { value: "all", label: "All", count: submissions.length },
           {
-            value: "new",
-            label: "New",
-            count: submissions.filter((s) => s.status === "new").length,
+            value: "pending_payment",
+            label: "Pending payment",
+            count: submissions.filter((s) => s.bookingStatus === "pending_payment")
+              .length,
           },
           {
-            value: "reviewed",
-            label: "Reviewed",
-            count: submissions.filter((s) => s.status === "reviewed").length,
+            value: "confirmed",
+            label: "Confirmed",
+            count: submissions.filter((s) => s.bookingStatus === "confirmed")
+              .length,
           },
           {
-            value: "closed",
-            label: "Closed",
-            count: submissions.filter((s) => s.status === "closed").length,
+            value: "cancelled",
+            label: "Cancelled",
+            count: submissions.filter((s) => s.bookingStatus === "cancelled")
+              .length,
+          },
+          {
+            value: "email_failed",
+            label: "Email failed",
+            count: submissions.filter(
+              (s) =>
+                s.acknowledgementStatus === "failed" ||
+                s.confirmationStatus === "failed",
+            ).length,
           },
         ]}
         activeChip={filter}
-        onChipChange={(next) =>
-          setFilter(next as "all" | AdminCargoRow["status"])
-        }
+        onChipChange={(next) => setFilter(next as CargoFilter)}
         resultCount={filtered.length}
         totalCount={submissions.length}
         itemLabel="booking"
@@ -503,19 +608,21 @@ export function CargoAdminPanel({
                       {row.parcelNumber}
                     </p>
                     <span
-                      className={`inline-block border px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${statusClass(row.status)}`}
+                      className={`inline-block border px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${bookingClass(row.bookingStatus)}`}
                     >
-                      {statusLabel(row.status)}
+                      {bookingStatusLabel(row.bookingStatus)}
                     </span>
                     <span
-                      className={`inline-block border px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${
-                        row.paid
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                          : "border-amber-200 bg-amber-50 text-amber-900"
-                      }`}
+                      className={`inline-block border px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${paymentClass(row.paymentStatus)}`}
                     >
-                      {row.paid ? "Paid" : "Unpaid"}
+                      {paymentStatusLabel(row.paymentStatus)}
                     </span>
+                    {(row.acknowledgementStatus === "failed" ||
+                      row.confirmationStatus === "failed") && (
+                      <span className="inline-block border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-red-800">
+                        Email failed
+                      </span>
+                    )}
                   </div>
                   <p className="font-semibold text-foreground">
                     {row.submitterName || row.email || "Untitled enquiry"}
@@ -550,6 +657,7 @@ export function CargoAdminPanel({
                     {row.quotedCents > 0
                       ? ` · ${formatAud(row.quotedCents)}`
                       : ""}
+                    {row.gstCents > 0 ? " incl. GST" : ""}
                     {row.paid && row.paidAt
                       ? ` · Paid ${new Date(row.paidAt).toLocaleDateString("en-AU")}`
                       : ""}
@@ -588,7 +696,7 @@ export function CargoAdminPanel({
                   <button
                     type="button"
                     className={`${btnClass} disabled:cursor-not-allowed disabled:opacity-60`}
-                    disabled={pending}
+                    disabled={pending || row.bookingStatus === "cancelled"}
                     onClick={() => handleSetPaid(row.id, !row.paid)}
                   >
                     {pending && pendingKey === `${row.id}:paid` ? (
@@ -596,10 +704,12 @@ export function CargoAdminPanel({
                         <Spinner className="size-3.5" />
                         Updating…
                       </span>
+                    ) : row.bookingStatus === "cancelled" ? (
+                      "Cancelled"
                     ) : row.paid ? (
-                      "Unpaid"
+                      "Mark unpaid"
                     ) : (
-                      "Paid"
+                      "Verify payment"
                     )}
                   </button>
                   <button
@@ -753,23 +863,46 @@ export function CargoAdminPanel({
                   >
                     Documents
                   </button>
-                  <button
-                    type="button"
-                    className={`${btnClass} disabled:cursor-not-allowed disabled:opacity-60`}
-                    disabled={pending}
-                    onClick={() => handleSetPaid(active.id, !active.paid)}
-                  >
-                    {pending && pendingKey === `${active.id}:paid` ? (
-                      <span className="inline-flex items-center gap-1.5">
-                        <Spinner className="size-3.5" />
-                        Updating…
-                      </span>
-                    ) : active.paid ? (
-                      "Mark unpaid"
-                    ) : (
-                      "Mark paid"
-                    )}
-                  </button>
+                  {active.bookingStatus === "cancelled" ? (
+                    <button
+                      type="button"
+                      className={`${btnClass} disabled:cursor-not-allowed disabled:opacity-60`}
+                      disabled={pending}
+                      onClick={() => handleReopen(active.id)}
+                    >
+                      {pending && pendingKey === `${active.id}:reopen`
+                        ? "Reopening…"
+                        : "Reopen booking"}
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className={`${btnClass} disabled:cursor-not-allowed disabled:opacity-60`}
+                        disabled={pending}
+                        onClick={() => handleSetPaid(active.id, !active.paid)}
+                      >
+                        {pending && pendingKey === `${active.id}:paid` ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <Spinner className="size-3.5" />
+                            Updating…
+                          </span>
+                        ) : active.paid ? (
+                          "Mark unpaid"
+                        ) : (
+                          "Verify payment"
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        className={`${btnClass} border-red-200 text-red-700 disabled:cursor-not-allowed disabled:opacity-60`}
+                        disabled={pending}
+                        onClick={() => handleCancel(active.id)}
+                      >
+                        Cancel booking
+                      </button>
+                    </>
+                  )}
                   <button
                     type="button"
                     className={btnClass}
@@ -804,18 +937,60 @@ export function CargoAdminPanel({
                   </div>
                   <div className="grid gap-1 sm:grid-cols-[10rem_1fr]">
                     <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
-                      Status
+                      Booking
                     </dt>
-                    <dd className="text-sm">{statusLabel(active.status)}</dd>
+                    <dd className="text-sm">
+                      {bookingStatusLabel(active.bookingStatus)}
+                      <span className="text-muted">
+                        {" "}
+                        · ops {statusLabel(active.status)}
+                      </span>
+                    </dd>
                   </div>
                   <div className="grid gap-1 sm:grid-cols-[10rem_1fr]">
                     <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
                       Payment
                     </dt>
                     <dd className="text-sm">
-                      {active.paid
-                        ? `Paid${active.paidAt ? ` · ${new Date(active.paidAt).toLocaleString("en-AU")}` : ""}`
-                        : "Unpaid"}
+                      {paymentStatusLabel(active.paymentStatus)}
+                      {active.paidAt
+                        ? ` · ${new Date(active.paidAt).toLocaleString("en-AU")}`
+                        : ""}
+                      {active.paidVerifiedBy
+                        ? ` · verified by ${active.paidVerifiedBy}`
+                        : ""}
+                    </dd>
+                  </div>
+                  {active.quotedCents > 0 ? (
+                    <div className="grid gap-1 sm:grid-cols-[10rem_1fr]">
+                      <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+                        Invoice
+                      </dt>
+                      <dd className="text-sm">
+                        {active.gstCents > 0
+                          ? `${formatAud(active.freightCents)} + ${formatAud(active.gstCents)} GST = ${formatAud(active.quotedCents)}`
+                          : formatAud(active.quotedCents)}
+                        {active.paidAmountCents > 0
+                          ? ` · received ${formatAud(active.paidAmountCents)}`
+                          : ""}
+                      </dd>
+                    </div>
+                  ) : null}
+                  <div className="grid gap-1 sm:grid-cols-[10rem_1fr]">
+                    <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+                      Notifications
+                    </dt>
+                    <dd className="text-sm">
+                      Invoice {notificationStatusLabel(active.acknowledgementStatus)}
+                      {active.acknowledgementError
+                        ? ` (${active.acknowledgementError})`
+                        : ""}
+                      <br />
+                      Confirmation{" "}
+                      {notificationStatusLabel(active.confirmationStatus)}
+                      {active.confirmationError
+                        ? ` (${active.confirmationError})`
+                        : ""}
                     </dd>
                   </div>
                   <div className="grid gap-1 sm:grid-cols-[10rem_1fr]">
@@ -860,6 +1035,74 @@ export function CargoAdminPanel({
                     </div>
                   )}
                 </dl>
+                {active.bookingStatus !== "cancelled" && !active.paid ? (
+                  <form
+                    className="mt-5 space-y-3 border-t border-line pt-4"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      handleSetPaid(active.id, true, new FormData(event.currentTarget));
+                    }}
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+                      Verify manual payment
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block space-y-1 text-sm">
+                        <span className="text-xs text-muted">Amount received (AUD)</span>
+                        <input
+                          name="paidAmount"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          defaultValue={(active.quotedCents / 100).toFixed(2)}
+                          className={fieldClass}
+                        />
+                      </label>
+                      <label className="block space-y-1 text-sm">
+                        <span className="text-xs text-muted">Payment date</span>
+                        <input
+                          name="paidAt"
+                          type="date"
+                          defaultValue={new Date().toISOString().slice(0, 10)}
+                          className={fieldClass}
+                        />
+                      </label>
+                      <label className="block space-y-1 text-sm">
+                        <span className="text-xs text-muted">Method</span>
+                        <select
+                          name="paymentMethod"
+                          defaultValue="bank_transfer"
+                          className={fieldClass}
+                        >
+                          <option value="bank_transfer">Bank transfer</option>
+                          <option value="cash">Cash</option>
+                          <option value="card">Card</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </label>
+                      <label className="block space-y-1 text-sm">
+                        <span className="text-xs text-muted">Transaction reference</span>
+                        <input
+                          name="paymentReference"
+                          defaultValue={active.paymentReference}
+                          className={fieldClass}
+                          placeholder="Bank receipt / reference"
+                        />
+                      </label>
+                    </div>
+                    <button
+                      type="submit"
+                      className="btn-cta rounded-xl px-4 py-2.5 text-sm disabled:opacity-60"
+                      disabled={pending}
+                    >
+                      Record verified payment
+                    </button>
+                    <p className="text-xs text-muted">
+                      Partial amounts keep the booking awaiting payment. Full
+                      payment issues the official confirmation.
+                    </p>
+                  </form>
+                ) : null}
               </>
             )}
 
@@ -955,18 +1198,6 @@ export function CargoAdminPanel({
                       { value: "closed", label: "Closed" },
                     ]}
                   />
-                  <label className="flex items-center gap-2 pt-6 text-sm">
-                    <input
-                      type="checkbox"
-                      name="paid"
-                      value="true"
-                      defaultChecked={
-                        mode === "edit" ? Boolean(active?.paid) : false
-                      }
-                      className="size-4 border-line"
-                    />
-                    <span>Payment received</span>
-                  </label>
                 </div>
 
                 <AnswerFieldsEditor pairs={pairs} onChange={setPairs} />
@@ -1108,7 +1339,8 @@ function CargoDocumentsWorkspace({
                     </p>
                     <p className="mt-0.5 text-xs text-muted">
                       {row.quotedCents > 0 ? formatAud(row.quotedCents) : "No quote"}
-                      {row.paid ? " · Paid" : " · Unpaid"}
+                      {` · ${bookingStatusLabel(row.bookingStatus)}`}
+                      {` · ${paymentStatusLabel(row.paymentStatus)}`}
                     </p>
                   </button>
                 </li>
@@ -1179,13 +1411,18 @@ function CargoDocumentsWorkspace({
 
           <p className="px-4 pt-3 text-xs text-muted sm:px-5">
             {docTab === "invoice"
-              ? "Cargo invoice/receipt for this parcel — charges, payment details, and the goods table."
+              ? "Tax invoice issued at booking. Customers receive this with the acknowledgement while payment is outstanding."
               : docTab === "confirmation"
-                ? "Booking confirmation pack: cover letter, invoice, and customer terms. This is what customers are emailed."
+                ? selected.paid && selected.bookingStatus === "confirmed"
+                  ? "Official confirmation pack issued after payment verification: cover letter, invoice, and customer terms."
+                  : "Official confirmation is available only after payment has been verified."
                 : "Cargo declaration for drop-off and clearance."}
           </p>
 
           <div className="flex flex-wrap gap-2 px-4 py-3 sm:px-5">
+            {docTab !== "confirmation" ||
+            (selected.paid && selected.bookingStatus === "confirmed") ? (
+              <>
             <a
               href={cargoDocUrl(selected.id, docTab, { preview: previewBust })}
               target="_blank"
@@ -1201,11 +1438,31 @@ function CargoDocumentsWorkspace({
             >
               Download PDF
             </a>
-            {docTab === "invoice" || docTab === "confirmation" ? (
-              <EmailCargoInvoiceButton
+              </>
+            ) : null}
+            {docTab === "invoice" ? (
+              <EmailCargoDocButton
                 parcelNumber={selected.parcelNumber}
                 hasEmail={Boolean(selected.email)}
+                kind="invoice"
               />
+            ) : null}
+            {docTab === "confirmation" ? (
+              selected.paid && selected.bookingStatus === "confirmed" ? (
+                <EmailCargoDocButton
+                  parcelNumber={selected.parcelNumber}
+                  hasEmail={Boolean(selected.email)}
+                  kind="confirmation"
+                />
+              ) : (
+                <span className="text-xs text-muted">
+                  Confirmation cannot be sent until payment is verified.
+                </span>
+              )
+            ) : null}
+            {selected.acknowledgementStatus === "failed" ||
+            selected.confirmationStatus === "failed" ? (
+              <RetryCargoEmailButton parcelNumber={selected.parcelNumber} />
             ) : null}
             <button
               type="button"
@@ -1216,6 +1473,14 @@ function CargoDocumentsWorkspace({
             </button>
           </div>
 
+          {docTab === "confirmation" &&
+          !(selected.paid && selected.bookingStatus === "confirmed") ? (
+            <p className="border-t border-line px-4 py-10 text-center text-sm text-muted sm:px-5">
+              Official confirmation is generated after verified payment. Preview
+              and download are blocked while this booking is{" "}
+              {paymentStatusLabel(selected.paymentStatus).toLowerCase()}.
+            </p>
+          ) : (
           <iframe
             key={`${selected.id}-${docTab}-${previewBust}`}
             title={
@@ -1228,18 +1493,21 @@ function CargoDocumentsWorkspace({
             src={cargoDocUrl(selected.id, docTab, { preview: previewBust })}
             className="h-[70svh] w-full border-t border-line bg-white"
           />
+          )}
         </div>
       ) : null}
     </div>
   );
 }
 
-function EmailCargoInvoiceButton({
+function EmailCargoDocButton({
   parcelNumber,
   hasEmail,
+  kind,
 }: {
   parcelNumber: string;
   hasEmail: boolean;
+  kind: "invoice" | "confirmation";
 }) {
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
@@ -1255,13 +1523,20 @@ function EmailCargoInvoiceButton({
           setMessage(null);
           setError(null);
           start(async () => {
-            const result = await sendCargoInvoiceEmailsAction(parcelNumber);
+            const result =
+              kind === "confirmation"
+                ? await sendCargoConfirmationEmailsAction(parcelNumber)
+                : await sendCargoInvoiceEmailsAction(parcelNumber);
             if (result.ok) setMessage(result.message);
             else setError(result.error);
           });
         }}
       >
-        {pending ? "Sending…" : "Email confirmation"}
+        {pending
+          ? "Sending…"
+          : kind === "confirmation"
+            ? "Resend confirmation"
+            : "Resend invoice"}
       </button>
       {message ? (
         <span className="text-xs text-emerald-800">{message}</span>
@@ -1272,6 +1547,37 @@ function EmailCargoInvoiceButton({
           No sender email on file — staff still get a copy.
         </span>
       ) : null}
+    </span>
+  );
+}
+
+function RetryCargoEmailButton({ parcelNumber }: { parcelNumber: string }) {
+  const [pending, start] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        disabled={pending}
+        className={btnClass}
+        onClick={() => {
+          setMessage(null);
+          setError(null);
+          start(async () => {
+            const result = await retryCargoNotificationsAction(parcelNumber);
+            if (result.ok) setMessage(result.message);
+            else setError(result.error);
+          });
+        }}
+      >
+        {pending ? "Retrying…" : "Retry failed email"}
+      </button>
+      {message ? (
+        <span className="text-xs text-emerald-800">{message}</span>
+      ) : null}
+      {error ? <span className="text-xs text-red-700">{error}</span> : null}
     </span>
   );
 }

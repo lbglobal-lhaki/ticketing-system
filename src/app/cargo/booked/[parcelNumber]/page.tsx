@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ServiceTabs } from "@/components/ServiceTabs";
+import { cargoMoneySnapshot } from "@/lib/cargo/gst";
 import { extractCargoShipment, type CargoAnswers } from "@/lib/cargo/parties";
 import { formatKg } from "@/lib/cargo/capacity";
 import { formatFlightDateTime } from "@/lib/datetime";
@@ -31,6 +32,11 @@ export default async function CargoBookedPage({
     submitterName: cargo.submitterName,
     answers: (cargo.answers ?? {}) as CargoAnswers,
   });
+  const money = cargoMoneySnapshot(cargo);
+  const confirmed =
+    cargo.paid &&
+    cargo.paymentStatus === "paid" &&
+    cargo.bookingStatus === "confirmed";
 
   const rows: { label: string; value: string }[] = [
     {
@@ -67,17 +73,23 @@ export default async function CargoBookedPage({
     { label: "Receiver", value: shipment.receiver.name },
   ];
 
-  if (cargo.quotedCents > 0) {
+  if (money.totalCents > 0) {
+    if (money.gstCents > 0) {
+      rows.push(
+        { label: "Cargo charges excluding GST", value: formatAud(money.freightCents) },
+        { label: "GST (10%)", value: formatAud(money.gstCents) },
+      );
+    }
     rows.push({
-      label: cargo.paid ? "Paid" : "Amount due",
-      value: formatAud(cargo.quotedCents),
+      label: confirmed ? "Amount paid" : "Total including GST",
+      value: formatAud(money.totalCents),
     });
   }
 
   const paymentMethod = String(
     (cargo.answers as CargoAnswers)?.["Payment Method"] ?? "",
   );
-  const wantsBank = /bank/i.test(paymentMethod) && !cargo.paid;
+  const wantsBank = /bank/i.test(paymentMethod) && !confirmed;
   const bank = wantsBank ? getBankTransferDetails() : null;
 
   return (
@@ -87,24 +99,36 @@ export default async function CargoBookedPage({
         <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6 sm:py-16">
           <div className="rounded-2xl border border-line bg-white p-6 shadow-[0_8px_28px_rgba(15,23,42,0.06)] sm:p-9">
             <span className="badge-info inline-flex items-center px-3 py-1 text-xs font-semibold">
-              Booking received
+              {confirmed ? "Booking confirmed" : "Booking request received"}
             </span>
             <h1 className="mt-4 font-[family-name:var(--font-syne)] text-2xl font-bold tracking-tight text-accent-deep sm:text-3xl">
-              Your cargo is booked on this flight
+              {confirmed
+                ? "Your cargo booking is confirmed"
+                : "Booking Request Received"}
             </h1>
             <p className="mt-2 text-sm text-muted">
-              Keep this parcel number — quote it at drop-off and when you pay.
-              {cargo.quotedCents > 0 && !cargo.paid
-                ? " The freight charge below is locked on this booking."
-                : ""}
-              {shipment.sender.email
-                ? ` We are emailing the invoice and a confirmation to ${shipment.sender.email}.`
-                : ""}
+              {confirmed
+                ? "Payment has been verified. Keep this booking reference for drop-off."
+                : "Your cargo booking has been received successfully."}
+            </p>
+            <p className="mt-2 text-sm text-muted">
+              Your booking reference is{" "}
+              <span className="font-medium text-foreground">
+                {cargo.parcelNumber}
+              </span>
+              .
+              {!confirmed
+                ? ` An acknowledgement and invoice will be emailed${
+                    shipment.sender.email ? ` to ${shipment.sender.email}` : ""
+                  }. Your booking will be officially confirmed once payment has been received and verified.`
+                : shipment.sender.email
+                  ? ` We emailed the official confirmation to ${shipment.sender.email}.`
+                  : ""}
             </p>
 
             <div className="mt-6 rounded-xl border border-line bg-background px-5 py-4">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-                Parcel number
+                Booking reference
               </p>
               <p className="mt-1 font-mono text-xl font-bold tracking-wide text-foreground">
                 {cargo.parcelNumber}
@@ -131,7 +155,7 @@ export default async function CargoBookedPage({
                   Pay by bank transfer
                 </p>
                 <p className="mt-2 text-muted">
-                  Transfer {formatAud(cargo.quotedCents)} and use{" "}
+                  Transfer {formatAud(money.totalCents)} and use{" "}
                   <span className="font-medium text-foreground">
                     {cargo.parcelNumber}
                   </span>{" "}

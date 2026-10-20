@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
 import { getBrand } from "@/lib/branding";
+import { cargoMoneySnapshot } from "@/lib/cargo/gst";
+import { canIssueCargoConfirmation } from "@/lib/cargo/lifecycle";
 import {
   extractCargoShipment,
   type CargoAnswers,
@@ -12,8 +14,10 @@ import {
 import { cargoInvoicePdfOptions } from "@/lib/documents/templates";
 import { htmlToPdf } from "@/lib/documents/pdf";
 import {
-  cargoCustomerBookingEmail,
-  cargoStaffBookingEmail,
+  cargoCustomerAcknowledgementEmail,
+  cargoCustomerConfirmationEmail,
+  cargoStaffAcknowledgementEmail,
+  cargoStaffConfirmationEmail,
 } from "@/lib/email/cargoTemplates";
 import { sendEmail, type EmailAttachment } from "@/lib/email/send";
 
@@ -74,7 +78,7 @@ async function pdfAttachment(
   }
 }
 
-export type CargoBookingEmailResult = {
+export type CargoDeliveryResult = {
   ok: boolean;
   customerSent: boolean;
   staffSent: number;
@@ -83,12 +87,13 @@ export type CargoBookingEmailResult = {
 };
 
 /**
- * Customer confirmation + cargo invoice, and a staff acknowledgement.
- * Safe to call after booking — never throws for SMTP failures.
+ * Send one lifecycle email. Callers must have already authorised the kind
+ * (acknowledgement after create, confirmation only after verified payment).
  */
-export async function sendCargoBookingEmails(
+export async function deliverCargoNotification(
   parcelNumber: string,
-): Promise<CargoBookingEmailResult> {
+  kind: "acknowledgement" | "confirmation",
+): Promise<CargoDeliveryResult> {
   const row = await prisma.cargoSubmission.findUnique({
     where: { parcelNumber },
     include: {
@@ -105,9 +110,24 @@ export async function sendCargoBookingEmails(
     },
   });
   if (!row) {
-    return { ok: false, customerSent: false, staffSent: 0, error: "Cargo booking not found" };
+    return {
+      ok: false,
+      customerSent: false,
+      staffSent: 0,
+      error: "Cargo booking not found",
+    };
   }
 
+  if (kind === "confirmation" && !canIssueCargoConfirmation(row)) {
+    return {
+      ok: false,
+      customerSent: false,
+      staffSent: 0,
+      error: "Official confirmation can only be issued after payment is verified",
+    };
+  }
+
+  const money = cargoMoneySnapshot(row);
   const shipment = extractCargoShipment({
     id: row.id,
     parcelNumber: row.parcelNumber,
@@ -116,24 +136,41 @@ export async function sendCargoBookingEmails(
     submitterName: row.submitterName,
     answers: asAnswers(row.answers),
   });
-  const [invoice, confirmation] = await Promise.all([
-    pdfAttachment(row, "invoice"),
-    pdfAttachment(row, "confirmation"),
-  ]);
-  const customerTpl = cargoCustomerBookingEmail({
-    shipment,
-    quotedCents: row.quotedCents,
-    paid: row.paid,
-  });
-  const staffTpl = cargoStaffBookingEmail({
-    shipment,
-    quotedCents: row.quotedCents,
-    paid: row.paid,
-  });
+
+  const attachments: EmailAttachment[] = [];
+  if (kind === "acknowledgement") {
+    attachments.push(await pdfAttachment(row, "invoice"));
+  } else {
+    attachments.push(await pdfAttachment(row, "confirmation"));
+  }
+
+  const customerTpl =
+    kind === "confirmation"
+      ? cargoCustomerConfirmationEmail({
+          shipment,
+          quotedCents: money.totalCents,
+          freightCents: money.freightCents,
+          gstCents: money.gstCents,
+        })
+      : cargoCustomerAcknowledgementEmail({
+          shipment,
+          quotedCents: money.totalCents,
+          freightCents: money.freightCents,
+          gstCents: money.gstCents,
+        });
+  const staffTpl =
+    kind === "confirmation"
+      ? cargoStaffConfirmationEmail({
+          shipment,
+          quotedCents: money.totalCents,
+        })
+      : cargoStaffAcknowledgementEmail({
+          shipment,
+          quotedCents: money.totalCents,
+        });
 
   const customerTo = customerTpl.toEmail.trim();
   const staffList = cargoStaffRecipients(customerTo);
-
   const jobs: Promise<{
     role: "customer" | "staff";
     result: Awaited<ReturnType<typeof sendEmail>>;
@@ -147,7 +184,7 @@ export async function sendCargoBookingEmails(
         html: customerTpl.html,
         text: customerTpl.text,
         mailbox: "accounts",
-        attachments: [confirmation, invoice],
+        attachments,
       }).then((result) => ({ role: "customer" as const, result })),
     );
   }
@@ -160,7 +197,8 @@ export async function sendCargoBookingEmails(
         html: staffTpl.html,
         text: staffTpl.text,
         mailbox: "ticketing",
-        attachments: [invoice],
+        attachments:
+          kind === "acknowledgement" ? attachments : undefined,
       }).then((result) => ({ role: "staff" as const, result })),
     );
   }
@@ -191,8 +229,9 @@ export async function sendCargoBookingEmails(
   }
 
   if (errors.length) {
-    console.error("[email] cargo booking send issues", {
+    console.error("[email] cargo lifecycle send issues", {
       parcelNumber,
+      kind,
       errors,
     });
   }

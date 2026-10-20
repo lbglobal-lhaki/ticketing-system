@@ -39,6 +39,13 @@ export async function GET(
       return new NextResponse("Cargo booking not found", { status: 404 });
     }
 
+    if (!row.paid || row.paymentStatus !== "paid" || row.bookingStatus !== "confirmed") {
+      return new NextResponse(
+        "Official confirmation is issued only after payment has been verified.",
+        { status: 409 },
+      );
+    }
+
     const html = renderCargoConfirmationHtml(row);
     const url = new URL(request.url);
     const isPreview = url.searchParams.has("preview");

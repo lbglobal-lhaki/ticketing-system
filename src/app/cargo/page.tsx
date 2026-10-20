@@ -9,13 +9,14 @@ import { flightPayloadFromRow, formatKg } from "@/lib/cargo/capacity";
 import { formatFlightDate } from "@/lib/datetime";
 import { prisma } from "@/lib/db";
 import { airportCity } from "@/lib/format";
+import { cargoGstRateBpsFromEnv } from "@/lib/cargo/gst";
 import { listSellableCargoWeightOptions } from "@/lib/cargo/weightOptions.server";
 import { getSiteSettings } from "@/lib/settings";
 
 export const metadata: Metadata = {
   title: "Air cargo booking",
   description:
-    "Book and pay for air cargo on our Perth–Paro charter. Confirm the weight on a real departure and lock the freight charge.",
+    "Request air cargo on our Perth–Paro charter. You receive an invoice first; official confirmation follows after payment is verified.",
 };
 
 export const dynamic = "force-dynamic";
@@ -31,8 +32,8 @@ const HIGHLIGHTS = [
     body: "Sender, receiver, contents and compliance in a single pass. We generate the cargo declaration for you.",
   },
   {
-    title: "Pay the listed freight rate",
-    body: "Pick a weight option — documents, a fixed bag size, or a per-kilogram band. The price you see is the price you pay.",
+    title: "Invoice first, confirmation after payment",
+    body: "Pick a weight option and submit a booking request. We email an invoice (including GST where applicable). Official confirmation is issued only after payment is verified.",
   },
 ];
 
@@ -114,8 +115,9 @@ export default async function CargoPage() {
             </h2>
             <p className="mt-2 text-sm text-muted">
               Choose a departure, pick a weight option, then fill sender and
-              receiver details. The price you see is what you pay.
-              Booking is subject to the{" "}
+              receiver details. Listed freight is GST-exclusive; 10% GST is
+              added on the invoice where it applies. Official confirmation
+              follows payment. Booking is subject to the{" "}
               <Link
                 href="/cargo/terms"
                 className="font-medium text-accent underline-offset-2 hover:underline"
@@ -127,7 +129,11 @@ export default async function CargoPage() {
           </div>
 
           <div className="mt-6 max-w-3xl">
-            <CargoBookingForm flights={options} weightOptions={weightOptions} />
+            <CargoBookingForm
+              flights={options}
+              weightOptions={weightOptions}
+              gstRateBps={cargoGstRateBpsFromEnv()}
+            />
           </div>
         </div>
       </main>
