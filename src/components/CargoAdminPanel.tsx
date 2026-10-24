@@ -35,7 +35,7 @@ import { FieldError, labeledControlClass } from "@/components/forms/FieldError";
 import { CargoTypesAdmin } from "@/components/CargoTypesAdmin";
 import type { CargoWeightOptionRow } from "@/lib/cargo/weightOptions";
 import type { TicketTypeChoice } from "@/lib/fares/baggageAllowance";
-import { formatAud } from "@/lib/pricing";
+import { formatAud, formatDualCargoPrice } from "@/lib/pricing";
 import { useStickyAction } from "@/components/forms/useStickyAction";
 
 export type AdminCargoRow = {
@@ -54,6 +54,7 @@ export type AdminCargoRow = {
   weightKg: number;
   pieces: number;
   quotedCents: number;
+  quotedBtnCents: number;
   freightCents: number;
   gstCents: number;
   paidAmountCents: number;
@@ -655,7 +656,7 @@ export function CargoAdminPanel({
                         : " · Admin"}
                     {row.productName ? ` · ${row.productName}` : ""}
                     {row.quotedCents > 0
-                      ? ` · ${formatAud(row.quotedCents)}`
+                      ? ` · ${formatDualCargoPrice(row.quotedCents, row.quotedBtnCents)}`
                       : ""}
                     {row.gstCents > 0 ? " incl. GST" : ""}
                     {row.paid && row.paidAt
@@ -968,8 +969,8 @@ export function CargoAdminPanel({
                       </dt>
                       <dd className="text-sm">
                         {active.gstCents > 0
-                          ? `${formatAud(active.freightCents)} + ${formatAud(active.gstCents)} GST = ${formatAud(active.quotedCents)}`
-                          : formatAud(active.quotedCents)}
+                          ? `${formatDualCargoPrice(active.freightCents, 0)} + ${formatAud(active.gstCents)} GST = ${formatDualCargoPrice(active.quotedCents, active.quotedBtnCents)}`
+                          : formatDualCargoPrice(active.quotedCents, active.quotedBtnCents)}
                         {active.paidAmountCents > 0
                           ? ` · received ${formatAud(active.paidAmountCents)}`
                           : ""}
@@ -1338,7 +1339,9 @@ function CargoDocumentsWorkspace({
                       {row.submitterName || row.email || "Untitled"}
                     </p>
                     <p className="mt-0.5 text-xs text-muted">
-                      {row.quotedCents > 0 ? formatAud(row.quotedCents) : "No quote"}
+                      {row.quotedCents > 0
+                        ? formatDualCargoPrice(row.quotedCents, row.quotedBtnCents)
+                        : "No quote"}
                       {` · ${bookingStatusLabel(row.bookingStatus)}`}
                       {` · ${paymentStatusLabel(row.paymentStatus)}`}
                     </p>
@@ -1360,7 +1363,7 @@ function CargoDocumentsWorkspace({
               <p className="mt-0.5 truncate text-sm text-muted">
                 {selected.submitterName || selected.email || "Untitled enquiry"}
                 {selected.quotedCents > 0
-                  ? ` · ${formatAud(selected.quotedCents)}`
+                  ? ` · ${formatDualCargoPrice(selected.quotedCents, selected.quotedBtnCents)}`
                   : ""}
               </p>
             </div>

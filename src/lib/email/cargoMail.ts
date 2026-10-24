@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { getBrand } from "@/lib/branding";
-import { cargoMoneySnapshot } from "@/lib/cargo/gst";
+import { cargoBtnSnapshot, cargoMoneySnapshot } from "@/lib/cargo/gst";
 import { canIssueCargoConfirmation } from "@/lib/cargo/lifecycle";
 import {
   extractCargoShipment,
@@ -128,6 +128,7 @@ export async function deliverCargoNotification(
   }
 
   const money = cargoMoneySnapshot(row);
+  const btn = cargoBtnSnapshot(row);
   const shipment = extractCargoShipment({
     id: row.id,
     parcelNumber: row.parcelNumber,
@@ -151,22 +152,30 @@ export async function deliverCargoNotification(
           quotedCents: money.totalCents,
           freightCents: money.freightCents,
           gstCents: money.gstCents,
+          quotedBtnCents: btn.totalCents,
+          freightBtnCents: btn.freightCents,
+          gstBtnCents: btn.gstCents,
         })
       : cargoCustomerAcknowledgementEmail({
           shipment,
           quotedCents: money.totalCents,
           freightCents: money.freightCents,
           gstCents: money.gstCents,
+          quotedBtnCents: btn.totalCents,
+          freightBtnCents: btn.freightCents,
+          gstBtnCents: btn.gstCents,
         });
   const staffTpl =
     kind === "confirmation"
       ? cargoStaffConfirmationEmail({
           shipment,
           quotedCents: money.totalCents,
+          quotedBtnCents: btn.totalCents,
         })
       : cargoStaffAcknowledgementEmail({
           shipment,
           quotedCents: money.totalCents,
+          quotedBtnCents: btn.totalCents,
         });
 
   const customerTo = customerTpl.toEmail.trim();

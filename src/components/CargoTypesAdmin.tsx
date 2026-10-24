@@ -20,7 +20,7 @@ import {
   type TicketTypeChoice,
 } from "@/lib/fares/baggageAllowance";
 import { cabinLabel } from "@/lib/fares/templates";
-import { formatAud } from "@/lib/pricing";
+import { formatDualCargoPrice } from "@/lib/pricing";
 
 const fieldClass =
   "w-full min-w-0 border-0 border-b border-line bg-transparent py-2 text-sm text-foreground outline-none transition focus:border-accent";
@@ -161,6 +161,22 @@ function OptionForm({
               />
               <FieldError error={err("priceAud")} />
             </label>
+            <label className="block text-sm">
+              <span className="text-xs font-medium uppercase tracking-[0.12em] text-muted">
+                Price (BTN / Nu.)
+              </span>
+              <MoneyInput
+                name="priceBtn"
+                affix="Nu."
+                defaultValue={((option?.priceBtnCents ?? 0) / 100).toFixed(2)}
+                className={labeledControlClass(fieldClass, err("priceBtn"))}
+              />
+              <FieldError error={err("priceBtn")} />
+              <p className="mt-1 text-xs text-muted">
+                Optional. Shown to customers as BTN Nu. alongside AUD. GST-exclusive,
+                same as the Australian price.
+              </p>
+            </label>
           </>
         ) : (
           <>
@@ -191,7 +207,7 @@ function OptionForm({
               />
               <FieldError error={err("maxKg")} />
             </label>
-            <label className="block text-sm sm:col-span-2">
+            <label className="block text-sm">
               <span className="text-xs font-medium uppercase tracking-[0.12em] text-muted">
                 Rate per kg (AUD)
               </span>
@@ -202,6 +218,18 @@ function OptionForm({
                 className={labeledControlClass(fieldClass, err("priceAud"))}
               />
               <FieldError error={err("priceAud")} />
+            </label>
+            <label className="block text-sm">
+              <span className="text-xs font-medium uppercase tracking-[0.12em] text-muted">
+                Rate per kg (BTN / Nu.)
+              </span>
+              <MoneyInput
+                name="priceBtn"
+                affix="Nu."
+                defaultValue={((option?.priceBtnCents ?? 0) / 100).toFixed(2)}
+                className={labeledControlClass(fieldClass, err("priceBtn"))}
+              />
+              <FieldError error={err("priceBtn")} />
             </label>
           </>
         )}
@@ -397,9 +425,10 @@ export function CargoTypesAdmin({
             Cargo weight options
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Cargo customers pick a priced band. Tick ticket types on a weight
-            — for example 23 kg on Early Bird — to include that allowance on
-            the fare, invoice and travel document.
+            Cargo customers pick a priced band. Set AUD and, if you use it,
+            BTN (Nu.) — both show on the cargo page. Tick ticket types on a
+            weight to include that allowance on the fare, invoice and travel
+            document.
           </p>
         </div>
         {editingId === null ? (
@@ -504,7 +533,7 @@ export function CargoTypesAdmin({
                           onClick={(e) => {
                             if (
                               !confirm(
-                                `Remove ${option.name} (${formatAud(option.priceCents)}${option.kind === "per_kg" ? " / kg" : ""}) from the cargo shop?\n\nExisting bookings keep this price. If any bookings used it, it is hidden instead of erased.`,
+                                `Remove ${option.name} (${formatDualCargoPrice(option.priceCents, option.priceBtnCents, option.kind === "per_kg" ? " / kg" : "")}) from the cargo shop?\n\nExisting bookings keep this price. If any bookings used it, it is hidden instead of erased.`,
                               )
                             ) {
                               e.preventDefault();

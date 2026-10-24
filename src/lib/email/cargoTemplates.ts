@@ -1,7 +1,7 @@
 import { getBrand } from "@/lib/branding";
 import type { CargoShipmentSummary } from "@/lib/cargo/parties";
 import { emailLogoImgHtml } from "@/lib/email/inlineLogo";
-import { formatAud } from "@/lib/pricing";
+import { formatDualCargoPrice } from "@/lib/pricing";
 
 function esc(value: string) {
   return value
@@ -182,15 +182,22 @@ function moneyLines(input: {
   quotedCents: number;
   freightCents?: number;
   gstCents?: number;
+  quotedBtnCents?: number;
+  freightBtnCents?: number;
+  gstBtnCents?: number;
 }) {
   const total =
-    input.quotedCents > 0 ? formatAud(input.quotedCents) : "Quoted on this booking";
+    input.quotedCents > 0
+      ? formatDualCargoPrice(input.quotedCents, input.quotedBtnCents ?? 0)
+      : "Quoted on this booking";
   const freight =
     input.freightCents && input.freightCents > 0
-      ? formatAud(input.freightCents)
+      ? formatDualCargoPrice(input.freightCents, input.freightBtnCents ?? 0)
       : "";
   const gst =
-    input.gstCents && input.gstCents > 0 ? formatAud(input.gstCents) : "";
+    input.gstCents && input.gstCents > 0
+      ? formatDualCargoPrice(input.gstCents, input.gstBtnCents ?? 0)
+      : "";
   return { total, freight, gst };
 }
 
@@ -199,6 +206,9 @@ export function cargoCustomerAcknowledgementEmail(input: {
   quotedCents: number;
   freightCents?: number;
   gstCents?: number;
+  quotedBtnCents?: number;
+  freightBtnCents?: number;
+  gstBtnCents?: number;
 }) {
   const brand = getBrand();
   const { shipment } = input;
@@ -258,6 +268,9 @@ export function cargoCustomerConfirmationEmail(input: {
   quotedCents: number;
   freightCents?: number;
   gstCents?: number;
+  quotedBtnCents?: number;
+  freightBtnCents?: number;
+  gstBtnCents?: number;
 }) {
   const brand = getBrand();
   const { shipment } = input;
@@ -317,11 +330,14 @@ ${brand.agentEmail}`;
 export function cargoStaffAcknowledgementEmail(input: {
   shipment: CargoShipmentSummary;
   quotedCents: number;
+  quotedBtnCents?: number;
 }) {
   const brand = getBrand();
   const { shipment } = input;
   const amount =
-    input.quotedCents > 0 ? `${formatAud(input.quotedCents)} unpaid` : "No amount locked";
+    input.quotedCents > 0
+      ? `${formatDualCargoPrice(input.quotedCents, input.quotedBtnCents ?? 0)} unpaid`
+      : "No amount locked";
   const subject = `New cargo booking ${shipment.parcelNumber} — awaiting payment`;
   const html = `
   <div style="font-family:Georgia,serif;color:#0F172A;line-height:1.55;max-width:640px">
@@ -355,11 +371,14 @@ Receiver: ${shipment.receiver.name} ${shipment.receiver.phone}
 export function cargoStaffConfirmationEmail(input: {
   shipment: CargoShipmentSummary;
   quotedCents: number;
+  quotedBtnCents?: number;
 }) {
   const brand = getBrand();
   const { shipment } = input;
   const amount =
-    input.quotedCents > 0 ? `${formatAud(input.quotedCents)} paid` : "Paid";
+    input.quotedCents > 0
+      ? `${formatDualCargoPrice(input.quotedCents, input.quotedBtnCents ?? 0)} paid`
+      : "Paid";
   const subject = `Cargo booking confirmed ${shipment.parcelNumber} — payment verified`;
   const html = `
   <div style="font-family:Georgia,serif;color:#0F172A;line-height:1.55;max-width:640px">

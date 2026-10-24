@@ -3,7 +3,8 @@ import path from "path";
 import { getBrand } from "@/lib/branding";
 import { CARGO_Q } from "@/lib/cargo/bookingForm";
 import { formatKg } from "@/lib/cargo/capacity";
-import { cargoMoneySnapshot } from "@/lib/cargo/gst";
+import { cargoBtnSnapshot, cargoMoneySnapshot } from "@/lib/cargo/gst";
+import { formatDualCargoPrice } from "@/lib/pricing";
 import { extractCargoShipment, type CargoAnswers } from "@/lib/cargo/parties";
 import { formatCargoAnswer } from "@/lib/cargo/submit";
 import {
@@ -32,6 +33,9 @@ export type CargoInvoiceSource = {
   freightCents?: number | null;
   gstCents?: number | null;
   gstRateBps?: number | null;
+  quotedBtnCents?: number | null;
+  freightBtnCents?: number | null;
+  gstBtnCents?: number | null;
   paidAmountCents?: number | null;
   paymentStatus?: string | null;
   bookingStatus?: string | null;
@@ -283,8 +287,13 @@ function partyBox(
   </section>`;
 }
 
-function chargeRow(label: string, cents: number, strong = false) {
-  return `<div class="charge${strong ? " strong" : ""}"><span>${esc(label)}</span><span class="amt">${esc(money(cents))}</span></div>`;
+function chargeRow(
+  label: string,
+  cents: number,
+  strong = false,
+  btnCents = 0,
+) {
+  return `<div class="charge${strong ? " strong" : ""}"><span>${esc(label)}</span><span class="amt">${esc(formatDualCargoPrice(cents, btnCents))}</span></div>`;
 }
 
 export type CargoInvoiceLayout = "standalone" | "rates";
@@ -335,6 +344,7 @@ export function renderCargoInvoiceHtml(
     row.weightKg > 0 ? formatKg(row.weightKg) : shipment.weight;
   const chargeable = weight;
   const money = cargoMoneySnapshot(row);
+  const btn = cargoBtnSnapshot(row);
   const freight = money.freightCents;
   const gst = money.gstCents;
   const total = money.totalCents;
@@ -547,7 +557,7 @@ export function renderCargoInvoiceHtml(
       font-size: 13px;
     }
     .charge.strong { font-weight: 800; font-size: 14px; padding-top: 7px; }
-    .charge .amt { min-width: 28mm; text-align: right; }
+    .charge .amt { min-width: 52mm; text-align: right; font-size: 11.5px; }
     .payline {
       margin-top: 7mm; display: flex; justify-content: space-between;
       align-items: center; font-size: 12.5px; font-weight: 700; gap: 12px;
@@ -653,14 +663,14 @@ export function renderCargoInvoiceHtml(
               }</p>`
             : ""
         }
-        ${chargeRow(freightLabel, freight)}
+        ${chargeRow(freightLabel, freight, false, btn.freightCents)}
         ${chargeRow("Handling Charge", 0)}
         ${chargeRow("Security/Screening Charge", 0)}
         ${chargeRow("Other Charges", 0)}
-        ${chargeRow(gstLabel, gst)}
-        ${chargeRow(totalLabel, total, true)}
-        ${chargeRow("Amount Paid", paid, true)}
-        ${chargeRow("Balance Due", balance, true)}
+        ${chargeRow(gstLabel, gst, false, btn.gstCents)}
+        ${chargeRow(totalLabel, total, true, btn.totalCents)}
+        ${chargeRow("Amount Paid", paid, true, row.paid && btn.totalCents > 0 ? btn.totalCents : 0)}
+        ${chargeRow("Balance Due", balance, true, !row.paid && btn.totalCents > 0 ? btn.totalCents : 0)}
       </section>
       <div class="payline">
         <div class="modes">

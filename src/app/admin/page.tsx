@@ -632,6 +632,7 @@ export default async function AdminPage({
                 weightKg: row.weightKg,
                 pieces: row.pieces,
                 quotedCents: row.quotedCents,
+                quotedBtnCents: row.quotedBtnCents,
                 freightCents: row.freightCents,
                 gstCents: row.gstCents,
                 paidAmountCents: row.paidAmountCents,

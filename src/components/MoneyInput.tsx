@@ -5,7 +5,10 @@ import { forwardRef } from "react";
 type MoneyInputProps = Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
   "type" | "inputMode"
->;
+> & {
+  /** Currency mark shown inside the field. Default `$`. Use `Nu.` for BTN. */
+  affix?: string;
+};
 
 /**
  * Currency input built for fast admin data entry — plain `type="number"`
@@ -21,13 +24,14 @@ type MoneyInputProps = Omit<
  */
 export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(
   function MoneyInput(
-    { className, onFocus, onChange, ...props },
+    { className, onFocus, onChange, affix = "$", ...props },
     ref,
   ) {
+    const affixPad = affix.length > 1 ? "pl-10" : "pl-6";
     return (
       <div className="relative">
         <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-sm font-medium text-muted">
-          $
+          {affix}
         </span>
         <input
           ref={ref}
@@ -46,7 +50,7 @@ export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(
             e.target.value = cleaned;
             onChange?.(e);
           }}
-          className={`${className ?? ""} pl-6`}
+          className={`${className ?? ""} ${affixPad}`}
           {...props}
         />
       </div>

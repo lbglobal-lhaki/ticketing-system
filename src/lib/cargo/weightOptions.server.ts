@@ -16,6 +16,7 @@ function toRow(row: {
   maxKg: number | null;
   chargeableKg: number;
   priceCents: number;
+  priceBtnCents: number;
   origins: string[];
   sortOrder: number;
   active: boolean;
@@ -36,6 +37,7 @@ function toRow(row: {
     maxKg: row.maxKg,
     chargeableKg: row.chargeableKg,
     priceCents: row.priceCents,
+    priceBtnCents: row.priceBtnCents,
     origins: row.origins,
     sortOrder: row.sortOrder,
     active: row.active,
@@ -66,6 +68,7 @@ export async function ensureCargoWeightOptions() {
           maxKg: row.maxKg,
           chargeableKg: row.chargeableKg,
           priceCents: row.priceCents,
+          priceBtnCents: row.priceBtnCents,
           origins: row.origins,
           sortOrder: row.sortOrder,
           active: row.active,

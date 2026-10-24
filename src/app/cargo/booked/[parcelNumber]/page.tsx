@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ServiceTabs } from "@/components/ServiceTabs";
-import { cargoMoneySnapshot } from "@/lib/cargo/gst";
+import { cargoBtnSnapshot, cargoMoneySnapshot } from "@/lib/cargo/gst";
 import { extractCargoShipment, type CargoAnswers } from "@/lib/cargo/parties";
 import { formatKg } from "@/lib/cargo/capacity";
 import { formatFlightDateTime } from "@/lib/datetime";
 import { prisma } from "@/lib/db";
 import { airportCity } from "@/lib/format";
 import { getBankTransferDetails } from "@/lib/payments/bank";
-import { formatAud } from "@/lib/pricing";
+import { formatAud, formatDualCargoPrice } from "@/lib/pricing";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +33,7 @@ export default async function CargoBookedPage({
     answers: (cargo.answers ?? {}) as CargoAnswers,
   });
   const money = cargoMoneySnapshot(cargo);
+  const btn = cargoBtnSnapshot(cargo);
   const confirmed =
     cargo.paid &&
     cargo.paymentStatus === "paid" &&
@@ -76,13 +77,19 @@ export default async function CargoBookedPage({
   if (money.totalCents > 0) {
     if (money.gstCents > 0) {
       rows.push(
-        { label: "Cargo charges excluding GST", value: formatAud(money.freightCents) },
-        { label: "GST (10%)", value: formatAud(money.gstCents) },
+        {
+          label: "Cargo charges excluding GST",
+          value: formatDualCargoPrice(money.freightCents, btn.freightCents),
+        },
+        {
+          label: "GST (10%)",
+          value: formatDualCargoPrice(money.gstCents, btn.gstCents),
+        },
       );
     }
     rows.push({
       label: confirmed ? "Amount paid" : "Total including GST",
-      value: formatAud(money.totalCents),
+      value: formatDualCargoPrice(money.totalCents, btn.totalCents),
     });
   }
 

@@ -499,6 +499,10 @@ model CargoSubmission {
   freightCents     Int                   @default(0)
   /// GST snapshot at issue (cents). 0 when GST-free or not itemised historically.
   gstCents         Int                   @default(0)
+  /// Parallel BTN (Ngultrum) quote at issue, in chetrum (1 Nu. = 100).
+  quotedBtnCents   Int                   @default(0)
+  freightBtnCents  Int                   @default(0)
+  gstBtnCents      Int                   @default(0)
   /// Rate used when the invoice was issued (1000 = 10%). 0 = not itemised.
   gstRateBps       Int                   @default(0)
   bookingStatus    CargoBookingStatus    @default(pending_payment)
@@ -610,6 +614,8 @@ model CargoWeightOption {
   chargeableKg  Int             @default(0)
   /// Fixed: total AUD cents. Per-kg: cents per kilogram.
   priceCents    Int
+  /// Parallel BTN (Ngultrum) catalogue price in chetrum. 0 = not published.
+  priceBtnCents Int             @default(0)
   /// Airport codes this band is sold on. Empty = every departure.
   origins       String[]        @default([])
   sortOrder     Int             @default(0)

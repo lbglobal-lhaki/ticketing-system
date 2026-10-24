@@ -16,11 +16,11 @@ import {
 } from "@/lib/cargo/bookingForm";
 import { formatKg } from "@/lib/cargo/capacity";
 import { priceCargoCharges } from "@/lib/cargo/gst";
-import { formatAud } from "@/lib/pricing";
+import { dualCargoPriceParts } from "@/lib/pricing";
 import {
   optionFitsPayload,
   optionHoldKg,
-  optionPriceLabel,
+  optionPriceParts,
   optionRangeLabel,
   optionSoldOnOrigin,
   quoteCargoWeightOption,
@@ -100,6 +100,39 @@ function Field({
       {hint ? <span className="mt-1 block text-xs text-muted">{hint}</span> : null}
       <FieldError error={error} />
     </label>
+  );
+}
+
+function DualPrice({
+  audCents,
+  btnCents = 0,
+  suffix = "",
+  size = "card",
+  align = "left",
+}: {
+  audCents: number;
+  btnCents?: number;
+  suffix?: string;
+  size?: "card" | "total";
+  align?: "left" | "right";
+}) {
+  const { aud, btn } = dualCargoPriceParts(audCents, btnCents, suffix);
+  const audClass =
+    size === "total"
+      ? "block font-[family-name:var(--font-syne)] text-2xl font-bold leading-tight text-accent-deep"
+      : "block font-[family-name:var(--font-syne)] text-sm font-bold leading-snug text-accent-deep";
+  const btnClass =
+    size === "total"
+      ? "mt-0.5 block text-base font-semibold leading-snug text-accent-deep"
+      : "mt-0.5 block text-xs font-semibold leading-snug text-accent-deep";
+
+  return (
+    <span
+      className={`block min-w-0 ${align === "right" ? "text-right" : ""}`}
+    >
+      <span className={audClass}>{aud}</span>
+      {btn ? <span className={btnClass}>{btn}</span> : null}
+    </span>
   );
 }
 
@@ -184,7 +217,14 @@ export function CargoBookingForm({
         gstRateBps,
       })
     : null;
+  const quoteBtnMoney = quote?.ok
+    ? priceCargoCharges({
+        exclusiveCents: quote.quotedBtnCents,
+        gstRateBps,
+      })
+    : null;
   const quoteCents = quoteMoney?.totalCents ?? 0;
+  const quoteBtnCents = quoteBtnMoney?.totalCents ?? 0;
   const holdKg = selected
     ? optionHoldKg(selected, selected.kind === "per_kg" ? enteredKg : 0)
     : 0;
@@ -316,13 +356,16 @@ export function CargoBookingForm({
               No weight options fit this departure. Choose another flight.
             </p>
           ) : (
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <div className="mt-3 grid gap-2">
               {offered.map((option) => {
                 const active = option.id === optionId;
+                const price = optionPriceParts(option);
                 return (
                   <button
                     key={option.id}
                     type="button"
+                    aria-pressed={active}
+                    aria-label={`${option.name}. ${price.aud}${price.btn ? `. ${price.btn}` : ""}`}
                     onClick={() => {
                       setOptionId(option.id);
                       if (option.kind !== "per_kg") setActualKg("");
@@ -333,8 +376,8 @@ export function CargoBookingForm({
                         : "border-line bg-white hover:border-accent/50"
                     }`}
                   >
-                    <span className="flex items-start justify-between gap-3">
-                      <span>
+                    <span className="flex min-w-0 items-start justify-between gap-4">
+                      <span className="min-w-0">
                         <span className="block text-sm font-semibold text-foreground">
                           {option.name}
                         </span>
@@ -342,9 +385,12 @@ export function CargoBookingForm({
                           {optionRangeLabel(option)}
                         </span>
                       </span>
-                      <span className="shrink-0 font-[family-name:var(--font-syne)] text-base font-bold text-accent-deep">
-                        {optionPriceLabel(option)}
-                      </span>
+                      <DualPrice
+                        audCents={option.priceCents}
+                        btnCents={option.priceBtnCents}
+                        suffix={option.kind === "per_kg" ? " / kg" : ""}
+                        align="right"
+                      />
                     </span>
                   </button>
                 );
@@ -402,18 +448,33 @@ export function CargoBookingForm({
 
         {quoteMoney && quoteCents > 0 ? (
           <p className="rounded-lg border border-line bg-background px-3.5 py-2.5 text-sm text-foreground sm:col-span-2">
-            Total including GST:{" "}
-            <span className="font-[family-name:var(--font-syne)] text-lg font-bold text-accent-deep">
-              {formatAud(quoteCents)}
+            <span className="block text-sm text-foreground">
+              Total including GST
             </span>
+            <DualPrice
+              audCents={quoteCents}
+              btnCents={quoteBtnCents}
+              size="total"
+            />
             <span className="mt-1 block text-xs text-muted">
-              {formatAud(quoteMoney.freightCents)} excluding GST
-              {quoteMoney.gstCents > 0
-                ? ` + ${formatAud(quoteMoney.gstCents)} GST (10%)`
+              Freight excluding GST:{" "}
+              {dualCargoPriceParts(
+                quoteMoney.freightCents,
+                quoteBtnMoney?.freightCents ?? 0,
+              ).aud}
+              {quoteBtnMoney && quoteBtnMoney.freightCents > 0
+                ? ` · ${dualCargoPriceParts(quoteMoney.freightCents, quoteBtnMoney.freightCents).btn}`
                 : ""}
-              . {selected
+              {quoteMoney.gstCents > 0
+                ? `. GST (10%) is included in the total.`
+                : ""}{" "}
+              {selected
                 ? selected.kind === "per_kg"
-                  ? `${formatAud(selected.priceCents)} per kg for ${holdKg} kg (GST exclusive).`
+                  ? `${selected.name} is ${dualCargoPriceParts(selected.priceCents, selected.priceBtnCents).aud}${
+                      selected.priceBtnCents > 0
+                        ? ` / ${dualCargoPriceParts(selected.priceCents, selected.priceBtnCents).btn}`
+                        : ""
+                    } per kg for ${holdKg} kg (GST exclusive).`
                   : `${selected.name} is a locked GST-exclusive freight total.`
                 : null}
             </span>
@@ -696,14 +757,16 @@ export function CargoBookingForm({
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
               Amount due
             </p>
-            <p className="mt-1 font-[family-name:var(--font-syne)] text-2xl font-bold text-accent-deep">
-              {formatAud(quoteCents)}
-            </p>
+            <div className="mt-1">
+              <DualPrice
+                audCents={quoteCents}
+                btnCents={quoteBtnCents}
+                size="total"
+              />
+            </div>
             <p className="mt-1 text-xs text-muted">
-              {formatAud(quoteMoney.freightCents)} excluding GST
-              {quoteMoney.gstCents > 0
-                ? ` + ${formatAud(quoteMoney.gstCents)} GST (10%)`
-                : ""}
+              Freight excluding GST is shown above. GST (10%) is included in
+              both totals when it applies.
               {selected
                 ? ` · ${selected.name}${
                     selected.kind === "per_kg" && holdKg > 0

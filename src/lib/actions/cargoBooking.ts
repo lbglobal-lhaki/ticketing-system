@@ -122,9 +122,14 @@ export async function submitCargoBookingAction(
     );
 
     parcelNumber = await allocateCargoParcelNumber();
+    const gstRateBps = cargoGstRateBpsFromEnv();
     const priced = priceCargoCharges({
       exclusiveCents: quoted.quotedCents,
-      gstRateBps: cargoGstRateBpsFromEnv(),
+      gstRateBps,
+    });
+    const pricedBtn = priceCargoCharges({
+      exclusiveCents: quoted.quotedBtnCents,
+      gstRateBps,
     });
     const quotedCents = priced.totalCents;
     const weightKg = quoted.weightKg;
@@ -160,6 +165,9 @@ export async function submitCargoBookingAction(
           freightCents: priced.freightCents,
           gstCents: priced.gstCents,
           gstRateBps: priced.gstRateBps,
+          quotedBtnCents: pricedBtn.totalCents,
+          freightBtnCents: pricedBtn.freightCents,
+          gstBtnCents: pricedBtn.gstCents,
           cargoWeightOptionId: option.id,
           productName: option.name,
           answers: answers as Prisma.InputJsonValue,

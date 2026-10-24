@@ -82,6 +82,20 @@ export function priceCargoCharges(input: {
  * Issued-invoice snapshot. Historical rows (freight/gst unset) keep the
  * original quoted total and do not invent a GST line.
  */
+export function cargoBtnSnapshot(row: {
+  quotedBtnCents?: number | null;
+  freightBtnCents?: number | null;
+  gstBtnCents?: number | null;
+  gstRateBps?: number | null;
+}): CargoMoneySnapshot {
+  return cargoMoneySnapshot({
+    quotedCents: row.quotedBtnCents ?? 0,
+    freightCents: row.freightBtnCents,
+    gstCents: row.gstBtnCents,
+    gstRateBps: row.gstRateBps,
+  });
+}
+
 export function cargoMoneySnapshot(row: {
   quotedCents: number;
   freightCents?: number | null;

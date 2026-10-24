@@ -1,4 +1,4 @@
-import { formatAud } from "@/lib/pricing";
+import { dualCargoPriceParts, formatDualCargoPrice } from "@/lib/pricing";
 
 export type CargoWeightKind = "fixed" | "per_kg";
 
@@ -17,6 +17,8 @@ export type CargoWeightOptionRow = {
   maxKg: number | null;
   chargeableKg: number;
   priceCents: number;
+  /** Parallel BTN catalogue price in chetrum. 0 = not published. */
+  priceBtnCents: number;
   origins: string[];
   sortOrder: number;
   active: boolean;
@@ -45,6 +47,7 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     maxKg: 0,
     chargeableKg: 1,
     priceCents: 3554,
+    priceBtnCents: 0,
     origins: [],
     sortOrder: 1,
     active: true,
@@ -60,6 +63,7 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     maxKg: 5,
     chargeableKg: 5,
     priceCents: 11848,
+    priceBtnCents: 0,
     origins: [],
     sortOrder: 2,
     active: true,
@@ -75,6 +79,7 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     maxKg: 10,
     chargeableKg: 10,
     priceCents: 19994,
+    priceBtnCents: 0,
     origins: [],
     sortOrder: 3,
     active: true,
@@ -90,6 +95,7 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     maxKg: 20,
     chargeableKg: 20,
     priceCents: 33323,
+    priceBtnCents: 0,
     origins: [],
     sortOrder: 4,
     active: true,
@@ -105,6 +111,7 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     maxKg: 30,
     chargeableKg: 30,
     priceCents: 44430,
+    priceBtnCents: 0,
     origins: [],
     sortOrder: 5,
     active: true,
@@ -120,6 +127,7 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     maxKg: 45,
     chargeableKg: 45,
     priceCents: 54057,
+    priceBtnCents: 0,
     origins: [],
     sortOrder: 6,
     active: true,
@@ -135,6 +143,7 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     maxKg: 299,
     chargeableKg: 0,
     priceCents: 2962,
+    priceBtnCents: 0,
     origins: [],
     sortOrder: 7,
     active: true,
@@ -150,6 +159,7 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     maxKg: 499,
     chargeableKg: 0,
     priceCents: 2073,
+    priceBtnCents: 0,
     origins: [],
     sortOrder: 8,
     active: true,
@@ -165,6 +175,7 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     maxKg: 999,
     chargeableKg: 0,
     priceCents: 1600,
+    priceBtnCents: 0,
     origins: [],
     sortOrder: 9,
     active: true,
@@ -180,6 +191,7 @@ export const DEFAULT_CARGO_WEIGHT_OPTIONS: Omit<
     maxKg: null,
     chargeableKg: 0,
     priceCents: 1200,
+    priceBtnCents: 0,
     origins: [],
     sortOrder: 10,
     active: true,
@@ -252,24 +264,41 @@ export function optionsForFlight(
   );
 }
 
+function quotedBtnCents(
+  option: Pick<CargoWeightOptionRow, "kind" | "priceBtnCents">,
+  weightKg: number,
+) {
+  const rate = Math.max(0, option.priceBtnCents ?? 0);
+  if (rate <= 0) return 0;
+  return option.kind === "fixed" ? rate : weightKg * rate;
+}
+
 export function quoteCargoWeightOption(
   option: Pick<
     CargoWeightOptionRow,
-    "kind" | "minKg" | "maxKg" | "priceCents" | "chargeableKg" | "name"
+    | "kind"
+    | "minKg"
+    | "maxKg"
+    | "priceCents"
+    | "priceBtnCents"
+    | "chargeableKg"
+    | "name"
   >,
   enteredKg: number,
 ):
-  | { ok: true; weightKg: number; quotedCents: number }
+  | { ok: true; weightKg: number; quotedCents: number; quotedBtnCents: number }
   | { ok: false; error: string } {
   if (option.priceCents <= 0) {
     return { ok: false, error: "That weight option is not priced yet" };
   }
 
   if (option.kind === "fixed") {
+    const weightKg = optionHoldKg(option, 0);
     return {
       ok: true,
-      weightKg: optionHoldKg(option, 0),
+      weightKg,
       quotedCents: option.priceCents,
+      quotedBtnCents: quotedBtnCents(option, weightKg),
     };
   }
 
@@ -290,15 +319,22 @@ export function quoteCargoWeightOption(
     ok: true,
     weightKg: kg,
     quotedCents: kg * option.priceCents,
+    quotedBtnCents: quotedBtnCents(option, kg),
   };
 }
 
-export function optionPriceLabel(
-  option: Pick<CargoWeightOptionRow, "kind" | "priceCents">,
+export function optionPriceParts(
+  option: Pick<CargoWeightOptionRow, "kind" | "priceCents" | "priceBtnCents">,
 ) {
-  return option.kind === "per_kg"
-    ? `${formatAud(option.priceCents)} / kg`
-    : formatAud(option.priceCents);
+  const suffix = option.kind === "per_kg" ? " / kg" : "";
+  return dualCargoPriceParts(option.priceCents, option.priceBtnCents ?? 0, suffix);
+}
+
+export function optionPriceLabel(
+  option: Pick<CargoWeightOptionRow, "kind" | "priceCents" | "priceBtnCents">,
+) {
+  const { aud, btn } = optionPriceParts(option);
+  return btn ? `${aud} and ${btn}` : aud;
 }
 
 export function optionRangeLabel(
