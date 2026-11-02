@@ -1,5 +1,6 @@
 import { scheduledFlightDurationMinutes } from "@/lib/datetime";
 import { airportCity } from "@/lib/format";
+import { seatsByCabin } from "@/lib/fares/templates";
 
 export type CabinFare = {
   flightId: string;
@@ -207,6 +208,12 @@ export type GroupFlightInput = {
       departureAt: Date;
       remainingSeats: number;
       active: boolean;
+      fareReleases?: Array<{
+        cabinClass: string;
+        remainingSeats: number;
+        totalSeats: number;
+        salesClosed?: boolean | null;
+      }>;
     } | null;
   };
   /**
@@ -229,13 +236,25 @@ export type GroupFlightInput = {
   ctaLabel: string;
 };
 
+function returnLegHasSeats(
+  ret: NonNullable<GroupFlightInput["flight"]["returnLegFlight"]>,
+) {
+  if (ret.fareReleases && ret.fareReleases.length > 0) {
+    const seats = seatsByCabin(ret.fareReleases);
+    return seats.economy.remainingSeats > 0 || seats.business.remainingSeats > 0;
+  }
+  return ret.remainingSeats > 0;
+}
+
 function pairingFromFlight(flight: GroupFlightInput["flight"]): {
   roundTripAvailable: boolean;
   returnDepartureAt: string | null;
   returnFlightNumber: string | null;
 } {
   const ret = flight.returnLegFlight;
-  if (ret && ret.active && ret.remainingSeats > 0) {
+  // Round-trip still needs a physical seat on the return. A leftover RT
+  // price with no remaining cabin seats is not a bookable ticket.
+  if (ret && ret.active && returnLegHasSeats(ret)) {
     return {
       roundTripAvailable: true,
       returnDepartureAt: ret.departureAt.toISOString(),
@@ -247,6 +266,13 @@ function pairingFromFlight(flight: GroupFlightInput["flight"]): {
     returnDepartureAt: null,
     returnFlightNumber: null,
   };
+}
+
+function rowHasOutboundSeats(row: FlightResultRow) {
+  return (
+    (row.economy?.remainingSeats ?? 0) > 0 ||
+    (row.business?.remainingSeats ?? 0) > 0
+  );
 }
 
 export function groupFlightResults(rows: GroupFlightInput[]): FlightResultRow[] {
@@ -317,6 +343,14 @@ export function groupFlightResults(rows: GroupFlightInput[]): FlightResultRow[] 
       .map((f) => f.displayPriceCents);
     existing.lowestFareCents =
       prices.length > 0 ? Math.min(...prices) : null;
+  }
+
+  for (const row of map.values()) {
+    if (!rowHasOutboundSeats(row)) {
+      row.roundTripAvailable = false;
+      row.returnDepartureAt = null;
+      row.returnFlightNumber = null;
+    }
   }
 
   return [...map.values()].sort(

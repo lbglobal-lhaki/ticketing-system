@@ -119,6 +119,22 @@ const fareReleasePriceSelect = {
   active: true,
 } as const;
 
+const returnLegSelect = {
+  id: true,
+  flightNumber: true,
+  departureAt: true,
+  remainingSeats: true,
+  active: true,
+  fareReleases: {
+    select: {
+      cabinClass: true,
+      remainingSeats: true,
+      totalSeats: true,
+      salesClosed: true,
+    },
+  },
+} as const;
+
 function parseCabinClass(raw?: string): "economy" | "business" {
   return raw === "business" ? "business" : "economy";
 }
@@ -268,13 +284,7 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
           select: fareReleasePriceSelect,
         },
         returnLegFlight: {
-          select: {
-            id: true,
-            flightNumber: true,
-            departureAt: true,
-            remainingSeats: true,
-            active: true,
-          },
+          select: returnLegSelect,
         },
       },
     });
@@ -376,6 +386,19 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
     }
 
     const outboundSeats = seatsByCabin(outbound.fareReleases)[cabinClass];
+    if (outboundSeats.remainingSeats < 1) {
+      return (
+        <main className="mx-auto w-full max-w-5xl px-4 py-12">
+          <p className="text-red-700">
+            This cabin is sold out on the outbound flight. A round-trip ticket
+            still needs a seat on both flights.
+          </p>
+          <Link href="/" className="mt-4 inline-block text-sm underline">
+            Start a new search
+          </Link>
+        </main>
+      );
+    }
     const outboundPrice = ticketTypeCabinPrice(
       outbound.fareReleases,
       cabinClass,
@@ -398,13 +421,7 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
           select: fareReleasePriceSelect,
         },
         returnLegFlight: {
-          select: {
-            id: true,
-            flightNumber: true,
-            departureAt: true,
-            remainingSeats: true,
-            active: true,
-          },
+          select: returnLegSelect,
         },
       },
     });
@@ -554,13 +571,7 @@ export async function renderFlightSearch(raw: FlightSearchParams) {
         select: fareReleasePriceSelect,
       },
       returnLegFlight: {
-        select: {
-          id: true,
-          flightNumber: true,
-          departureAt: true,
-          remainingSeats: true,
-          active: true,
-        },
+        select: returnLegSelect,
       },
     },
   });

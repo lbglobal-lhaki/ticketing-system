@@ -32,6 +32,19 @@ export function ticketTypeCabinPrice(
   seats: { remainingSeats: number; totalSeats: number },
   isRoundTrip: boolean,
 ): CabinPriceSnapshot {
+  if (seats.remainingSeats < 1) {
+    return {
+      ...emptyMultipliers,
+      basePriceCents: 0,
+      displayPriceCents: 0,
+      remainingSeats: 0,
+      totalSeats: seats.totalSeats,
+      fareReleaseId: null,
+      fareReleaseName: null,
+      farePriced: false,
+    };
+  }
+
   const current = getCurrentFareRelease(releases, cabinClass, {
     roundTrip: isRoundTrip,
   });

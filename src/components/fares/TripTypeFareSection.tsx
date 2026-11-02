@@ -93,22 +93,33 @@ export function TripTypeFareSection({
           >
             One way
           </button>
-          <Link
-            href={returnPickerHref}
-            className={`rounded-full px-4 py-2 transition ${
-              tripType === "round_trip"
-                ? "bg-accent-deep text-white"
-                : "text-muted hover:text-foreground"
-            }`}
-          >
-            Round trip
-          </Link>
+          {disabled ? (
+            <span
+              className="rounded-full px-4 py-2 text-muted/70"
+              title="Round trip needs a seat on this flight"
+            >
+              Round trip
+            </span>
+          ) : (
+            <Link
+              href={returnPickerHref}
+              className={`rounded-full px-4 py-2 transition ${
+                tripType === "round_trip"
+                  ? "bg-accent-deep text-white"
+                  : "text-muted hover:text-foreground"
+              }`}
+            >
+              Round trip
+            </Link>
+          )}
         </div>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          Round trip lets you pick any later return on the schedule — for
+          {disabled
+            ? "This cabin has no seats left, so round-trip cannot be sold either — a return ticket still needs a seat on this flight."
+            : `Round trip lets you pick any later return on the schedule — for
           example leave in October and come back in November, December or
-          January.
-          {pairedReturn
+          January.`}
+          {!disabled && pairedReturn
             ? ` A typical pairing is ${pairedReturn.flightNumber} on ${new Date(
                 pairedReturn.departureAt,
               ).toLocaleDateString("en-AU", {

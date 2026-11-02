@@ -1,6 +1,6 @@
 import { cabinLabel, parseCabin } from "@/lib/fares/templates";
 import type { FareProduct } from "@/lib/fares/products";
-import type { FareReleaseRow } from "@/lib/fares/current";
+import { fareIsOpenForSale, type FareReleaseRow } from "@/lib/fares/current";
 import {
   infantBaggageBullets,
   resolveBaggageAllowance,
@@ -65,7 +65,16 @@ export function buildTicketTypeFareProducts(input: {
     });
 }
 
-/** Same-named ticket type on the return leg, else the next sellable one. */
+function sameTicketName(a: string, b: string) {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+/**
+ * Same-named ticket type on the return leg, if that type still has seats.
+ * Round-trip occupies a physical seat on both flights — a sold-out one-way
+ * bucket cannot be sold as round-trip, and we do not fall back to a different
+ * leftover ticket type.
+ */
 export function matchingReturnRelease(
   releases: FareReleaseRow[],
   outbound: FareReleaseRow,
@@ -76,14 +85,26 @@ export function matchingReturnRelease(
     (r) =>
       r.active &&
       parseCabin(r.cabinClass) === cabin &&
-      r.name.trim().toLowerCase() === outbound.name.trim().toLowerCase(),
+      sameTicketName(r.name, outbound.name),
   );
-  if (named) return named;
+  if (named) return fareIsOpenForSale(named) ? named : null;
   const sameOrder = releases.find(
     (r) =>
       r.active &&
       parseCabin(r.cabinClass) === cabin &&
-      r.sortOrder === outbound.sortOrder,
+      r.sortOrder === outbound.sortOrder &&
+      fareIsOpenForSale(r),
   );
   return sameOrder ?? null;
+}
+
+/** True when this ticket type can be sold as a round-trip (seats on both legs). */
+export function roundTripTicketTypeAvailable(
+  outbound: FareReleaseRow,
+  returnReleases: FareReleaseRow[],
+  cabinClass: string,
+) {
+  if (!fareIsOpenForSale(outbound)) return false;
+  if (outbound.roundTripPriceCents <= 0) return false;
+  return matchingReturnRelease(returnReleases, outbound, cabinClass) != null;
 }

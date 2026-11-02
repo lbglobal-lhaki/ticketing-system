@@ -2267,8 +2267,8 @@ export function AdminDashboard({
                               />
                               <span className="block text-xs leading-relaxed text-muted">
                                 {entry.row.remainingSeats <= 0
-                                  ? "0 closes this fare. Cancelled invoices and expired holds will not put seats back on sale until you raise this number."
-                                  : "Unpaid invoices that are cancelled normally return these seats. Set this to 0 to keep the fare closed."}
+                                  ? "0 closes this fare for one-way and round-trip. Cancelled invoices and expired holds will not put seats back on sale until you raise this number."
+                                  : "Round trip uses the same seats as one-way. Unpaid invoices that are cancelled normally return these seats. Set this to 0 to keep the fare closed."}
                               </span>
                             </label>
                           ) : (

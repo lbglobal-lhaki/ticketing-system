@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { fareProductsForCustomer } from "@/lib/fares/customerPrice";
 import { listTicketTypeBaggageAllocations } from "@/lib/fares/baggageAllowance.server";
 import { productsPricedForTrip } from "@/lib/fares/products";
+import { roundTripTicketTypeAvailable } from "@/lib/fares/ticketTypes";
 import {
   cabinsOnFlight,
   parseCabin,
@@ -81,14 +82,27 @@ export default async function TripReviewPage({
   const roundTripProducts = productsPricedForTrip(
     products,
     "round_trip",
-  ).map((p) => ({
-    ...p,
-    priceCents: p.roundTripPriceCents,
-    available: p.available && p.roundTripPriceCents > 0,
-    notes: p.notes
-      ? `${p.notes} · round-trip total`
-      : "Round-trip total (both legs)",
-  }));
+  ).map((p) => {
+    const outboundRelease = outbound.fareReleases.find((r) => r.id === p.id);
+    const bothLegsOpen = outboundRelease
+      ? roundTripTicketTypeAvailable(
+          outboundRelease,
+          returnFlight.fareReleases,
+          cabinClass,
+        )
+      : false;
+    const available =
+      p.available && p.roundTripPriceCents > 0 && bothLegsOpen && !soldOut;
+    return {
+      ...p,
+      priceCents: p.roundTripPriceCents,
+      available,
+      tagline: available ? p.tagline : "Sold out",
+      notes: p.notes
+        ? `${p.notes} · round-trip total`
+        : "Round-trip total (both legs)",
+    };
+  });
 
   const backQs = new URLSearchParams({
     adults: String(adults),

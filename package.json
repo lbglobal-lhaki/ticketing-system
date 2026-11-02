@@ -8,7 +8,7 @@
     "vercel-build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test src/lib/cargo/*.test.ts src/lib/pricing/formatMoney.test.ts src/lib/fares/baggageAllowance.test.ts src/lib/booking/inventory.test.ts src/lib/payments/fulfillCardPayment.test.ts",
+    "test": "tsx --test src/lib/cargo/*.test.ts src/lib/pricing/formatMoney.test.ts src/lib/fares/baggageAllowance.test.ts src/lib/fares/ticketTypes.test.ts src/lib/flights/results.test.ts src/lib/booking/inventory.test.ts src/lib/payments/fulfillCardPayment.test.ts",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",

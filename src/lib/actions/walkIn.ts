@@ -56,6 +56,7 @@ import {
   cabinLabel,
   cabinsOnFlight,
   parseCabin,
+  seatsByCabin,
 } from "@/lib/fares/templates";
 import {
   getBankTransferDetails,
@@ -454,20 +455,28 @@ export async function createWalkInBookingAction(
           `Return flight does not sell ${cabinLabel(cabinClass)} class`,
         );
       }
-      returnCurrent =
-        (pickedRelease
-          ? matchingReturnRelease(
-              returnFlight.fareReleases,
-              pickedRelease,
-              cabinClass,
-            )
-          : null) ??
-        getCurrentFareRelease(returnFlight.fareReleases, cabinClass, {
-          roundTrip: true,
-        });
+      if (
+        seatsByCabin(returnFlight.fareReleases)[cabinClass].remainingSeats <
+        data.seatsBooked
+      ) {
+        throw new Error(
+          `${cabinLabel(cabinClass)} class does not have enough seats on the return flight`,
+        );
+      }
+      returnCurrent = pickedRelease
+        ? matchingReturnRelease(
+            returnFlight.fareReleases,
+            pickedRelease,
+            cabinClass,
+          )
+        : getCurrentFareRelease(returnFlight.fareReleases, cabinClass, {
+            roundTrip: true,
+          });
       if (!returnCurrent) {
         throw new Error(
-          `Return flight has no active ${cabinLabel(cabinClass)} fare release`,
+          pickedRelease
+            ? `${pickedRelease.name} has no seats left on the return flight`
+            : `Return flight has no active ${cabinLabel(cabinClass)} fare release`,
         );
       }
       if (!skipsSystemFarePricing && returnCurrent.roundTripPriceCents <= 0) {

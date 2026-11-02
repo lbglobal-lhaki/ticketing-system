@@ -203,24 +203,20 @@ export async function createPriceQuote(input: {
         error: `${cabinLabel(cabinClass)} class is sold out on the return flight`,
       };
     }
-    returnCurrent =
-      ticketRelease
-        ? matchingReturnRelease(
-            returnFlight.fareReleases,
-            ticketRelease,
-            cabinClass,
-          ) ??
-          getCurrentFareRelease(returnFlight.fareReleases, cabinClass, {
-            roundTrip: true,
-          })
-        : getCurrentFareRelease(returnFlight.fareReleases, cabinClass, {
-            roundTrip: true,
-          });
+    returnCurrent = ticketRelease
+      ? matchingReturnRelease(
+          returnFlight.fareReleases,
+          ticketRelease,
+          cabinClass,
+        )
+      : getCurrentFareRelease(returnFlight.fareReleases, cabinClass, {
+          roundTrip: true,
+        });
     if (!returnCurrent) {
       return {
         ok: false as const,
         error: ticketRelease
-          ? "Return flight has no matching ticket type"
+          ? "This ticket type has no seats left on the return flight"
           : "Return round-trip fare is not priced yet — ask admin to set round-trip release prices",
       };
     }
