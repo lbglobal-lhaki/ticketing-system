@@ -1022,7 +1022,7 @@ export function InvoiceAdminPanel({ invoices }: { invoices: AdminInvoiceRow[] })
                         />
                       </label>
                       <label className="block text-xs text-muted">
-                        Payment surcharge (AUD)
+                        Service charge (AUD)
                         <input
                           name="serviceFeeAud"
                           type="number"

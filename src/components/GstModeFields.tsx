@@ -67,7 +67,7 @@ export function GstModeFields({
       </div>
       <p className="text-xs text-muted">
         {mode === "exclusive"
-          ? "Exclusive: 10% GST is added on top of the fare (and card fee if any)."
+          ? "Exclusive: 10% GST is added on top of the fare (and service charge if any)."
           : mode === "inclusive"
             ? "Inclusive: amounts already include GST; the GST portion is shown but not added again."
             : "None: no GST on this booking / invoice."}

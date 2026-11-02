@@ -251,7 +251,7 @@ export default async function ConfirmationPage({
                 </p>
                 {cardServiceFeeCents > 0 ? (
                   <p>
-                    <span className="text-muted">Credit card fee (2.2%)</span>{" "}
+                    <span className="text-muted">Service charge (2.2%)</span>{" "}
                     {formatAud(cardServiceFeeCents)}
                   </p>
                 ) : null}

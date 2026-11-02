@@ -298,7 +298,7 @@ export function CardCheckoutForm({
           ) : null}
           <div className="flex justify-between gap-4">
             <dt className="text-muted">
-              Credit card fee{" "}
+              Service charge{" "}
               <span className="text-foreground/70">({fee.rateLabel})</span>
             </dt>
             <dd className="font-medium">{formatAud(fee.serviceFeeCents)}</dd>
@@ -320,10 +320,9 @@ export function CardCheckoutForm({
           </div>
         </dl>
         <p className="mt-3 text-xs text-muted">
-          The credit card fee covers card processing for Visa, Mastercard, and
-          digital wallets.
+          A service charge applies to online card payments.
           {fee.includeGst
-            ? ` GST (${fee.gstRateLabel}) is added on top of the fare${seatFeeCents > 0 ? ", seat extras," : ""} and card fee — it is not included in those amounts.`
+            ? ` GST (${fee.gstRateLabel}) is added on top of the fare${seatFeeCents > 0 ? ", seat extras," : ""} and service charge — it is not included in those amounts.`
             : " This promotional fare is charged at the advertised amount; GST is not added at checkout."}
         </p>
       </div>
@@ -386,7 +385,7 @@ export function CardCheckoutForm({
       ) : null}
 
       <p className="text-sm text-muted">
-        Prefer invoice with no credit card fee?{" "}
+        Prefer invoice with no service charge?{" "}
         <Link
           href={`/checkout/${quoteId}/bank`}
           className="font-medium text-accent underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"

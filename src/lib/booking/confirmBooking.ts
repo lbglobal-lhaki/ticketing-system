@@ -403,7 +403,7 @@ export async function confirmBooking(input: {
    * Never used to auto-refund — funds stay until ops refunds by hand.
    */
   paidCapture?: boolean;
-  /** Override charged total (e.g. fare + credit card fee). */
+  /** Override charged total (e.g. fare + service charge). */
   amountCentsOverride?: number;
   serviceFeeCents?: number;
   bankDetails?: {
@@ -581,8 +581,8 @@ export async function confirmBooking(input: {
         const invoiceNotes =
           serviceFeeCents > 0
             ? gstFields.gstRateBps > 0
-              ? "Includes card processing fee and exclusive GST (10%)."
-              : "Includes card processing fee. Promotional fare charged at the advertised amount."
+              ? "Includes service charge and exclusive GST (10%)."
+              : "Includes service charge. Promotional fare charged at the advertised amount."
             : holdExpiresAt
               ? "Awaiting bank transfer."
               : "";

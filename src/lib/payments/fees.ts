@@ -1,8 +1,4 @@
-/**
- * Card processing surcharge passed through to the customer.
- * Update to match your actual Stripe rate — AU surcharging rules require this
- * to not exceed your real cost of acceptance.
- */
+/** Service charge applied to online card payments (not a card surcharge). */
 export const CARD_SERVICE_FEE_RATE = 0.022;
 
 /** Exclusive GST rate in basis points (1000 = 10%). */
@@ -50,7 +46,7 @@ export type CardFeeOptions = {
 };
 
 /**
- * Card checkout total: fare + card surcharge, optionally + exclusive 10% GST
+ * Card checkout total: fare + service charge, optionally + exclusive 10% GST
  * on that subtotal (GST added on top — not included in the fare).
  */
 export function calculateCardServiceFee(

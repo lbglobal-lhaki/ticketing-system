@@ -73,7 +73,7 @@ export function gstIncludedPortion(amountCents: number, gstRateBps: number) {
  * Invoice totals.
  *
  * Default (gstIncluded=false): line items are GST-exclusive. GST is 10% of
- * (all line items + payment surcharge) and is added on top of that total.
+ * (all line items + service charge) and is added on top of that total.
  *
  * Legacy (gstIncluded=true): line items already include GST; gstCents is the
  * embedded portion for disclosure only and is not added again.

@@ -207,7 +207,7 @@ export function renderAirfareInvoiceHtml(data: BookingDocumentData) {
   }
   if ((invoice.serviceFeeCents || 0) > 0) {
     itemRows.push({
-      name: "Payment surcharge",
+      name: "Service charge",
       qty: 1,
       unitCents: invoice.serviceFeeCents || 0,
       totalCents: invoice.serviceFeeCents || 0,
