@@ -16,6 +16,7 @@ import { DateTimePicker } from "@/components/ui/DateTimePicker";
 import { formatAud } from "@/lib/pricing";
 import { EXTRA_BAG_AUD, extraBaggageCentsForBags } from "@/lib/pricing/baggage";
 import { childFareCents, infantFareCents, formatDateOfBirth } from "@/lib/booking/passengers";
+import { INFANT_BAGGAGE_POLICY } from "@/lib/fares/baggageAllowance";
 import { SpecialAssistanceFields } from "@/components/SpecialAssistanceFields";
 
 export type EditablePassenger = {
@@ -408,7 +409,7 @@ export function BookingEditModal({
             priceMode={autoCompanionFares ? "auto" : "edit"}
             autoPriceAud={(infantFareCents(adultUnitCents) / 100).toFixed(2)}
             fieldErrors={sticky.fieldErrors}
-            description="Infants get a ticket at 10% of the adult fare but no seat. Date of birth is required — under 2 years on the departure date."
+            description={`Infants get a ticket at 10% of the adult fare but no seat. ${INFANT_BAGGAGE_POLICY} Date of birth is required — under 2 years on the departure date.`}
           />
 
           <div className="space-y-2">

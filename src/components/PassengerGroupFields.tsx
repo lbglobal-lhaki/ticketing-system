@@ -12,6 +12,7 @@ import {
   type PassengerType,
 } from "@/lib/booking/passengers";
 import { formatAud } from "@/lib/pricing";
+import { INFANT_CHECKED_LABEL } from "@/lib/fares/baggageAllowance";
 
 /**
  * Companions carry no contact details — email/phone are collected once on the
@@ -244,7 +245,7 @@ export function PassengerGroupFields({
                 fieldErrors[`${namePrefix}DateOfBirth.${i}`]
                   ? undefined
                   : type === "infant"
-                    ? `Under ${INFANT_MAX_AGE_YEARS} years on the departure date.`
+                    ? `Under ${INFANT_MAX_AGE_YEARS} years on the departure date. ${INFANT_CHECKED_LABEL} checked baggage, no cabin bag.`
                     : `${CHILD_AGE_RANGE_LABEL} years old on the departure date.`
               }
             />

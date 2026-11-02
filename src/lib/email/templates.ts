@@ -13,14 +13,21 @@ import {
 } from "@/lib/booking/specialAssistance";
 import {
   CARRY_ON_LABEL,
-  baggageSummaryLine,
+  partyBaggageSummaryLine,
+  partyHasInfant,
 } from "@/lib/fares/baggageAllowance";
 
 function baggageEmailLine(data: BookingDocumentData) {
   const checked =
     data.includedBaggageLabel?.trim() ||
     (data.includedBaggageKg ? `${data.includedBaggageKg} kg` : "");
-  return checked ? baggageSummaryLine(checked) : `${CARRY_ON_LABEL} carry-on`;
+  const hasInfant = partyHasInfant(data.passengers);
+  if (!checked) {
+    return hasInfant
+      ? partyBaggageSummaryLine(CARRY_ON_LABEL, true)
+      : `${CARRY_ON_LABEL} carry-on`;
+  }
+  return partyBaggageSummaryLine(checked, hasInfant);
 }
 
 function specialAssistanceEmailHtml(data: BookingDocumentData) {

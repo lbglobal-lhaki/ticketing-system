@@ -56,7 +56,12 @@ export function totalSeatsFromReleases(
 
 /** Per-cabin seat totals — the flight's own totals are the sum of these. */
 export function seatsByCabin<
-  T extends { cabinClass: string; totalSeats: number; remainingSeats: number },
+  T extends {
+    cabinClass: string;
+    totalSeats: number;
+    remainingSeats: number;
+    salesClosed?: boolean | null;
+  },
 >(releases: T[]) {
   const empty = () => ({ totalSeats: 0, remainingSeats: 0 });
   const out: Record<CabinClassValue, { totalSeats: number; remainingSeats: number }> = {
@@ -66,7 +71,7 @@ export function seatsByCabin<
   for (const r of releases) {
     const bucket = out[parseCabin(r.cabinClass)];
     bucket.totalSeats += r.totalSeats;
-    bucket.remainingSeats += r.remainingSeats;
+    bucket.remainingSeats += r.salesClosed ? 0 : r.remainingSeats;
   }
   return out;
 }

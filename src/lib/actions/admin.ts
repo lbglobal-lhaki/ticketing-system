@@ -10,7 +10,11 @@ import {
   fareTemplateForCabin,
   totalSeatsFromReleases,
 } from "@/lib/fares/templates";
-import { restoreFareAndFlight } from "@/lib/booking/inventory";
+import {
+  expireQuotesForClosedFare,
+  restoreFareAndFlight,
+} from "@/lib/booking/inventory";
+import { salesClosedFromRemaining } from "@/lib/booking/inventoryPolicy";
 import { parseFlightDateTime } from "@/lib/datetime";
 import { flightFormSchema, parseFareReleasesFromForm } from "@/lib/validation";
 import { z } from "zod";
@@ -123,6 +127,7 @@ export async function createFlightAction(
           sortOrder: r.sortOrder,
           totalSeats: r.totalSeats,
           remainingSeats: r.remainingSeats,
+          salesClosed: salesClosedFromRemaining(r.remainingSeats),
           priceCents: r.priceCents,
           roundTripPriceCents: r.roundTripPriceCents,
           active: true,
@@ -223,12 +228,14 @@ export async function updateFlightAction(
     const keptIds = new Set<string>();
 
     for (const r of releases) {
+      const closed = salesClosedFromRemaining(r.remainingSeats);
       const releaseData = {
         cabinClass: r.cabinClass,
         name: r.name,
         sortOrder: r.sortOrder,
         totalSeats: r.totalSeats,
         remainingSeats: r.remainingSeats,
+        salesClosed: closed,
         priceCents: r.priceCents,
         roundTripPriceCents: r.roundTripPriceCents,
         active: true,
@@ -239,6 +246,9 @@ export async function updateFlightAction(
           data: releaseData,
         });
         keptIds.add(r.id);
+        if (closed) {
+          await expireQuotesForClosedFare(tx, r.id);
+        }
       } else {
         const created = await tx.fareRelease.create({
           data: { flightId: id, ...releaseData },

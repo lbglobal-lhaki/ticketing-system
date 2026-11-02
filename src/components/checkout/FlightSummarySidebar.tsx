@@ -17,7 +17,10 @@ import {
 import { airportTzAbbr } from "@/lib/datetime";
 import { airportCity } from "@/lib/format";
 import { formatAud } from "@/lib/pricing";
-import { CARRY_ON_LABEL } from "@/lib/fares/baggageAllowance";
+import {
+  CARRY_ON_LABEL,
+  INFANT_BAGGAGE_POLICY,
+} from "@/lib/fares/baggageAllowance";
 import type { CheckoutQuoteState } from "@/lib/checkout/loadQuote";
 import {
   quoteSeatFeeFromQuote,
@@ -104,7 +107,9 @@ export function FlightSummarySidebar({
       ) : null}
 
       <p className="mt-4 text-xs text-muted">
-        Every ticket includes {CARRY_ON_LABEL} carry-on (hand luggage).
+        {infants > 0
+          ? `Adults and children include ${CARRY_ON_LABEL} carry-on (hand luggage). Infants: ${INFANT_BAGGAGE_POLICY}`
+          : `Every seated ticket includes ${CARRY_ON_LABEL} carry-on (hand luggage).`}
       </p>
 
       <div className="mt-6 space-y-2.5 border-t border-dashed border-line pt-5 text-sm">

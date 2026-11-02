@@ -35,19 +35,35 @@ export async function reclaimExpiredBookingHold(
       );
     }
     try {
-      await decrementFareAndFlight(
-        tx,
-        booking.flightId,
+      const fareIds = [
         booking.fareReleaseId,
-        booking.seatsBooked,
+        booking.returnFareReleaseId,
+      ].filter((id): id is string => Boolean(id));
+      const fares = await tx.fareRelease.findMany({
+        where: { id: { in: fareIds } },
+        select: { id: true, salesClosed: true },
+      });
+      const closed = new Set(
+        fares.filter((f) => f.salesClosed).map((f) => f.id),
       );
-      if (booking.returnFlightId && booking.returnFareReleaseId) {
+      // Closed fares never returned these seats, so they must not be taken again.
+      if (!closed.has(booking.fareReleaseId)) {
         await decrementFareAndFlight(
           tx,
-          booking.returnFlightId,
-          booking.returnFareReleaseId,
+          booking.flightId,
+          booking.fareReleaseId,
           booking.seatsBooked,
         );
+      }
+      if (booking.returnFlightId && booking.returnFareReleaseId) {
+        if (!closed.has(booking.returnFareReleaseId)) {
+          await decrementFareAndFlight(
+            tx,
+            booking.returnFlightId,
+            booking.returnFareReleaseId,
+            booking.seatsBooked,
+          );
+        }
       }
     } catch {
       throw new Error(

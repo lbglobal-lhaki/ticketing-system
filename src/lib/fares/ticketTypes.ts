@@ -2,6 +2,7 @@ import { cabinLabel, parseCabin } from "@/lib/fares/templates";
 import type { FareProduct } from "@/lib/fares/products";
 import type { FareReleaseRow } from "@/lib/fares/current";
 import {
+  infantBaggageBullets,
   resolveBaggageAllowance,
   type TicketTypeBaggageAllocationRow,
 } from "@/lib/fares/baggageAllowance";
@@ -25,7 +26,7 @@ export function buildTicketTypeFareProducts(input: {
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((r) => {
       const priced = r.priceCents > 0 || r.roundTripPriceCents > 0;
-      const inStock = r.remainingSeats > 0;
+      const inStock = r.remainingSeats > 0 && !r.salesClosed;
       const bag = resolveBaggageAllowance(allocations, cabin, r.name);
       return {
         id: r.id,
@@ -54,6 +55,7 @@ export function buildTicketTypeFareProducts(input: {
         baggageBullets: [
           `Checked baggage ${bag.checkedLabel}`,
           `Carry-on (hand luggage) ${bag.cabinBagLabel}`,
+          ...infantBaggageBullets(),
         ],
         nameChangeBullets: [],
         noShowBullets: [],

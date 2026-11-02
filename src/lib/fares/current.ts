@@ -10,7 +10,19 @@ export type FareReleaseRow = {
   priceCents: number;
   roundTripPriceCents: number;
   active: boolean;
+  salesClosed?: boolean;
 };
+
+export function fareIsOpenForSale(
+  release: Pick<FareReleaseRow, "remainingSeats"> & {
+    salesClosed?: boolean | null;
+    active?: boolean;
+  },
+) {
+  if (release.active === false) return false;
+  if (release.salesClosed) return false;
+  return release.remainingSeats > 0;
+}
 
 /**
  * Next sellable fare release: earliest sortOrder with seats left and a price
@@ -35,8 +47,8 @@ export function getCurrentFareRelease(
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
   return (
-    sorted.find((r) => r.remainingSeats > 0 && priceOf(r) > 0) ??
-    sorted.find((r) => r.remainingSeats > 0) ??
+    sorted.find((r) => fareIsOpenForSale(r) && priceOf(r) > 0) ??
+    sorted.find((r) => fareIsOpenForSale(r)) ??
     null
   );
 }

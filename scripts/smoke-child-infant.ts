@@ -359,6 +359,15 @@ async function main() {
       travelHtml.includes("Infant (no seat)"),
       "travel doc infant notice block",
     );
+    assert(
+      travelHtml.includes("10 kg") && travelHtml.includes("No cabin bag"),
+      "infant ticket shows 10 kg checked and no cabin bag",
+    );
+    assert(
+      /infant trolley/i.test(travelHtml) && /diaper bag/i.test(travelHtml),
+      "infant ticket mentions free trolley and diaper bag",
+    );
+    assert(!/woeshel/i.test(travelHtml), "travel doc has no internal names");
 
     const invoiceHtml = renderAirfareInvoiceHtml(doc!);
     assert(
@@ -368,6 +377,14 @@ async function main() {
     assert(
       invoiceHtml.includes("no seat"),
       "invoice marks infant as no seat",
+    );
+    assert(
+      /Infants: 10 kg checked · no cabin bag/.test(invoiceHtml),
+      "invoice lists infant baggage separately",
+    );
+    assert(
+      /diaper bag/i.test(invoiceHtml),
+      "invoice mentions free infant diaper bag",
     );
 
     // --- Edit: add second infant — seats unchanged ---

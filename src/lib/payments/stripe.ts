@@ -85,7 +85,9 @@ export function constructStripeWebhookEvent(
 export async function retrievePaymentIntent(paymentIntentId: string) {
   const client = getStripeClient();
   try {
-    return await client.paymentIntents.retrieve(paymentIntentId);
+    return await client.paymentIntents.retrieve(paymentIntentId, {
+      expand: ["latest_charge"],
+    });
   } catch (error) {
     if (error instanceof Stripe.errors.StripeError) {
       throw new Error(error.message);
@@ -94,6 +96,21 @@ export async function retrievePaymentIntent(paymentIntentId: string) {
   }
 }
 
+/** True when Stripe has already returned funds on this PaymentIntent. */
+export function paymentIntentWasRefunded(intent: Stripe.PaymentIntent) {
+  const charge = intent.latest_charge;
+  if (charge && typeof charge !== "string") {
+    if (charge.refunded) return true;
+    if ((charge.amount_refunded ?? 0) > 0) return true;
+  }
+  return false;
+}
+
+/**
+ * Manual refunds only — never call this from checkout or the Stripe webhook.
+ * Ops refunds in Stripe Dashboard (or a dedicated admin action) after
+ * cancelling the ticket.
+ */
 export async function refundPaymentIntent(input: {
   paymentIntentId: string;
   idempotencyKey: string;

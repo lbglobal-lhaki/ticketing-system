@@ -31,8 +31,11 @@ async function loadQuoteRecord(quoteId: string) {
 
 export async function getCheckoutQuoteState(
   quoteId: string,
+  opts?: { expireIfStale?: boolean },
 ): Promise<CheckoutQuoteState | null> {
-  await expireQuoteIfNeeded(quoteId);
+  if (opts?.expireIfStale !== false) {
+    await expireQuoteIfNeeded(quoteId);
+  }
   const quote = await loadQuoteRecord(quoteId);
   if (!quote) return null;
 

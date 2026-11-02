@@ -283,7 +283,12 @@ export async function getSystemAnalytics(): Promise<SystemAnalytics> {
         totalSeats: true,
         active: true,
         fareReleases: {
-          select: { cabinClass: true, totalSeats: true, remainingSeats: true },
+          select: {
+            cabinClass: true,
+            totalSeats: true,
+            remainingSeats: true,
+            salesClosed: true,
+          },
         },
       },
     }),

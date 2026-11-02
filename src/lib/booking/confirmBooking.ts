@@ -16,7 +16,7 @@ import {
   defaultFareCalculationLine,
   defaultInvoiceIdentity,
 } from "@/lib/documents/invoiceFields";
-import { getCurrentFareRelease } from "@/lib/fares/current";
+import { fareIsOpenForSale, getCurrentFareRelease } from "@/lib/fares/current";
 import { matchingReturnRelease } from "@/lib/fares/ticketTypes";
 import { listTicketTypeBaggageAllocations } from "@/lib/fares/baggageAllowance.server";
 import {
@@ -117,7 +117,7 @@ export async function createPriceQuote(input: {
       error: "That ticket type is no longer available — please choose another fare",
     };
   }
-  if (ticketRelease && ticketRelease.remainingSeats < 1) {
+  if (ticketRelease && !fareIsOpenForSale(ticketRelease)) {
     return { ok: false as const, error: "Selected ticket type is sold out" };
   }
 
@@ -398,6 +398,11 @@ export async function confirmBooking(input: {
   paymentMethod: "card" | "bank_transfer";
   invoiceStatus: "paid" | "unpaid";
   stripePaymentIntentId?: string;
+  /**
+   * Succeeded card capture: issue the ticket even if the quote TTL lapsed.
+   * Never used to auto-refund — funds stay until ops refunds by hand.
+   */
+  paidCapture?: boolean;
   /** Override charged total (e.g. fare + credit card fee). */
   amountCentsOverride?: number;
   serviceFeeCents?: number;
@@ -411,11 +416,33 @@ export async function confirmBooking(input: {
     return { ok: false as const, error: "Missing browser session — refresh and try again" };
   }
 
+  if (input.stripePaymentIntentId) {
+    const byPi = await prisma.invoice.findUnique({
+      where: { stripePaymentIntentId: input.stripePaymentIntentId },
+      select: {
+        booking: {
+          select: { id: true, accessToken: true, bookingRef: true },
+        },
+      },
+    });
+    if (byPi?.booking) {
+      return { ok: true as const, booking: byPi.booking, invoice: null };
+    }
+  }
+  const existingForQuote = await prisma.booking.findUnique({
+    where: { quoteId: input.quoteId },
+    select: { id: true, accessToken: true, bookingRef: true },
+  });
+  if (existingForQuote && (input.paidCapture || input.stripePaymentIntentId)) {
+    return { ok: true as const, booking: existingForQuote, invoice: null };
+  }
+
   // Align soft-hold to requested seats before consuming the quote.
   const hold = await syncQuoteSeatHold(
     input.quoteId,
     input.sessionId,
     input.seatsBooked,
+    { paidCapture: input.paidCapture },
   );
   if (!hold.ok) {
     return { ok: false as const, error: hold.error };
@@ -439,12 +466,22 @@ export async function confirmBooking(input: {
           throw new Error("Quote does not belong to this session");
         }
         if (quote.status === "used") throw new Error("Quote already used");
-        if (quote.status === "expired" || quote.expiresAt <= new Date()) {
+        const quoteLapsed =
+          quote.status === "expired" || quote.expiresAt <= new Date();
+        if (quoteLapsed && !input.paidCapture) {
           throw new Error("Quote has expired — please book again");
         }
-        if (quote.status !== "active") throw new Error("Quote is not active");
+        if (
+          quote.status !== "active" &&
+          !(input.paidCapture && quote.status === "expired")
+        ) {
+          throw new Error("Quote is not active");
+        }
         if (!quote.fareReleaseId) throw new Error("Quote missing fare release");
-        if (!quote.inventoryHeld || quote.heldSeats < input.seatsBooked) {
+        if (
+          !input.paidCapture &&
+          (!quote.inventoryHeld || quote.heldSeats < input.seatsBooked)
+        ) {
           throw new Error("Seats are no longer held — please select fares again");
         }
 

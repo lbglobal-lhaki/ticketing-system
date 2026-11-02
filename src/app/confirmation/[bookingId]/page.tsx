@@ -8,7 +8,8 @@ import { airportLabel, formatFlightTime } from "@/lib/format";
 import { formatAud } from "@/lib/pricing";
 import {
   CARRY_ON_LABEL,
-  baggageSummaryLine,
+  partyBaggageSummaryLine,
+  partyHasInfant,
 } from "@/lib/fares/baggageAllowance";
 import { getBankTransferDetails } from "@/lib/payments/bank";
 import {
@@ -99,6 +100,18 @@ export default async function ConfirmationPage({
   const seatedPassengers = booking.passengers.filter(
     (p) => p.allocatesSeat && (p.seatOutbound || p.seatReturn),
   );
+  const hasInfant = partyHasInfant(
+    booking.passengers,
+    booking.quote?.infantCount,
+  );
+  const seatedBaggageLabel =
+    booking.includedBaggageLabel ||
+    (booking.includedBaggageKg > 0 ? `${booking.includedBaggageKg} kg` : "");
+  const includedBaggageLine = seatedBaggageLabel
+    ? partyBaggageSummaryLine(seatedBaggageLabel, hasInfant)
+    : hasInfant
+      ? partyBaggageSummaryLine(CARRY_ON_LABEL, true)
+      : `${CARRY_ON_LABEL} carry-on`;
 
   return (
     <main className="page-shell relative overflow-x-clip pb-safe">
@@ -202,12 +215,7 @@ export default async function ConfirmationPage({
             </p>
             <p>
               <span className="text-muted">Included baggage</span>{" "}
-              {booking.includedBaggageLabel || booking.includedBaggageKg > 0
-                ? baggageSummaryLine(
-                    booking.includedBaggageLabel ||
-                      `${booking.includedBaggageKg} kg`,
-                  )
-                : `${CARRY_ON_LABEL} carry-on`}
+              {includedBaggageLine}
             </p>
             <p>
               <span className="text-muted">Seats</span> {booking.seatsBooked}

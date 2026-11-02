@@ -47,6 +47,8 @@ import { flightPayloadFromRow, formatKg } from "@/lib/cargo/capacity";
 import type { CargoWeightOptionRow } from "@/lib/cargo/weightOptions";
 import {
   CARRY_ON_LABEL,
+  INFANT_BAGGAGE_POLICY,
+  infantBaggageSummaryLine,
   ticketTypeChoicesFromNames,
 } from "@/lib/fares/baggageAllowance";
 import { MoneyInput } from "@/components/MoneyInput";
@@ -1829,6 +1831,9 @@ export function AdminDashboard({
                                     {release.remainingSeats}/
                                     {release.totalSeats} seats · saved{" "}
                                     {formatAud(activeCents)}
+                                    {release.remainingSeats <= 0
+                                      ? " · closed for sale"
+                                      : ""}
                                   </p>
                                 </div>
                                 <label className="space-y-1 text-sm">
@@ -2260,6 +2265,11 @@ export function AdminDashboard({
                                 }
                                 className={fieldClass}
                               />
+                              <span className="block text-xs leading-relaxed text-muted">
+                                {entry.row.remainingSeats <= 0
+                                  ? "0 closes this fare. Cancelled invoices and expired holds will not put seats back on sale until you raise this number."
+                                  : "Unpaid invoices that are cancelled normally return these seats. Set this to 0 to keep the fare closed."}
+                              </span>
                             </label>
                           ) : (
                             <input
@@ -2665,7 +2675,7 @@ export function AdminDashboard({
                   priceMode="auto"
                   autoPriceAud={walkInInfantPriceAud}
                   fieldErrors={walkInSticky.fieldErrors}
-                  description="Infants get a ticket at 10% of the adult fare but no seat. Date of birth is required — under 2 years on the departure date."
+                  description={`Infants get a ticket at 10% of the adult fare but no seat. ${INFANT_BAGGAGE_POLICY} Date of birth is required — under 2 years on the departure date.`}
                 />
                 <p className="text-sm text-muted">
                   Seats (adults + children):{" "}
@@ -3022,6 +3032,14 @@ export function AdminDashboard({
                             {CARRY_ON_LABEL} carry-on
                           </p>
                         )}
+                        {(b.passengers?.some(
+                          (p) => p.passengerType === "infant",
+                        ) ??
+                          false) ? (
+                          <p className="mt-0.5 text-xs text-muted">
+                            Infants: {infantBaggageSummaryLine()}
+                          </p>
+                        ) : null}
                         {b.extraBaggageKg > 0 ? (
                           <p className="mt-0.5 text-xs text-muted">
                             +{b.extraBaggageKg} extra bag

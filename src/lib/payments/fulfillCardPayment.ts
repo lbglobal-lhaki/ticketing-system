@@ -5,7 +5,7 @@ import { passengerDraftFromQuote } from "@/lib/checkout/passengerDraft";
 import { prisma } from "@/lib/db";
 import { calculateCardServiceFee, exclusiveGstAppliesToFare } from "@/lib/payments/fees";
 import {
-  refundPaymentIntent,
+  paymentIntentWasRefunded,
   retrievePaymentIntent,
 } from "@/lib/payments/stripe";
 import { CUSTOMER_SEAT_SELECTION_ENABLED } from "@/lib/seats/customerSeatSelection";
@@ -23,6 +23,9 @@ export type CardFulfillmentResult =
       alreadyFulfilled: boolean;
     }
   | { ok: false; error: string; refunded?: boolean };
+
+const MANUAL_TICKET_MESSAGE =
+  "Your card payment was received. Do not pay again — our team will issue your ticket. Refunds are processed manually by our accounts team.";
 
 async function findBookingByPaymentIntent(paymentIntentId: string) {
   const invoice = await prisma.invoice.findUnique({
@@ -51,7 +54,10 @@ function metadataValue(
 /**
  * Idempotent card booking fulfillment from a succeeded PaymentIntent.
  * Safe to call from the checkout server action and from the Stripe webhook.
- * Never refunds when a booking/invoice for this PI already exists.
+ *
+ * Never refunds. A captured charge either issues a ticket or is left for ops
+ * to ticket or refund by hand. Auto-refunds previously raced the booking
+ * write and produced "refunded but ticket issued".
  */
 export async function fulfillCardPayment(input: {
   paymentIntentId: string;
@@ -82,6 +88,18 @@ export async function fulfillCardPayment(input: {
     return {
       ok: false,
       error: `Payment was not completed (status: ${intent.status}).`,
+    };
+  }
+  if (paymentIntentWasRefunded(intent)) {
+    console.error(
+      "CARD_PAYMENT_ALREADY_REFUNDED",
+      intent.id,
+      "— not issuing a ticket; ops must handle this PaymentIntent by hand",
+    );
+    return {
+      ok: false,
+      error:
+        "This card payment was refunded. If you still need a ticket, contact our team — do not pay again.",
     };
   }
   if (intent.currency !== "aud") {
@@ -117,7 +135,8 @@ export async function fulfillCardPayment(input: {
     include: { fareRelease: { select: { cabinClass: true } } },
   });
   if (!quote) {
-    return { ok: false, error: "Quote is no longer available" };
+    console.error("CARD_PAYMENT_NEEDS_MANUAL_TICKET", intent.id, quoteId, "quote missing");
+    return { ok: false, error: MANUAL_TICKET_MESSAGE };
   }
   if (quote.sessionId !== sessionId) {
     return { ok: false, error: "Quote does not belong to this session" };
@@ -142,10 +161,13 @@ export async function fulfillCardPayment(input: {
   const passengerName = (input.passengerName || draft.passengerName).trim();
   const email = (input.email || draft.email).trim();
   if (!passengerName || !email) {
-    return {
-      ok: false,
-      error: "Passenger details are incomplete — return to checkout and try again.",
-    };
+    console.error(
+      "CARD_PAYMENT_NEEDS_MANUAL_TICKET",
+      intent.id,
+      quoteId,
+      "incomplete passenger details",
+    );
+    return { ok: false, error: MANUAL_TICKET_MESSAGE };
   }
 
   const fareCents = quotePartyFareCents(quote);
@@ -157,10 +179,13 @@ export async function fulfillCardPayment(input: {
       quote.tripType === "round_trip" && Boolean(quote.returnFlightId),
     )
   ) {
-    return {
-      ok: false,
-      error: "Choose seats for every adult and child before paying.",
-    };
+    console.error(
+      "CARD_PAYMENT_NEEDS_MANUAL_TICKET",
+      intent.id,
+      quoteId,
+      "seats incomplete",
+    );
+    return { ok: false, error: MANUAL_TICKET_MESSAGE };
   }
   const includeGst = exclusiveGstAppliesToFare(quote);
   const { totalCents, serviceFeeCents } = calculateCardServiceFee(
@@ -169,24 +194,17 @@ export async function fulfillCardPayment(input: {
   );
 
   if (intent.amount !== totalCents) {
-    // Wrong amount and not yet fulfilled — refund once.
-    try {
-      await refundPaymentIntent({
-        paymentIntentId: intent.id,
-        idempotencyKey: `refund-mismatch-${intent.id}`,
-      });
-    } catch (refundError) {
-      console.error("mismatch auto-refund failed", refundError);
-    }
-    return {
-      ok: false,
-      error:
-        "Payment amount did not match the quote — your card was refunded. Please try again.",
-      refunded: true,
-    };
+    console.error(
+      "CARD_PAYMENT_AMOUNT_MISMATCH_NO_REFUND",
+      intent.id,
+      "charged",
+      intent.amount,
+      "quote",
+      totalCents,
+    );
+    return { ok: false, error: MANUAL_TICKET_MESSAGE };
   }
 
-  // Re-check after Stripe round-trip — webhook/client may have raced.
   const raced = await findBookingByPaymentIntent(intent.id);
   if (raced) {
     return { ok: true, booking: raced, alreadyFulfilled: true };
@@ -206,6 +224,7 @@ export async function fulfillCardPayment(input: {
     stripePaymentIntentId: intent.id,
     amountCentsOverride: totalCents,
     serviceFeeCents,
+    paidCapture: true,
   });
 
   if (result.ok) {
@@ -220,14 +239,11 @@ export async function fulfillCardPayment(input: {
     };
   }
 
-  // Another request may have fulfilled while we were confirming — never refund
-  // a PI that already has a booking.
   const afterFail = await findBookingByPaymentIntent(intent.id);
   if (afterFail) {
     return { ok: true, booking: afterFail, alreadyFulfilled: true };
   }
 
-  // Unique constraint race on stripePaymentIntentId
   if (/Unique constraint|stripePaymentIntentId/i.test(result.error)) {
     const byUnique = await findBookingByPaymentIntent(intent.id);
     if (byUnique) {
@@ -235,23 +251,14 @@ export async function fulfillCardPayment(input: {
     }
   }
 
-  try {
-    await refundPaymentIntent({
-      paymentIntentId: intent.id,
-      idempotencyKey: `refund-${intent.id}`,
-      amountCents: totalCents,
-    });
-  } catch (refundError) {
-    console.error("auto-refund failed", refundError);
-    return {
-      ok: false,
-      error: `${result.error}. Card was charged (${intent.id}) but booking failed — contact support; refund may need manual processing.`,
-    };
-  }
-
+  console.error(
+    "CARD_PAYMENT_NEEDS_MANUAL_TICKET",
+    intent.id,
+    quoteId,
+    result.error,
+  );
   return {
     ok: false,
-    error: `${result.error}. Your card charge was automatically refunded.`,
-    refunded: true,
+    error: `${MANUAL_TICKET_MESSAGE} (ref ${intent.id})`,
   };
 }

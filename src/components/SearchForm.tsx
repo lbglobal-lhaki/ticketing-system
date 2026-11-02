@@ -8,6 +8,7 @@ import {
   CHILD_AGE_HINT,
   INFANT_AGE_HINT,
 } from "@/lib/booking/passengers";
+import { INFANT_BAGGAGE_POLICY } from "@/lib/fares/baggageAllowance";
 
 function defaultDate(offsetDays: number): string {
   const d = new Date();
@@ -298,7 +299,7 @@ export function SearchForm({
                     onChange={setInfants}
                   />
                   <p className="pt-2 text-xs text-muted">
-                    Infants do not take a seat.
+                    Infants do not take a seat. {INFANT_BAGGAGE_POLICY}
                   </p>
                 </div>
                 <div className="border-t border-line p-4">

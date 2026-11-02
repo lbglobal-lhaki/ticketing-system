@@ -13,7 +13,15 @@ import {
 } from "@/lib/documents/invoiceFields";
 import { formatFlightClock, formatFlightDate } from "@/lib/datetime";
 import { formatAud } from "@/lib/pricing";
-import { CARRY_ON_LABEL, CARRY_ON_NAME } from "@/lib/fares/baggageAllowance";
+import {
+  CARRY_ON_LABEL,
+  CARRY_ON_NAME,
+  INFANT_CABIN_LINE,
+  INFANT_CHECKED_LABEL,
+  INFANT_FREE_ITEMS_NOTE,
+  infantBaggageAllowance,
+  isInfantPassengerType,
+} from "@/lib/fares/baggageAllowance";
 import { PDF_FONT_FAMILY, pdfFontFaceCss } from "@/lib/documents/pdfFonts";
 import type {
   BookingDocumentData,
@@ -194,6 +202,7 @@ function passCard(
     issueDate: Date;
     seat: string;
     baggage: string;
+    cabinLine: string;
     assets: TicketAssets;
   },
 ) {
@@ -252,7 +261,7 @@ function passCard(
         <div><span>Arrival</span><strong>${esc(ticketFlightTime(flight.arrivalAt))}</strong><i>${esc(to)} Time</i></div>
         <div><span>Class</span><strong>${esc(cabinLabel(flight.cabinClass))}</strong></div>
         <div><span>Seat</span><strong>${esc(opts.seat)}</strong></div>
-        <div><span>Checked baggage</span><strong>${esc(opts.baggage)}</strong><i>${esc(CARRY_ON_LABEL)} carry-on</i></div>
+        <div><span>Checked baggage</span><strong>${esc(opts.baggage)}</strong><i>${esc(opts.cabinLine)}</i></div>
       </div>
 
       <div class="pass-perks">
@@ -357,6 +366,11 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
             allocatesSeat: true,
           },
         ];
+  const hasInfant = travellers.some(
+    (pax) =>
+      isInfantPassengerType(pax.passengerType) || pax.allocatesSeat === false,
+  );
+  const infantBag = infantBaggageAllowance();
 
   /*
    * Per-traveller fare, derived the same way the airfare invoice derives its
@@ -458,7 +472,11 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
       <ul>
         <li>Arrive at the airport at least ${esc(String(brand.arriveHoursBefore))} hours before departure.</li>
         <li>Carry a valid passport and any required travel documents.</li>
-        <li>Checked baggage is as per your fare. Carry-on (hand luggage) is ${esc(CARRY_ON_LABEL)} on every ticket.</li>
+        <li>${
+          hasInfant
+            ? `Adults and children: checked baggage as per your fare, with ${esc(CARRY_ON_LABEL)} carry-on. Infants: ${esc(INFANT_CHECKED_LABEL)} checked baggage and no cabin bag. ${esc(INFANT_FREE_ITEMS_NOTE)}`
+            : `Checked baggage is as per your fare. Carry-on (hand luggage) is ${esc(CARRY_ON_LABEL)} on every seated ticket.`
+        }</li>
         <li>Please comply with all immigration, customs, and biosecurity requirements.</li>
       </ul>
 
@@ -553,7 +571,8 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
       ticketCode,
       issueDate: data.createdAt,
       seat: ticketSeat,
-      baggage: noSeat ? "–" : includedBaggage,
+      baggage: noSeat ? infantBag.docLabel : includedBaggage,
+      cabinLine: noSeat ? INFANT_CABIN_LINE : `${CARRY_ON_LABEL} carry-on`,
       assets,
     })}
 
@@ -565,7 +584,11 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
             <li>This e-ticket is non-transferable and valid only for the named passenger</li>
             <li>Please arrive at the airport at least ${esc(String(brand.arriveHoursBefore))} hours before departure</li>
             <li>Check-in closes 60 minutes prior to departure</li>
-            <li>Checked baggage as per the purchased fare. Carry-on (hand luggage) is ${esc(CARRY_ON_LABEL)} on every ticket.</li>
+            <li>${
+              noSeat
+                ? `Infant checked baggage is ${esc(INFANT_CHECKED_LABEL)}. Infants have no cabin bag (hand luggage) entitlement. ${esc(INFANT_FREE_ITEMS_NOTE)}`
+                : `Checked baggage as per the purchased fare. Carry-on (hand luggage) is ${esc(CARRY_ON_LABEL)} for adults and children.`
+            }</li>
             <li>Changes or cancellations are subject to the fare rules</li>
             <li>${esc(brand.issuingAgent)} reserves the right to make operational changes due to unforeseen circumstances</li>
             <li>For assistance, contact ${esc(brand.issuingAgent)}</li>
@@ -574,19 +597,39 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
         <div>
           <h3>${assets.icoBaggage ? `<img src="${assets.icoBaggage}" alt="" />` : ""}BAGGAGE ALLOWANCE</h3>
           <div class="bag-cards">
+            ${
+              noSeat
+                ? `<div class="bag-card">
+              <div class="cls">INFANT</div>
+              <div class="sub">Check-In Baggage</div>
+              <div class="kg">${esc(infantBag.docLabel.toUpperCase())}</div>
+              <div class="sub">${esc(infantBag.piecesLabel)}</div>
+            </div>
             <div class="bag-card">
+              <div class="cls">INFANT</div>
+              <div class="sub">${esc(CARRY_ON_NAME)}</div>
+              <div class="kg">NONE</div>
+              <div class="sub">${esc(INFANT_CABIN_LINE)}</div>
+            </div>`
+                : `<div class="bag-card">
               <div class="cls">${esc((fareName || cabinLabel(data.flight.cabinClass)).toUpperCase())}</div>
               <div class="sub">Check-In Baggage</div>
               <div class="kg">${esc(includedBaggage.toUpperCase())}</div>
               <div class="sub">${esc(includedBaggage)}</div>
             </div>
             <div class="bag-card">
-              <div class="cls">EVERY TICKET</div>
+              <div class="cls">SEATED TICKET</div>
               <div class="sub">${esc(CARRY_ON_NAME)}</div>
               <div class="kg">${esc(CARRY_ON_LABEL.toUpperCase())}</div>
               <div class="sub">1 &times; ${esc(CARRY_ON_LABEL)}</div>
-            </div>
+            </div>`
+            }
           </div>
+          ${
+            noSeat
+              ? `<p class="bag-note">${esc(INFANT_FREE_ITEMS_NOTE)}</p>`
+              : ""
+          }
         </div>
       </div>
 
@@ -1036,6 +1079,7 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
     .bag-card .sub:last-child { font-size: 11px; margin-top: auto; }
     .bag-card .kg { font-size: 28px; color: #111; line-height: 1.1; margin: 4mm 0 0; }
     .bag-card .cls + .sub { margin-top: 3.4mm; }
+    .bag-note { margin: 3mm 0 0; font-size: 12px; line-height: 16px; color: #1a1a1a; }
 
     .pay-title { margin: 11mm 0 0; font-size: 22px; color: #111; letter-spacing: -0.2px; }
     .pay-lines { margin-top: 4.4mm; font-size: 14px; line-height: 17.9px; color: #1a1a1a; }

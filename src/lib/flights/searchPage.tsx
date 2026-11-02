@@ -113,6 +113,7 @@ const fareReleasePriceSelect = {
   sortOrder: true,
   totalSeats: true,
   remainingSeats: true,
+  salesClosed: true,
   priceCents: true,
   roundTripPriceCents: true,
   active: true,

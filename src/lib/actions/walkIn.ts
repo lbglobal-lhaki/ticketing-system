@@ -50,7 +50,7 @@ import {
 import { specialAssistanceToJson } from "@/lib/booking/specialAssistance";
 import { resolveEditedSectors } from "@/lib/booking/editSectors";
 import { parseDateTimeLocal, parseFlightDateTime } from "@/lib/datetime";
-import { getCurrentFareRelease } from "@/lib/fares/current";
+import { fareIsOpenForSale, getCurrentFareRelease } from "@/lib/fares/current";
 import { matchingReturnRelease } from "@/lib/fares/ticketTypes";
 import {
   cabinLabel,
@@ -398,6 +398,9 @@ export async function createWalkInBookingAction(
       throw new Error(
         `Selected ticket type is ${cabinLabel(pickedRelease.cabinClass)}, but the booking is ${cabinLabel(cabinClass)}`,
       );
+    }
+    if (pickedRelease && !fareIsOpenForSale(pickedRelease)) {
+      throw new Error(`${pickedRelease.name} is closed for sale`);
     }
     if (pickedRelease && pickedRelease.remainingSeats < data.seatsBooked) {
       throw new Error(`Not enough seats left on ${pickedRelease.name}`);

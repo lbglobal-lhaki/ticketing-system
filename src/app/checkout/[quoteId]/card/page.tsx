@@ -11,6 +11,7 @@ import { quotePartyFareCents } from "@/lib/booking/passengers";
 import { getCheckoutQuoteState } from "@/lib/checkout/loadQuote";
 import { passengerDraftFromQuote } from "@/lib/checkout/passengerDraft";
 import { calculateCardServiceFee, exclusiveGstAppliesToFare } from "@/lib/payments/fees";
+import { prisma } from "@/lib/db";
 import { createPaymentIntent, getStripePublicConfig } from "@/lib/payments/stripe";
 import { CUSTOMER_SEAT_SELECTION_ENABLED } from "@/lib/seats/customerSeatSelection";
 import {
@@ -30,7 +31,7 @@ export default async function CardCheckoutPage({
   params: Promise<{ quoteId: string }>;
 }) {
   const { quoteId } = await params;
-  const state = await getCheckoutQuoteState(quoteId);
+  const state = await getCheckoutQuoteState(quoteId, { expireIfStale: false });
   if (!state) notFound();
 
   const draft = passengerDraftFromQuote(state.quote);
@@ -86,6 +87,12 @@ export default async function CardCheckoutPage({
         receiptEmail: draft.email,
       });
       clientSecret = intent.clientSecret;
+      await prisma.priceQuote.updateMany({
+        where: { id: quoteId, status: "active" },
+        data: {
+          expiresAt: new Date(Date.now() + 45 * 60 * 1000),
+        },
+      });
     } catch (error) {
       paymentError =
         error instanceof Error

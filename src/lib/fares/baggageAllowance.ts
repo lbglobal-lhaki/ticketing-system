@@ -63,10 +63,19 @@ export function optionAllowanceKg(option: {
   return Math.max(0, option.minKg);
 }
 
-/** Every passenger ticket includes this carry-on / hand luggage allowance. */
+/** Seated tickets (adults and children) include this cabin bag. */
 export const CARRY_ON_KG = 7;
 export const CARRY_ON_LABEL = `${CARRY_ON_KG} kg`;
 export const CARRY_ON_NAME = "Carry-on (hand luggage)";
+
+/** Infants only: 10 kg checked, no hand luggage. Adult/child fares are unchanged. */
+export const INFANT_CHECKED_KG = 10;
+export const INFANT_CABIN_KG = 0;
+export const INFANT_CHECKED_LABEL = `${INFANT_CHECKED_KG} kg`;
+export const INFANT_CABIN_LINE = "No cabin bag";
+export const INFANT_FREE_ITEMS_NOTE =
+  "An infant trolley and a diaper bag may be carried free of charge.";
+export const INFANT_BAGGAGE_POLICY = `${INFANT_CHECKED_LABEL} checked baggage with no cabin bag. ${INFANT_FREE_ITEMS_NOTE}`;
 
 export function cabinBagKgForCabin(_cabin?: string) {
   return CARRY_ON_KG;
@@ -94,10 +103,37 @@ export function allowanceFromKg(
     includedKg: kg,
     cabinBaggageKg: cabinKg,
     checkedLabel: kgLabel(kg),
-    cabinBagLabel: kgLabel(cabinKg),
+    cabinBagLabel: cabinKg > 0 ? kgLabel(cabinKg) : "None",
     piecesLabel: piecesLabel(kg),
     docLabel: kg > 0 ? kgLabel(kg) : "—",
   };
+}
+
+export function infantBaggageAllowance(): BaggageAllowance {
+  return allowanceFromKg(INFANT_CHECKED_KG, INFANT_CABIN_KG);
+}
+
+export function isInfantPassengerType(type: string | null | undefined) {
+  return (type ?? "").trim().toLowerCase() === "infant";
+}
+
+export function partyHasInfant(
+  passengers?: { passengerType?: string | null }[] | null,
+  infantCount?: number | null,
+) {
+  if (passengers?.some((p) => isInfantPassengerType(p.passengerType))) {
+    return true;
+  }
+  return (infantCount ?? 0) > 0;
+}
+
+export function allowanceForPassengerType(
+  passengerType: string | null | undefined,
+  seatedAllowance: BaggageAllowance,
+): BaggageAllowance {
+  return isInfantPassengerType(passengerType)
+    ? infantBaggageAllowance()
+    : seatedAllowance;
 }
 
 export function fallbackAllowance(cabin: string): BaggageAllowance {
@@ -124,8 +160,35 @@ export function resolveBaggageAllowance(
   return fallbackAllowance(cabin);
 }
 
-export function baggageSummaryLine(checkedLabel: string) {
-  return `${checkedLabel} checked · ${CARRY_ON_LABEL} carry-on`;
+export function baggageSummaryLine(
+  checkedLabel: string,
+  cabinKg: number = CARRY_ON_KG,
+) {
+  if (cabinKg <= 0) {
+    return `${checkedLabel} checked · no cabin bag`;
+  }
+  return `${checkedLabel} checked · ${kgLabel(cabinKg)} carry-on`;
+}
+
+export function infantBaggageSummaryLine() {
+  return baggageSummaryLine(INFANT_CHECKED_LABEL, INFANT_CABIN_KG);
+}
+
+export function infantBaggageBullets() {
+  return [
+    `Infants: ${INFANT_CHECKED_LABEL} checked baggage, no cabin bag`,
+    "Infant trolley and diaper bag carried free of charge",
+  ];
+}
+
+/** Booking-level seated fare plus the infant rule when an infant is travelling. */
+export function partyBaggageSummaryLine(
+  seatedCheckedLabel: string,
+  hasInfant: boolean,
+) {
+  const seated = baggageSummaryLine(seatedCheckedLabel);
+  if (!hasInfant) return seated;
+  return `${seated}. Infants: ${infantBaggageSummaryLine()}. ${INFANT_FREE_ITEMS_NOTE}`;
 }
 
 export function snapshotFromAllowance(allowance: BaggageAllowance) {

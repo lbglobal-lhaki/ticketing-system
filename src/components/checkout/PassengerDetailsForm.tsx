@@ -18,6 +18,10 @@ import {
   type TravellerDraft,
 } from "@/lib/booking/passengers";
 import { formatAud } from "@/lib/pricing";
+import {
+  INFANT_BAGGAGE_POLICY,
+  INFANT_CHECKED_LABEL,
+} from "@/lib/fares/baggageAllowance";
 import { SubmitButton } from "@/components/SubmitButton";
 import { DateTimePicker } from "@/components/ui/DateTimePicker";
 import { SpecialAssistanceFields } from "@/components/SpecialAssistanceFields";
@@ -593,7 +597,7 @@ function TravellerCard({
           <p className="mt-1.5 text-sm text-muted">
             Name must match the passport
             {row.passengerType === "infant"
-              ? `. Infants travel without a seat. Date of birth is required — under ${INFANT_MAX_AGE_YEARS} years on the departure date.`
+              ? `. Infants travel without a seat and are entitled to ${INFANT_BAGGAGE_POLICY} Date of birth is required — under ${INFANT_MAX_AGE_YEARS} years on the departure date.`
               : row.passengerType === "child"
                 ? `. Date of birth is required — must be ${CHILD_AGE_RANGE_LABEL} years old on the departure date.`
                 : "."}
@@ -716,7 +720,7 @@ function TravellerCard({
                     err("dateOfBirth")
                       ? undefined
                       : row.passengerType === "infant"
-                        ? `Must be under ${INFANT_MAX_AGE_YEARS} years old on the departure date.`
+                        ? `Must be under ${INFANT_MAX_AGE_YEARS} years old on the departure date. ${INFANT_CHECKED_LABEL} checked baggage, no cabin bag.`
                         : `Must be ${CHILD_AGE_RANGE_LABEL} years old on the departure date.`
                   }
                 />

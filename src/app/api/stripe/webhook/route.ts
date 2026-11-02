@@ -50,8 +50,8 @@ export async function POST(request: Request) {
       }
 
       if (!result.ok) {
-        // Still 200 so Stripe doesn't hammer retries on intentional refunds
-        // (amount mismatch). Log for ops.
+        // 200: do not retry into an auto-refund. Funds stay captured until
+        // ops tickets or refunds this PaymentIntent by hand.
         console.error("stripe webhook fulfill failed", intent.id, result.error);
       }
     }
