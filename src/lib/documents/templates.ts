@@ -61,6 +61,9 @@ export type BookingDocumentData = {
     departureAt: Date;
     arrivalAt: Date;
     cabinClass: string;
+    /** Origin / destination terminals ("1"); blank prints as "–". */
+    departureTerminal?: string | null;
+    arrivalTerminal?: string | null;
   };
   returnFlight?: {
     airline: string;
@@ -70,6 +73,9 @@ export type BookingDocumentData = {
     departureAt: Date;
     arrivalAt: Date;
     cabinClass: string;
+    /** Origin / destination terminals ("1"); blank prints as "–". */
+    departureTerminal?: string | null;
+    arrivalTerminal?: string | null;
   } | null;
   invoice?: {
     invoiceNumber: string;

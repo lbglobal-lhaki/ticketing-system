@@ -128,6 +128,10 @@ model Flight {
   destination    String
   departureAt    DateTime
   arrivalAt      DateTime
+  /// Terminal at the origin airport, printed on the e-ticket and emails.
+  departureTerminal String  @default("1")
+  /// Terminal at the destination airport.
+  arrivalTerminal   String  @default("1")
   currency       String     @default("AUD")
   /// Sum of every cabin's fare-release seat pools (whole aircraft).
   totalSeats     Int

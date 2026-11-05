@@ -16,6 +16,18 @@ import {
   partyBaggageSummaryLine,
   partyHasInfant,
 } from "@/lib/fares/baggageAllowance";
+import { formatTerminal } from "@/lib/flights/terminals";
+
+type DocFlight = BookingDocumentData["flight"];
+
+/** "PBH Terminal 1 → PER Terminal 1" for one sector. */
+function terminalLine(flight: DocFlight) {
+  return `${flight.origin} Terminal ${formatTerminal(flight.departureTerminal)} → ${flight.destination} Terminal ${formatTerminal(flight.arrivalTerminal)}`;
+}
+
+function departureLine(flight: DocFlight) {
+  return `${formatFlightDateTime(flight.departureAt)} ${airportTzAbbr(flight.origin, flight.departureAt)}`;
+}
 
 function baggageEmailLine(data: BookingDocumentData) {
   const checked =
@@ -76,7 +88,14 @@ export function eTicketEmail(data: BookingDocumentData) {
     <strong>Route:</strong> ${esc(route)}<br/>
     <strong>Fare:</strong> ${esc(data.fareProductName || data.fareReleaseName || "—")}<br/>
     <strong>Included baggage:</strong> ${esc(baggageEmailLine(data))}<br/>
-    <strong>Departure:</strong> ${esc(formatFlightDateTime(data.flight.departureAt))} ${esc(airportTzAbbr(data.flight.origin, data.flight.departureAt))}</p>
+    <strong>Departure:</strong> ${esc(departureLine(data.flight))}<br/>
+    <strong>Terminal:</strong> ${esc(terminalLine(data.flight))}${
+      data.returnFlight
+        ? `<br/>
+    <strong>Return departure:</strong> ${esc(departureLine(data.returnFlight))}<br/>
+    <strong>Return terminal:</strong> ${esc(terminalLine(data.returnFlight))}`
+        : ""
+    }</p>
     ${specialAssistanceEmailHtml(data)}
     <p><a href="${travelUrl}">View travel document online</a></p>
     ${
@@ -95,8 +114,15 @@ Booking Reference: ${data.bookingRef}
 Route: ${route}
 Fare: ${data.fareProductName || data.fareReleaseName || "—"}
 Included baggage: ${baggageEmailLine(data)}
-Departure: ${formatFlightDateTime(data.flight.departureAt)} ${airportTzAbbr(data.flight.origin, data.flight.departureAt)}
-${specialAssistanceEmailText(data)}
+Departure: ${departureLine(data.flight)}
+Terminal: ${terminalLine(data.flight)}
+${
+  data.returnFlight
+    ? `Return departure: ${departureLine(data.returnFlight)}
+Return terminal: ${terminalLine(data.returnFlight)}
+`
+    : ""
+}${specialAssistanceEmailText(data)}
 
 Travel document: ${travelUrl}
 ${data.invoice ? "Your tax invoice / receipt is emailed separately by our accounts team.\n" : ""}
@@ -183,7 +209,8 @@ export function bankTransferEmail(data: BookingDocumentData) {
     <h2 style="font-size:14px;letter-spacing:0.12em;text-transform:uppercase;color:#2563EB;border-bottom:1px solid #E2E8F0;padding-bottom:6px">Booking Summary</h2>
     <p><strong>Booking Reference:</strong> ${esc(data.bookingRef)}<br/>
     <strong>Route:</strong> ${esc(route)}<br/>
-    <strong>Departure:</strong> ${esc(formatFlightDateTime(data.flight.departureAt))} ${esc(airportTzAbbr(data.flight.origin, data.flight.departureAt))}<br/>
+    <strong>Departure:</strong> ${esc(departureLine(data.flight))}<br/>
+    <strong>Terminal:</strong> ${esc(terminalLine(data.flight))}<br/>
     <strong>Amount Due:</strong> ${esc(formatAud(amount))}</p>
     ${specialAssistanceEmailHtml(data)}
     <p>Please transfer the total amount using the reference:<br/><strong>${esc(reference)}</strong></p>
@@ -204,7 +231,8 @@ export function bankTransferEmail(data: BookingDocumentData) {
 Your ${brand.issuingAgent} booking ${data.bookingRef} is Pending Payment.
 
 Route: ${route}
-Departure: ${formatFlightDateTime(data.flight.departureAt)} ${airportTzAbbr(data.flight.origin, data.flight.departureAt)}
+Departure: ${departureLine(data.flight)}
+Terminal: ${terminalLine(data.flight)}
 Amount Due: ${formatAud(amount)}
 ${specialAssistanceEmailText(data)}Payment reference: ${reference}
 

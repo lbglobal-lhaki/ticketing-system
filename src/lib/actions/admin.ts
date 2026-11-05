@@ -55,6 +55,8 @@ export async function createFlightAction(
     departureAt: formData.get("departureAt"),
     arrivalAt: formData.get("arrivalAt"),
     cabinClass: formData.get("cabinClass"),
+    departureTerminal: formData.get("departureTerminal") ?? undefined,
+    arrivalTerminal: formData.get("arrivalTerminal") ?? undefined,
     cargoPayloadKg: formData.get("cargoPayloadKg") ?? undefined,
   });
 
@@ -113,6 +115,8 @@ export async function createFlightAction(
       destination: data.destination,
       departureAt,
       arrivalAt,
+      departureTerminal: data.departureTerminal,
+      arrivalTerminal: data.arrivalTerminal,
       currency: "AUD",
       totalSeats: totals.totalSeats,
       remainingSeats: totals.remainingSeats,
@@ -159,6 +163,8 @@ export async function updateFlightAction(
     departureAt: formData.get("departureAt"),
     arrivalAt: formData.get("arrivalAt"),
     cabinClass: formData.get("cabinClass"),
+    departureTerminal: formData.get("departureTerminal") ?? undefined,
+    arrivalTerminal: formData.get("arrivalTerminal") ?? undefined,
     cargoPayloadKg: formData.get("cargoPayloadKg") ?? undefined,
   });
 
@@ -301,6 +307,8 @@ export async function updateFlightAction(
         destination: data.destination,
         departureAt,
         arrivalAt,
+        departureTerminal: data.departureTerminal,
+        arrivalTerminal: data.arrivalTerminal,
         totalSeats: totals.totalSeats,
         remainingSeats: totals.remainingSeats,
         cargoPayloadKg: data.cargoPayloadKg,

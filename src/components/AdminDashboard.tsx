@@ -146,6 +146,8 @@ type FlightRow = {
   destination: string;
   departureAt: string;
   arrivalAt: string;
+  departureTerminal: string;
+  arrivalTerminal: string;
   totalSeats: number;
   remainingSeats: number;
   /** Payload shared between passengers and cargo on this sector (kg). */
@@ -1998,6 +2000,46 @@ export function AdminDashboard({
                   : ""
               }
             />
+            <label className="space-y-1 text-sm">
+              <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
+                Departure terminal
+              </span>
+              <input
+                name="departureTerminal"
+                maxLength={20}
+                defaultValue={editing ? editing.departureTerminal : "1"}
+                placeholder="1"
+                data-field-key="departureTerminal"
+                aria-invalid={
+                  flightSticky.fieldErrors.departureTerminal ? true : undefined
+                }
+                className={labeledControlClass(
+                  fieldClass,
+                  flightSticky.fieldErrors.departureTerminal,
+                )}
+              />
+              <FieldError error={flightSticky.fieldErrors.departureTerminal} />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
+                Arrival terminal
+              </span>
+              <input
+                name="arrivalTerminal"
+                maxLength={20}
+                defaultValue={editing ? editing.arrivalTerminal : "1"}
+                placeholder="1"
+                data-field-key="arrivalTerminal"
+                aria-invalid={
+                  flightSticky.fieldErrors.arrivalTerminal ? true : undefined
+                }
+                className={labeledControlClass(
+                  fieldClass,
+                  flightSticky.fieldErrors.arrivalTerminal,
+                )}
+              />
+              <FieldError error={flightSticky.fieldErrors.arrivalTerminal} />
+            </label>
             </FormSection>
 
             <FormSection

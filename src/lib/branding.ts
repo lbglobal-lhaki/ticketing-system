@@ -36,6 +36,11 @@ export function getBrand() {
       process.env.BRAND_AGENT_PHONE_PRIMARY?.trim() || "+61 424 919 833",
     agentPhoneSecondary:
       process.env.BRAND_AGENT_PHONE_SECONDARY?.trim() || "+61 451 106 077",
+    /** Bhutan office lines, printed on the flight terms & conditions footer. */
+    agentPhoneBhutanPrimary:
+      process.env.BRAND_AGENT_PHONE_BT_PRIMARY?.trim() || "+97517566856",
+    agentPhoneBhutanSecondary:
+      process.env.BRAND_AGENT_PHONE_BT_SECONDARY?.trim() || "+97577781399",
     agentWebsite:
       process.env.BRAND_AGENT_WEBSITE?.trim() || "www.lbglobal.com.au",
     agentEmail:

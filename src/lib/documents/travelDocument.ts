@@ -23,6 +23,8 @@ import {
   isInfantPassengerType,
 } from "@/lib/fares/baggageAllowance";
 import { PDF_FONT_FAMILY, pdfFontFaceCss } from "@/lib/documents/pdfFonts";
+import { FLIGHT_TERMS_SHEETS, type TermsBlock } from "@/lib/documents/flightTerms";
+import { formatTerminal } from "@/lib/flights/terminals";
 import type {
   BookingDocumentData,
   BookingDocumentPassenger,
@@ -42,7 +44,9 @@ import {
  *      contact footer.
  *   2. One sheet per ticketed traveller: passenger box, charter banner, the
  *      "not a boarding pass" card, terms + baggage, payment and fare details.
- *   3. Travel checklist.
+ *   3. Flight Booking Terms and Conditions (flightTerms.ts) — letterhead band
+ *      and contact footer on every sheet.
+ *   4. Travel checklist.
  *
  * Chrome is laid out inline rather than in Chromium's @page margin box, because
  * the reference prints the band on sheet 1 only and `displayHeaderFooter`
@@ -214,6 +218,9 @@ function passCard(
   const name = opts.passengerName.toUpperCase();
   const metaNameSize = nameFontPx(name, 16, 41);
   const stubNameSize = nameFontPx(name, 15, 42);
+  // Check-in happens at the origin, so the card prints the departure terminal
+  // (the reference shows a single "Terminal" field).
+  const terminal = formatTerminal(flight.departureTerminal);
 
   const perk = (icon: string, title: string, sub: string) => `
         <div class="perk">
@@ -261,7 +268,8 @@ function passCard(
         <div><span>Arrival</span><strong>${esc(ticketFlightTime(flight.arrivalAt))}</strong><i>${esc(to)} Time</i></div>
         <div><span>Class</span><strong>${esc(cabinLabel(flight.cabinClass))}</strong></div>
         <div><span>Seat</span><strong>${esc(opts.seat)}</strong></div>
-        <div><span>Checked baggage</span><strong>${esc(opts.baggage)}</strong><i>${esc(opts.cabinLine)}</i></div>
+        <div><span>Terminal</span><strong>${esc(terminal)}</strong></div>
+        <div><span>Included Baggage</span><strong>${esc(opts.baggage)}</strong><i>${esc(opts.cabinLine)}</i></div>
       </div>
 
       <div class="pass-perks">
@@ -296,6 +304,7 @@ function passCard(
         <span>Flight No:</span><b>${esc(flight.flightNumber)}</b>
         <span>Date:</span><b>${esc(ticketFlightDate(flight.departureAt))}</b>
         <span>Seat:</span><b>${esc(opts.seat)}</b>
+        <span>Terminal:</span><b>${esc(terminal)}</b>
         <span>Class</span><b>${esc(cabinTitle(flight.cabinClass))}</b>
       </div>
 
@@ -442,15 +451,30 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
   });
   const flightNoun = isRoundTrip ? "Flights" : "Flight";
 
+  /** Yellow rule + contact row. The terms sheets add the Bhutan lines. */
+  const contactFooter = (withBhutan: boolean) => `
+    <div class="foot">
+      <div class="foot-rule"></div>
+      <div class="foot-items">
+        <div class="foot-item"><span class="dot">${ICON_PHONE}</span><span>${esc(brand.agentPhonePrimary)} | ${esc(brand.agentPhoneSecondary)}${
+          withBhutan
+            ? `<br />${esc(brand.agentPhoneBhutanPrimary)} | ${esc(brand.agentPhoneBhutanSecondary)}`
+            : ""
+        }</span></div>
+        <div class="foot-item"><span class="dot">${ICON_GLOBE}</span>${esc(brand.agentWebsite)}</div>
+        <div class="foot-item"><span class="dot">${ICON_MAIL}</span>${esc(brand.agentEmail)}</div>
+      </div>
+    </div>`;
+
+  const bandHtml = bandUri
+    ? `<img class="band" src="${bandUri}" alt="${esc(brand.issuingAgent)} · ${esc(brand.issuingAirline)}" />`
+    : `<div class="band band-fallback"></div>`;
+
   /* ---------------------------------------------------------------- sheet 1 */
 
   const letterSheet = `
   <section class="sheet letter">
-    ${
-      bandUri
-        ? `<img class="band" src="${bandUri}" alt="${esc(brand.issuingAgent)} · ${esc(brand.issuingAirline)}" />`
-        : `<div class="band band-fallback"></div>`
-    }
+    ${bandHtml}
     <div class="letter-body">
       <p class="to-line">To:<br /><strong>${esc(data.passengerName)}</strong><br /><strong>Date: ${esc(ticketDate(data.createdAt))}</strong></p>
 
@@ -490,14 +514,7 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
       <p class="tight">${esc(brand.issuingAgent)}<br />${esc(brand.reservationsTeam)}</p>
     </div>
 
-    <div class="foot">
-      <div class="foot-rule"></div>
-      <div class="foot-items">
-        <div class="foot-item"><span class="dot">${ICON_PHONE}</span>${esc(brand.agentPhonePrimary)} | ${esc(brand.agentPhoneSecondary)}</div>
-        <div class="foot-item"><span class="dot">${ICON_GLOBE}</span>${esc(brand.agentWebsite)}</div>
-        <div class="foot-item"><span class="dot">${ICON_MAIL}</span>${esc(brand.agentEmail)}</div>
-      </div>
-    </div>
+    ${contactFooter(false)}
   </section>`;
 
   /* ------------------------------------------------------- ticket sheets */
@@ -653,6 +670,33 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
 
   const ticketSheets = travellers.flatMap((pax) =>
     flights.map((flight, index) => ticketSheet(pax, flight, index > 0)),
+  );
+
+  /* --------------------------------------------------------- terms sheets */
+
+  const termsBlock = (block: TermsBlock) =>
+    block.kind === "p"
+      ? `<p>${esc(block.text)}</p>`
+      : `<ul>${block.items.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>`;
+
+  const termsSheets = FLIGHT_TERMS_SHEETS.map(
+    (sheet) => `
+  <section class="sheet letter terms-sheet">
+    ${bandHtml}
+    <div class="letter-body terms-body">
+      ${sheet.title ? `<h1 class="terms-title">${esc(sheet.title)}</h1>` : ""}
+      ${sheet.sections
+        .map(
+          (section) => `
+      <div class="terms-section">
+        ${section.heading ? `<h4>${esc(section.heading)}</h4>` : ""}
+        ${section.blocks.map(termsBlock).join("")}
+      </div>`,
+        )
+        .join("")}
+    </div>
+    ${contactFooter(true)}
+  </section>`,
   );
 
   /* ------------------------------------------------------ checklist sheet */
@@ -879,13 +923,33 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
       font-size: 12px;
       color: #333;
     }
-    .foot-item { display: flex; align-items: center; gap: 3.1mm; }
+    .foot-item { display: flex; align-items: center; gap: 3.1mm; line-height: 1.3; }
     .foot-item .dot {
       width: 6.3mm; height: 6.3mm; border-radius: 50%;
       background: #f5c518; color: #fff; flex-shrink: 0;
       display: inline-flex; align-items: center; justify-content: center;
     }
     .foot-item .dot svg { display: block; width: 3.4mm; height: 3.4mm; }
+
+    /* ---------------------------------------------------- terms sheets */
+    .sheet.terms-sheet { background: ${TICKET_PAPER}; }
+    .terms-body {
+      padding: 7mm 13.5mm 0 13.5mm;
+      font-size: 14.5px;
+      line-height: 1.3;
+      text-align: justify;
+    }
+    .terms-title {
+      margin: 0 0 6mm; text-align: center;
+      font-size: 24px; letter-spacing: .2px; color: #111;
+    }
+    .terms-section { margin-bottom: 5.5mm; }
+    .terms-section h4 { margin: 0; font-size: 14.5px; color: #111; text-align: left; }
+    .terms-body p { margin: 0 0 4.5mm; }
+    .terms-section p:last-child { margin-bottom: 0; }
+    .terms-body ul { margin: 0 0 4.5mm; padding-left: 9mm; text-align: left; }
+    .terms-section ul:last-child { margin-bottom: 0; }
+    .terms-body li { margin: 0; text-align: justify; }
 
     /* --------------------------------------------------- ticket sheets */
     .sheet.ticket { background: ${TICKET_PAPER}; }
@@ -1012,7 +1076,7 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
 
     .pass-grid {
       display: grid;
-      grid-template-columns: 15.2mm 23.2mm 20.1mm 20.3mm 19.9mm 10.7mm auto;
+      grid-template-columns: 13.6mm 19.6mm 15.6mm 15.6mm 18.4mm 9.4mm 11.4mm auto;
       margin-top: 1.5mm;
     }
     .pass-grid span { display: block; font-size: 8px; color: #333; line-height: 1.1; white-space: nowrap; }
@@ -1042,18 +1106,18 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
     .stub-route .ep-arrow-cell { height: 9.3mm; }
     .stub-rows {
       display: grid;
-      grid-template-columns: 11.5mm auto;
-      margin-top: 1.8mm;
-      font-size: 9px;
+      grid-template-columns: 12.5mm auto;
+      margin-top: 1.4mm;
+      font-size: 8.5px;
       line-height: 2.35mm;
     }
     .stub-rows span { color: ${NAVY}; }
     .stub-rows b { font-weight: 400; color: #111; }
-    .stub-code { margin-top: 2.4mm; width: 34.5mm; }
-    .stub-code img { display: block; width: 100%; height: 9mm; }
+    .stub-code { margin-top: 1.6mm; width: 34.5mm; }
+    .stub-code img { display: block; width: 100%; height: 8mm; }
     .stub-code div {
       font-size: 6.5px; font-weight: 700; color: ${NAVY};
-      text-align: center; letter-spacing: .02em; margin-top: -0.6mm;
+      text-align: center; letter-spacing: .02em; margin-top: 0.4mm;
     }
 
     /* ------------------------------------------- terms / baggage / fares */
@@ -1183,6 +1247,7 @@ export function renderTravelDocumentHtml(data: BookingDocumentData) {
 <body>
 ${letterSheet}
 ${ticketSheets.join("\n")}
+${termsSheets.join("\n")}
 ${checklistSheet}
 </body>
 </html>`;

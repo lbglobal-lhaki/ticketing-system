@@ -452,6 +452,8 @@ export default async function AdminPage({
               destination: f.destination,
               departureAt: f.departureAt.toISOString(),
               arrivalAt: f.arrivalAt.toISOString(),
+              departureTerminal: f.departureTerminal,
+              arrivalTerminal: f.arrivalTerminal,
               totalSeats: f.totalSeats,
               remainingSeats: f.remainingSeats,
               cargoPayloadKg: f.cargoPayloadKg,

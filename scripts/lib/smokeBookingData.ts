@@ -86,6 +86,8 @@ export function makeSmokeBookingData(
       destination: "PBH",
       departureAt: new Date("2026-09-01T02:00:00Z"),
       arrivalAt: new Date("2026-09-01T10:00:00Z"),
+      departureTerminal: "1",
+      arrivalTerminal: "1",
       cabinClass: "economy",
     },
     returnFlight: opts.roundTrip
@@ -96,6 +98,8 @@ export function makeSmokeBookingData(
           destination: "PER",
           departureAt: new Date("2026-09-10T02:00:00Z"),
           arrivalAt: new Date("2026-09-10T10:00:00Z"),
+          departureTerminal: "1",
+          arrivalTerminal: "1",
           cabinClass: "economy",
         }
       : null,

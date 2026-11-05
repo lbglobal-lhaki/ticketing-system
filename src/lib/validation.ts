@@ -79,6 +79,17 @@ export const flightFormSchema = z.object({
     .transform((v) => v.toUpperCase()),
   departureAt: z.string().min(1, "Departure date/time required"),
   arrivalAt: z.string().min(1, "Arrival date/time required"),
+  /** Terminals printed on the e-ticket / itinerary ("1", "T2", "International"). */
+  departureTerminal: z
+    .string()
+    .trim()
+    .max(20, "Keep the terminal short, e.g. 1 or T2")
+    .default(""),
+  arrivalTerminal: z
+    .string()
+    .trim()
+    .max(20, "Keep the terminal short, e.g. 1 or T2")
+    .default(""),
   /**
    * Structural payload for this sector (kg), shared by passengers and cargo.
    * Paro departures lift less than Perth ones, hence per flight.
