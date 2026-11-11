@@ -214,7 +214,9 @@ type BookingRow = {
   source: "online" | "walk_in";
   holdExpiresAt: string | null;
   cancelledAt: string | null;
+  cancelledBy: string;
   cancellationReason: string;
+  cancellationNote: string;
   cancellationEmailSentAt: string | null;
   createdAt: string;
   invoiceId: string | null;
@@ -3050,10 +3052,19 @@ export function AdminDashboard({
                         </Badge>
                         {b.status === "cancelled" && b.cancelledAt ? (
                           <p className="mt-1 text-xs text-muted">
+                            Cancelled{" "}
                             {new Date(b.cancelledAt).toLocaleDateString("en-AU")}
+                            {b.cancelledBy
+                              ? ` by ${b.cancelledBy === "sub_admin" ? "Sub-admin" : b.cancelledBy === "admin" ? "Admin" : b.cancelledBy}`
+                              : ""}
                             {b.cancellationReason
                               ? ` · ${cancellationReasonLabel(b.cancellationReason)}`
                               : ""}
+                            {b.cancellationNote ? (
+                              <>
+                                <br />“{b.cancellationNote}”
+                              </>
+                            ) : null}
                             <br />
                             {b.cancellationEmailSentAt
                               ? "Customer emailed"

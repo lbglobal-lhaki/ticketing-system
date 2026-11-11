@@ -520,7 +520,9 @@ export default async function AdminPage({
               source: b.source,
               holdExpiresAt: b.holdExpiresAt?.toISOString() ?? null,
               cancelledAt: b.cancelledAt?.toISOString() ?? null,
+              cancelledBy: b.cancelledBy,
               cancellationReason: b.cancellationReason,
+              cancellationNote: b.cancellationNote,
               cancellationEmailSentAt:
                 b.cancellationEmailSentAt?.toISOString() ?? null,
               createdAt: b.createdAt.toISOString(),

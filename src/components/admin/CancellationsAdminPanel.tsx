@@ -56,7 +56,8 @@ export function CancellationsAdminPanel({
   overbooked: OverbookedFlight[];
   canDecide: boolean;
 }) {
-  const [filter, setFilter] = useState<Filter>("pending");
+  // Default to the full record — decided cancellations must stay visible.
+  const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
 
   const counts = useMemo(
@@ -108,9 +109,9 @@ export function CancellationsAdminPanel({
           onQueryChange={setQuery}
           placeholder="Search booking ref, name, email, flight…"
           chips={[
+            { value: "all", label: "All cancelled", count: rows.length },
             { value: "pending", label: "Awaiting review", count: counts.pending },
             { value: "decided", label: "Decided", count: counts.decided },
-            { value: "all", label: "All", count: rows.length },
           ]}
           activeChip={filter}
           onChipChange={(v) => setFilter(v as Filter)}
@@ -418,8 +419,14 @@ function CancelledBookingCard({
             {row.cancellationEmailSentAt ? "Customer emailed" : "Customer not emailed"}
             {row.invoiceStatus === "paid" ? " · Invoice paid (refund separately)" : ""}
           </p>
+          {row.cancellationNote ? (
+            <p className="mt-1 text-xs text-muted">
+              Note: “{row.cancellationNote}”
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-1.5">
+          <Badge tone="danger">Cancelled</Badge>
           {oversold ? <Badge tone="danger">Flight oversold</Badge> : null}
           <Badge tone={STATUS_TONE[row.seatReturnStatus] ?? "neutral"}>
             {seatReturnStatusLabel(row.seatReturnStatus)}

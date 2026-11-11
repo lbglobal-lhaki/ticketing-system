@@ -283,6 +283,7 @@ export type SeatReviewRow = {
   cancelledAt: string | null;
   cancelledBy: string;
   cancellationReason: string;
+  cancellationNote: string;
   cancellationEmailSentAt: string | null;
   invoiceStatus: string | null;
   seatReturnStatus: string;
@@ -318,6 +319,7 @@ export async function loadSeatReviewQueue(): Promise<SeatReviewRow[]> {
     cancelledAt: b.cancelledAt?.toISOString() ?? null,
     cancelledBy: b.cancelledBy,
     cancellationReason: b.cancellationReason,
+    cancellationNote: b.cancellationNote,
     cancellationEmailSentAt: b.cancellationEmailSentAt?.toISOString() ?? null,
     invoiceStatus: b.invoice?.status ?? null,
     seatReturnStatus: b.seatReturnStatus,
