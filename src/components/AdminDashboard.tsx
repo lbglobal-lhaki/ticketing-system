@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   bulkUpdateFareTierPriceAction,
@@ -57,6 +64,17 @@ import {
   type CompanionDraft,
 } from "@/components/PassengerGroupFields";
 import { SubmitButton } from "@/components/SubmitButton";
+import { CancelBookingDialog } from "@/components/admin/CancelBookingDialog";
+import { CancellationsAdminPanel } from "@/components/admin/CancellationsAdminPanel";
+import type {
+  OverbookedFlight,
+  SeatReviewRow,
+} from "@/lib/booking/cancelBooking";
+import { sendBookingCancellationEmailAction } from "@/lib/actions/cancelBooking";
+import {
+  canCancelBooking,
+  cancellationReasonLabel,
+} from "@/lib/booking/cancellationPolicy";
 import { Spinner } from "@/components/Spinner";
 import {
   BulkSelectBar,
@@ -195,6 +213,9 @@ type BookingRow = {
   paymentMethod: "card" | "bank_transfer" | "cash" | null;
   source: "online" | "walk_in";
   holdExpiresAt: string | null;
+  cancelledAt: string | null;
+  cancellationReason: string;
+  cancellationEmailSentAt: string | null;
   createdAt: string;
   invoiceId: string | null;
   invoiceStatus: "unpaid" | "paid" | "cancelled" | "failed" | null;
@@ -219,6 +240,7 @@ type Tab =
   | "flights"
   | "form"
   | "bookings"
+  | "cancellations"
   | "invoices"
   | "cargo"
   | "settings"
@@ -229,6 +251,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "flights", label: "Flights" },
   { id: "form", label: "Add / Edit" },
   { id: "bookings", label: "Bookings" },
+  { id: "cancellations", label: "Cancellations" },
   { id: "invoices", label: "Invoices" },
   { id: "cargo", label: "Cargo" },
   { id: "settings", label: "Pricing & capacity" },
@@ -243,7 +266,7 @@ const TABS: { id: Tab; label: string }[] = [
 const NAV_GROUPS: { label: string; ids: Tab[] }[] = [
   { label: "Overview", ids: ["analytics"] },
   { label: "Inventory", ids: ["flights", "form"] },
-  { label: "Sales", ids: ["bookings", "invoices"] },
+  { label: "Sales", ids: ["bookings", "cancellations", "invoices"] },
   { label: "Operations", ids: ["cargo", "settings", "deleted"] },
 ];
 
@@ -267,6 +290,11 @@ const PAGE_META: Record<Tab, { title: string; description: string }> = {
     title: "Bookings",
     description:
       "Full booking history — confirm bank transfers, edit travellers, and book at the counter.",
+  },
+  cancellations: {
+    title: "Cancellations",
+    description:
+      "Cancelled bookings and whether their seats go back on sale — plus any flight that is oversold.",
   },
   invoices: {
     title: "Invoices",
@@ -630,6 +658,8 @@ export function AdminDashboard({
   cargoWeightOptions,
   deletedFlights,
   deletedRecords,
+  seatReviewQueue,
+  overbookedFlights,
   analytics,
   settings,
   adminRole = "admin",
@@ -644,6 +674,8 @@ export function AdminDashboard({
   cargoSubmissions: AdminCargoRow[];
   cargoWeightOptions: CargoWeightOptionRow[];
   deletedRecords: AdminDeletedRecordRow[];
+  seatReviewQueue: SeatReviewRow[];
+  overbookedFlights: OverbookedFlight[];
   analytics: SystemAnalytics;
   settings: AdminSiteSettings;
   adminRole?: AdminRole;
@@ -697,6 +729,16 @@ export function AdminDashboard({
     "cash" | "card" | "bank_transfer"
   >("cash");
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
+  const [cancellingBookingId, setCancellingBookingId] = useState<
+    string | null
+  >(null);
+  // The row's "⋯" trigger, so focus lands back on it when the dialog closes.
+  const cancelReturnFocusRef = useRef<HTMLElement | null>(null);
+  const closeCancelDialog = useCallback(() => setCancellingBookingId(null), []);
+  const cancellingBooking = useMemo(
+    () => bookings.find((b) => b.id === cancellingBookingId) ?? null,
+    [bookings, cancellingBookingId],
+  );
   const [bulkPending, startBulkTransition] = useTransition();
 
   const editingBooking = useMemo(
@@ -943,14 +985,20 @@ export function AdminDashboard({
     [flights, fareTripMode],
   );
   const unpaidInvoiceCount = invoices.filter((i) => i.status === "unpaid").length;
+  const seatReviewCount = seatReviewQueue.filter(
+    (r) => r.seatReturnStatus === "pending",
+  ).length;
 
   const navGroups = useMemo<NavGroup[]>(() => {
     const labelFor = (id: Tab) => {
       if (id === "form") return editing ? "Edit flight" : "Add flight";
       return TABS.find((t) => t.id === id)?.label ?? id;
     };
-    const countFor = (id: Tab) =>
-      id === "invoices" && unpaidInvoiceCount > 0 ? unpaidInvoiceCount : undefined;
+    const countFor = (id: Tab) => {
+      if (id === "invoices" && unpaidInvoiceCount > 0) return unpaidInvoiceCount;
+      if (id === "cancellations" && seatReviewCount > 0) return seatReviewCount;
+      return undefined;
+    };
     return NAV_GROUPS.map((group) => ({
       label: group.label,
       items: group.ids
@@ -961,7 +1009,7 @@ export function AdminDashboard({
           count: countFor(id),
         })),
     })).filter((group) => group.items.length > 0);
-  }, [adminRole, editing, unpaidInvoiceCount]);
+  }, [adminRole, editing, unpaidInvoiceCount, seatReviewCount]);
 
   const pageMeta = PAGE_META[tab];
 
@@ -2993,11 +3041,25 @@ export function AdminDashboard({
                               ? "success"
                               : b.status === "pending_payment"
                                 ? "info"
-                                : "neutral"
+                                : b.status === "cancelled"
+                                  ? "danger"
+                                  : "neutral"
                           }
                         >
                           {b.status.replaceAll("_", " ")}
                         </Badge>
+                        {b.status === "cancelled" && b.cancelledAt ? (
+                          <p className="mt-1 text-xs text-muted">
+                            {new Date(b.cancelledAt).toLocaleDateString("en-AU")}
+                            {b.cancellationReason
+                              ? ` · ${cancellationReasonLabel(b.cancellationReason)}`
+                              : ""}
+                            <br />
+                            {b.cancellationEmailSentAt
+                              ? "Customer emailed"
+                              : "Customer not emailed"}
+                          </p>
+                        ) : null}
                         {b.holdExpiresAt && b.status === "pending_payment" ? (
                           <p className="mt-1 text-xs text-muted">
                             Hold until{" "}
@@ -3138,9 +3200,9 @@ export function AdminDashboard({
                                 </form>
                               </MenuItem>
                             ) : null}
-                            {b.paymentMethod === "bank_transfer" &&
-                            (b.status === "hold_expired" ||
-                              b.status === "cancelled") ? (
+                            {(b.paymentMethod === "bank_transfer" &&
+                              b.status === "hold_expired") ||
+                            b.status === "cancelled" ? (
                               <MenuItem>
                                 <form action={reactivateBookingAction}>
                                   <input type="hidden" name="id" value={b.id} />
@@ -3149,7 +3211,11 @@ export function AdminDashboard({
                                     onClick={(e) => {
                                       if (
                                         !confirm(
-                                          `Reopen ${b.bookingRef} as unpaid and hold the seats again for 48 hours? If those seats have already been sold, this will fail.`,
+                                          b.invoiceStatus === "paid" ||
+                                            (!b.invoiceId &&
+                                              b.paymentMethod !== "bank_transfer")
+                                            ? `Reopen ${b.bookingRef} as confirmed and take the seats again? If those seats have already been sold, this will fail.`
+                                            : `Reopen ${b.bookingRef} as unpaid and hold the seats again for 48 hours? If those seats have already been sold, this will fail.`,
                                         )
                                       ) {
                                         e.preventDefault();
@@ -3185,7 +3251,42 @@ export function AdminDashboard({
                               </p>
                             ) : null}
 
+                            {b.status === "cancelled" && b.email ? (
+                              <MenuItem>
+                                <form action={sendBookingCancellationEmailAction}>
+                                  <input type="hidden" name="id" value={b.id} />
+                                  <SubmitButton
+                                    pendingLabel="Sending…"
+                                    confirmMessage={`Email ${b.email} that booking ${b.bookingRef} is cancelled?`}
+                                  >
+                                    {b.cancellationEmailSentAt
+                                      ? "Resend cancellation email"
+                                      : "Send cancellation email"}
+                                  </SubmitButton>
+                                </form>
+                              </MenuItem>
+                            ) : null}
+
                             <MenuDivider />
+                            {canCancelBooking(b.status) ? (
+                              <MenuItem tone="danger">
+                                <button
+                                  type="button"
+                                  aria-haspopup="dialog"
+                                  onClick={(e) => {
+                                    cancelReturnFocusRef.current =
+                                      e.currentTarget
+                                        .closest("[data-menu-root]")
+                                        ?.querySelector<HTMLElement>(
+                                          "[data-menu-trigger]",
+                                        ) ?? null;
+                                    setCancellingBookingId(b.id);
+                                  }}
+                                >
+                                  Cancel booking…
+                                </button>
+                              </MenuItem>
+                            ) : null}
                             <MenuItem tone="danger">
                               <form action={deleteBookingAction}>
                                 <input type="hidden" name="id" value={b.id} />
@@ -3234,6 +3335,14 @@ export function AdminDashboard({
         <SettingsAdminPanel settings={settings} />
       )}
 
+      {tab === "cancellations" && (
+        <CancellationsAdminPanel
+          rows={seatReviewQueue}
+          overbooked={overbookedFlights}
+          canDecide={adminRole === "admin"}
+        />
+      )}
+
       {tab === "deleted" && (
         <DeletedRecordsPanel
           deletedFlights={deletedFlights}
@@ -3242,6 +3351,28 @@ export function AdminDashboard({
       )}
 
       </AdminShell>
+
+      {cancellingBooking && (
+        <CancelBookingDialog
+          key={cancellingBooking.id}
+          booking={{
+            id: cancellingBooking.id,
+            bookingRef: cancellingBooking.bookingRef,
+            passengerName: cancellingBooking.passengerName,
+            email: cancellingBooking.email,
+            status: cancellingBooking.status,
+            seatsBooked: cancellingBooking.seatsBooked,
+            invoiceStatus: cancellingBooking.invoiceStatus,
+            route: `${cancellingBooking.flight.flightNumber} ${cancellingBooking.flight.origin}→${cancellingBooking.flight.destination}${
+              cancellingBooking.returnFlight
+                ? ` · ${cancellingBooking.returnFlight.flightNumber} ${cancellingBooking.returnFlight.origin}→${cancellingBooking.returnFlight.destination}`
+                : ""
+            }`,
+          }}
+          onClose={closeCancelDialog}
+          returnFocusRef={cancelReturnFocusRef}
+        />
+      )}
 
       {editingBooking && (
         <BookingEditModal

@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { cn } from "@/components/ui/cn";
 import { IconButton } from "@/components/ui/Button";
 import { XIcon } from "@/components/ui/icons";
@@ -20,6 +26,11 @@ export type ModalProps = {
   /** Set false where the existing dialog did not close on backdrop click. */
   closeOnOverlayClick?: boolean;
   className?: string;
+  /**
+   * Where focus goes on close when the element that opened the dialog is
+   * gone — e.g. an item inside an overflow menu that closed behind it.
+   */
+  returnFocusRef?: RefObject<HTMLElement | null>;
 };
 
 const SIZES = {
@@ -46,6 +57,7 @@ export function Modal({
   size = "lg",
   closeOnOverlayClick = true,
   className,
+  returnFocusRef,
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
@@ -55,6 +67,7 @@ export function Modal({
   useEffect(() => {
     if (!open) return;
     restoreRef.current = document.activeElement as HTMLElement | null;
+    const fallbackFocus = returnFocusRef?.current ?? null;
 
     const panel = panelRef.current;
     const first = panel?.querySelector<HTMLElement>(FOCUSABLE);
@@ -88,9 +101,14 @@ export function Modal({
     return () => {
       document.removeEventListener("keydown", onKeyDown, true);
       document.body.style.overflow = prevOverflow;
-      restoreRef.current?.focus?.();
+      const opener = restoreRef.current;
+      const target =
+        opener && opener.isConnected && opener !== document.body
+          ? opener
+          : fallbackFocus;
+      target?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open, onClose, returnFocusRef]);
 
   if (!open) return null;
 

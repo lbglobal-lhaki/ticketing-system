@@ -321,6 +321,27 @@ model Booking {
   accessToken         String         @unique
   /// Bank-transfer seat hold deadline (admin-set; 48h default). Null once confirmed/cancelled/expired.
   holdExpiresAt       DateTime?
+  /// Admin cancellation audit trail. Cleared again if the booking is reactivated.
+  cancelledAt         DateTime?
+  /// Admin role that cancelled ("admin" / "sub_admin").
+  cancelledBy         String         @default("")
+  /// Reason code from CANCELLATION_REASONS (see lib/booking/cancelBooking.ts).
+  cancellationReason  String         @default("")
+  /// Optional note written to the customer; included in the cancellation email.
+  cancellationNote    String         @default("")
+  /// Last time the "booking cancelled" email was delivered to the customer.
+  cancellationEmailSentAt DateTime?
+  /// Seats are NOT returned automatically on admin cancellation — an admin
+  /// reviews each one on the Cancellations tab (some bookings were taken on
+  /// already-full flights). "pending" | "returned" | "not_returned" |
+  /// "not_applicable" (hold expired: seats already went back automatically).
+  seatReturnStatus    String         @default("not_applicable")
+  /// Seats actually handed back per sector, so reactivation reclaims exactly these.
+  seatsReturnedOutbound Int          @default(0)
+  seatsReturnedReturn   Int          @default(0)
+  seatReturnDecidedAt DateTime?
+  seatReturnDecidedBy String         @default("")
+  seatReturnNote      String         @default("")
   createdAt           DateTime       @default(now())
   invoice             Invoice?
   passengers          BookingPassenger[]
@@ -328,6 +349,7 @@ model Booking {
   @@index([flightId])
   @@index([email])
   @@index([status, holdExpiresAt])
+  @@index([status, seatReturnStatus])
   @@index([createdAt])
 }
 

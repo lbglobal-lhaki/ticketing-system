@@ -17,6 +17,7 @@ import {
   partyHasInfant,
 } from "@/lib/fares/baggageAllowance";
 import { formatTerminal } from "@/lib/flights/terminals";
+import { cancellationReasonCustomerText } from "@/lib/booking/cancellationPolicy";
 
 type DocFlight = BookingDocumentData["flight"];
 
@@ -177,6 +178,107 @@ Accounts Team
 ${brand.issuingAgent}`;
 
   return { subject, html, text, invoiceUrl };
+}
+
+/**
+ * "Your booking has been cancelled" — sent from the ticketing mailbox.
+ *
+ * Written to stay in the inbox: transactional subject with the booking
+ * reference, no shouting or urgency words, a plain-text part that mirrors the
+ * HTML, only first-party links, no attachments, and real contact details.
+ */
+export function bookingCancelledEmail(
+  data: BookingDocumentData,
+  opts: { reason: string; note: string; wasPaid: boolean },
+) {
+  const brand = getBrand();
+  const subject = `Booking ${data.bookingRef} cancelled – ${brand.issuingAgent}`;
+  const reasonText = cancellationReasonCustomerText(opts.reason);
+  const sentence = `Your booking ${data.bookingRef} has been cancelled${
+    reasonText ? ` ${reasonText}` : ""
+  }.`;
+  const note = opts.note.trim();
+  const travellers = (data.passengers?.length
+    ? data.passengers.map((p) => p.fullName)
+    : [data.passengerName]
+  ).filter(Boolean);
+  const sectors = [
+    data.flight,
+    ...(data.returnFlight ? [data.returnFlight] : []),
+  ].map(
+    (f) =>
+      `${f.flightNumber} ${f.origin} → ${f.destination}, ${departureLine(f)}`,
+  );
+  const paymentLine = opts.wasPaid
+    ? "Any refund is assessed under the cancellation and refund conditions of your fare. Our team will contact you about it, or you can reply to this email."
+    : "No payment was received for this booking, so there is nothing further for you to pay.";
+  const contactLine = `${brand.agentPhonePrimary} | ${brand.agentPhoneSecondary} · ${brand.agentEmail} · ${brand.agentWebsite}`;
+
+  const label =
+    "font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#475569;margin:0 0 4px";
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${esc(subject)}</title>
+</head>
+<body style="margin:0;padding:0;background:#ffffff">
+  <div style="font-family:Georgia,serif;color:#0F172A;line-height:1.55;max-width:640px;padding:16px">
+    <p style="margin:0 0 12px">
+      ${emailLogoImgHtml(brand.shortName)}
+    </p>
+    <p style="color:#2563EB;letter-spacing:0.12em;text-transform:uppercase;font-size:12px">${esc(brand.issuingAgent)} Ticketing</p>
+    <h1 style="font-size:24px;margin:8px 0 16px">Your booking has been cancelled</h1>
+    <p>Dear ${esc(data.passengerName)},</p>
+    <p>${esc(sentence)}</p>
+    ${
+      note
+        ? `<p style="border-left:3px solid #CBD5E1;padding:4px 0 4px 12px;margin:16px 0;white-space:pre-line">${esc(note)}</p>`
+        : ""
+    }
+    <p style="${label}">Booking reference</p>
+    <p style="margin:0 0 12px"><strong>${esc(data.bookingRef)}</strong></p>
+    <p style="${label}">Cancelled flight${sectors.length > 1 ? "s" : ""}</p>
+    <p style="margin:0 0 12px">${sectors.map(esc).join("<br/>")}</p>
+    <p style="${label}">Traveller${travellers.length > 1 ? "s" : ""}</p>
+    <p style="margin:0 0 16px">${travellers.map(esc).join("<br/>")}</p>
+    <p>Any e-ticket issued for this booking is no longer valid for travel.</p>
+    <p>${esc(paymentLine)}</p>
+    <p>If you did not expect this, or would like to book again, please contact us at <a href="mailto:${esc(brand.agentEmail)}">${esc(brand.agentEmail)}</a> or ${esc(brand.agentPhonePrimary)}.</p>
+    <p>Kind regards,<br/>${esc(brand.reservationsTeam)}<br/>${esc(brand.issuingAgent)}</p>
+    <hr style="border:none;border-top:1px solid #E2E8F0;margin:24px 0 12px" />
+    <p style="font-size:12px;color:#64748B;margin:0">${esc(contactLine)}<br/>
+    You are receiving this service message because a flight booking was made with this email address.</p>
+  </div>
+</body>
+</html>`;
+
+  const text = `Dear ${data.passengerName},
+
+${sentence}
+${note ? `\n${note}\n` : ""}
+Booking reference: ${data.bookingRef}
+Cancelled flight${sectors.length > 1 ? "s" : ""}:
+${sectors.map((s) => `  ${s}`).join("\n")}
+Traveller${travellers.length > 1 ? "s" : ""}:
+${travellers.map((t) => `  ${t}`).join("\n")}
+
+Any e-ticket issued for this booking is no longer valid for travel.
+${paymentLine}
+
+If you did not expect this, or would like to book again, please contact us at ${brand.agentEmail} or ${brand.agentPhonePrimary}.
+
+Kind regards,
+${brand.reservationsTeam}
+${brand.issuingAgent}
+
+--
+${contactLine}
+You are receiving this service message because a flight booking was made with this email address.`;
+
+  return { subject, html, text };
 }
 
 export function bankTransferEmail(data: BookingDocumentData) {

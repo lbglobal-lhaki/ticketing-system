@@ -2,6 +2,7 @@ import { bankHoldExpiresAt } from "@/lib/branding";
 import { decrementFareAndFlight } from "@/lib/booking/inventory";
 import { prisma } from "@/lib/db";
 import { occupiedSeatsForFlight } from "@/lib/seats/occupancy";
+import { seatsToReclaim } from "@/lib/booking/cancellationPolicy";
 
 type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
@@ -29,7 +30,17 @@ export async function reclaimExpiredBookingHold(
   if (!booking) throw new Error("Booking not found");
 
   if (bookingNeedsSeatReclaim(booking.status)) {
-    if (!booking.fareReleaseId) {
+    // Take back exactly what went back to sale — a cancelled booking whose
+    // seats were never returned (review pending / not returned) still holds them.
+    const reclaim = seatsToReclaim({
+      status: booking.status,
+      seatsBooked: booking.seatsBooked,
+      hasReturnLeg: Boolean(booking.returnFlightId),
+      seatReturnStatus: booking.seatReturnStatus,
+      seatsReturnedOutbound: booking.seatsReturnedOutbound,
+      seatsReturnedReturn: booking.seatsReturnedReturn,
+    });
+    if (reclaim.outbound + reclaim.inbound > 0 && !booking.fareReleaseId) {
       throw new Error(
         "Cannot reactivate — this booking has no fare release to hold seats against",
       );
@@ -47,23 +58,30 @@ export async function reclaimExpiredBookingHold(
         fares.filter((f) => f.salesClosed).map((f) => f.id),
       );
       // Closed fares never returned these seats, so they must not be taken again.
-      if (!closed.has(booking.fareReleaseId)) {
+      if (
+        booking.fareReleaseId &&
+        reclaim.outbound > 0 &&
+        !closed.has(booking.fareReleaseId)
+      ) {
         await decrementFareAndFlight(
           tx,
           booking.flightId,
           booking.fareReleaseId,
-          booking.seatsBooked,
+          reclaim.outbound,
         );
       }
-      if (booking.returnFlightId && booking.returnFareReleaseId) {
-        if (!closed.has(booking.returnFareReleaseId)) {
-          await decrementFareAndFlight(
-            tx,
-            booking.returnFlightId,
-            booking.returnFareReleaseId,
-            booking.seatsBooked,
-          );
-        }
+      if (
+        booking.returnFlightId &&
+        booking.returnFareReleaseId &&
+        reclaim.inbound > 0 &&
+        !closed.has(booking.returnFareReleaseId)
+      ) {
+        await decrementFareAndFlight(
+          tx,
+          booking.returnFlightId,
+          booking.returnFareReleaseId,
+          reclaim.inbound,
+        );
       }
     } catch {
       throw new Error(
@@ -73,17 +91,44 @@ export async function reclaimExpiredBookingHold(
     await clearConflictingMapSeats(tx, booking);
   }
 
+  // A cancelled booking whose money was already received goes straight back
+  // to confirmed; it must not be dropped onto an unpaid 48h hold.
+  const alreadyPaid = booking.invoice
+    ? booking.invoice.status === "paid"
+    : booking.paymentMethod === "card" || booking.paymentMethod === "cash";
+  const clearCancellation = {
+    cancelledAt: null,
+    cancelledBy: "",
+    cancellationReason: "",
+    cancellationNote: "",
+    cancellationEmailSentAt: null,
+    seatReturnStatus: "not_applicable",
+    seatsReturnedOutbound: 0,
+    seatsReturnedReturn: 0,
+    seatReturnDecidedAt: null,
+    seatReturnDecidedBy: "",
+    seatReturnNote: "",
+  };
+
+  if (alreadyPaid && !options.markPaid) {
+    await tx.booking.update({
+      where: { id: booking.id },
+      data: { status: "confirmed", holdExpiresAt: null, ...clearCancellation },
+    });
+    return;
+  }
+
   if (options.markPaid) {
     await tx.booking.update({
       where: { id: booking.id },
-      data: { status: "confirmed", holdExpiresAt: null },
+      data: { status: "confirmed", holdExpiresAt: null, ...clearCancellation },
     });
     if (booking.invoice) {
       await tx.invoice.update({
         where: { id: booking.invoice.id },
         data: {
           status: "paid",
-          paidAt: new Date(),
+          paidAt: booking.invoice.paidAt ?? new Date(),
           markedPaidByAdmin: true,
           pdfBlobUrl: null,
           pdfBlobPathname: null,
@@ -98,6 +143,7 @@ export async function reclaimExpiredBookingHold(
     data: {
       status: "pending_payment",
       holdExpiresAt: bankHoldExpiresAt(new Date(), 48),
+      ...clearCancellation,
     },
   });
   if (booking.invoice) {

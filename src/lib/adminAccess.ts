@@ -10,6 +10,7 @@ export type AdminTab =
   | "flights"
   | "form"
   | "bookings"
+  | "cancellations"
   | "invoices"
   | "cargo"
   | "settings"
@@ -17,6 +18,7 @@ export type AdminTab =
 
 export const SUB_ADMIN_TABS: readonly AdminTab[] = [
   "bookings",
+  "cancellations",
   "invoices",
   "cargo",
   "deleted",
@@ -27,6 +29,7 @@ const ALL_TABS: readonly AdminTab[] = [
   "flights",
   "form",
   "bookings",
+  "cancellations",
   "invoices",
   "cargo",
   "settings",

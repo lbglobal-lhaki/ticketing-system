@@ -951,13 +951,26 @@ export async function deleteBookingAction(formData: FormData) {
   if (bookings.length === 0) {
     redirect("/admin?tab=bookings&error=Booking(s)+not+found");
   }
+  // Cancelled bookings awaiting a seat decision still count as sold. Deleting
+  // one would strand those seats with no record of why, so decide first.
+  const undecided = bookings.filter(
+    (b) => b.status === "cancelled" && b.seatReturnStatus === "pending",
+  );
+  if (undecided.length > 0) {
+    redirect(
+      `/admin?tab=bookings&error=${encodeURIComponent(
+        `Review the seats for ${undecided.map((b) => b.bookingRef).join(", ")} on the Cancellations tab before deleting.`,
+      )}`,
+    );
+  }
 
   await prisma.$transaction(
     async (tx) => {
       for (const booking of bookings) {
-        // Return seats before deleting — skip expired holds (already restored).
+        // Return seats before deleting — skip expired holds and cancelled
+        // bookings, which already handed their seats back.
         if (
-          booking.status !== "hold_expired" &&
+          !bookingNeedsSeatReclaim(booking.status) &&
           booking.seatsBooked > 0 &&
           booking.fareReleaseId
         ) {

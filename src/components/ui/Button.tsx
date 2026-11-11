@@ -56,6 +56,25 @@ export type ButtonProps = Omit<
   fullWidth?: boolean;
 };
 
+/**
+ * The Button look as a class string, for controls that must be a different
+ * element — e.g. a `SubmitButton`, which needs `useFormStatus` from its form.
+ */
+export function buttonClasses(
+  variant: ButtonVariant = "secondary",
+  size: ButtonSize = "md",
+  className?: string,
+) {
+  return cn(
+    "inline-flex items-center justify-center rounded-control font-medium",
+    "transition-colors focus-visible:outline-2 focus-visible:outline-offset-2",
+    "disabled:cursor-not-allowed disabled:opacity-50",
+    VARIANTS[variant],
+    SIZES[size],
+    className,
+  );
+}
+
 export function Button({
   children,
   variant = "secondary",

@@ -17,6 +17,13 @@ import { cn } from "@/components/ui/cn";
  * — a `<form>`, a `<button>` with the original handler, a download `<a>` — so
  * the underlying actions keep their own behaviour. The menu only decides
  * whether they are on screen or one click away.
+ *
+ * Accessibility: this is the WAI-ARIA *disclosure* pattern (a button with
+ * aria-expanded controlling a panel), not role="menu". The panel holds forms
+ * and links rather than menuitems, and role="menu" without menuitem children
+ * is announced by screen readers as an empty menu. Arrow keys still move
+ * between actions, Escape closes and returns focus to the trigger, and tabbing
+ * out of the panel closes it.
  */
 export function Menu({
   label = "More actions",
@@ -77,13 +84,22 @@ export function Menu({
   }
 
   return (
-    <div ref={rootRef} className={cn("relative", className)}>
+    <div
+      ref={rootRef}
+      data-menu-root=""
+      className={cn("relative", className)}
+      onBlur={(e) => {
+        // Close when keyboard focus leaves the trigger + panel entirely.
+        const next = e.relatedTarget as Node | null;
+        if (open && next && !rootRef.current?.contains(next)) setOpen(false);
+      }}
+    >
       <button
         ref={triggerRef}
         type="button"
+        data-menu-trigger=""
         aria-label={label}
         title={label}
-        aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((v) => !v)}
@@ -103,7 +119,8 @@ export function Menu({
         <div
           ref={panelRef}
           id={panelId}
-          role="menu"
+          role="group"
+          aria-label={label}
           onKeyDown={onPanelKeyDown}
           onClick={(e) => {
             const node = e.target as Node | null;
@@ -146,13 +163,15 @@ export function MenuItem({
 }) {
   return (
     <div
-      role="none"
       className={cn(
         "[&_button]:w-full [&_a]:w-full",
         "[&_button]:flex [&_a]:flex [&_button]:items-center [&_a]:items-center [&_button]:gap-2 [&_a]:gap-2",
         "[&_button]:min-h-10 [&_a]:min-h-10 [&_button]:px-3 [&_a]:px-3 [&_button]:py-2 [&_a]:py-2",
         "[&_button]:text-left [&_a]:text-left [&_button]:text-sm [&_a]:text-sm",
         "[&_button]:transition-colors [&_a]:transition-colors",
+        // Visible keyboard focus inside the panel (WCAG 2.4.7).
+        "[&_button:focus-visible]:outline-2 [&_a:focus-visible]:outline-2 [&_button:focus-visible]:-outline-offset-2 [&_a:focus-visible]:-outline-offset-2",
+        "[&_button:disabled]:cursor-not-allowed [&_button:disabled]:opacity-50",
         tone === "danger"
           ? "[&_button]:text-accent-red [&_a]:text-accent-red [&_button:hover]:bg-accent-red/8 [&_a:hover]:bg-accent-red/8"
           : "[&_button]:text-foreground [&_a]:text-foreground [&_button:hover]:bg-background [&_a:hover]:bg-background",
@@ -165,7 +184,7 @@ export function MenuItem({
 }
 
 export function MenuDivider() {
-  return <div role="none" className="my-1 h-px bg-line" />;
+  return <div aria-hidden className="my-1 h-px bg-line" />;
 }
 
 export function MenuLabel({ children }: { children: ReactNode }) {

@@ -54,9 +54,13 @@ export function Checkbox({
               boxBase,
               "rounded-[4px] border-line bg-surface",
               "peer-checked:border-transparent peer-checked:[background-color:var(--accent-deep)] peer-checked:text-white",
+              // The icon is a child, not a sibling, of the peer input, so it
+              // is revealed from this box — otherwise "checked" was shown by
+              // colour alone (WCAG 1.4.1).
+              "peer-checked:[&>svg]:opacity-100",
             )}
           >
-            <CheckIcon className="size-3 opacity-0 peer-checked:opacity-100" />
+            <CheckIcon className="size-3 opacity-0" />
           </span>
         </span>
         <span className="min-w-0 py-0.5">

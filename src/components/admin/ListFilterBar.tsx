@@ -53,6 +53,7 @@ export function ListFilterBar({
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             placeholder={placeholder}
+            aria-label={placeholder.replace(/…$/, "")}
             className="min-h-10 w-full min-w-0 bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
           />
           {query ? (
@@ -69,13 +70,18 @@ export function ListFilterBar({
 
         <div className="flex flex-wrap items-center gap-2">
           {chips && onChipChange ? (
-            <div className="inline-flex flex-wrap gap-1 rounded-full border border-line bg-white p-1">
+            <div
+              role="group"
+              aria-label="Filter by status"
+              className="inline-flex flex-wrap gap-1 rounded-full border border-line bg-white p-1"
+            >
               {chips.map((chip) => {
                 const active = chip.value === activeChip;
                 return (
                   <button
                     key={chip.value}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => onChipChange(chip.value)}
                     className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
                       active
@@ -100,7 +106,7 @@ export function ListFilterBar({
         </div>
       </div>
 
-      <p className="text-xs text-muted">
+      <p className="text-xs text-muted" aria-live="polite">
         {narrowed ? (
           <>
             Showing{" "}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { canAccessBooking } from "@/lib/documentAccess";
+import { isAdminAuthed } from "@/lib/adminAuth";
 import { prisma } from "@/lib/db";
 import {
   renderTravelDocumentHtml,
@@ -28,6 +29,7 @@ export async function GET(
       select: {
         id: true,
         accessToken: true,
+        status: true,
         quote: { select: { sessionId: true } },
       },
     });
@@ -44,6 +46,18 @@ export async function GET(
       return new NextResponse(
         "Unauthorized — open this document from your confirmation email or booking page.",
         { status: 401 },
+      );
+    }
+
+    // A cancelled booking's e-ticket is void. Customers get a clear 410 rather
+    // than a valid-looking ticket; admins can still open it for reference.
+    if (booking.status === "cancelled" && !(await isAdminAuthed())) {
+      return new NextResponse(
+        "This booking has been cancelled and its e-ticket is no longer valid for travel. Please contact us if you have any questions.",
+        {
+          status: 410,
+          headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "private, no-store" },
+        },
       );
     }
 

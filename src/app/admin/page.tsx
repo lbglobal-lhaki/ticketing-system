@@ -27,6 +27,10 @@ import { expireStaleHoldsForAdminLoad } from "@/lib/booking/expireHolds";
 import { prisma } from "@/lib/db";
 import { listCargoWeightOptionsAdmin } from "@/lib/cargo/weightOptions.server";
 import { getSiteSettings } from "@/lib/settings";
+import {
+  loadOverbookedFlights,
+  loadSeatReviewQueue,
+} from "@/lib/booking/cancelBooking";
 import { adminLoginSchema } from "@/lib/validation";
 
 // Walk-in confirmations and invoice resends generate PDF attachments via
@@ -46,6 +50,7 @@ function parseTab(value?: string): AdminTab | undefined {
     value === "flights" ||
     value === "form" ||
     value === "bookings" ||
+    value === "cancellations" ||
     value === "invoices" ||
     value === "cargo" ||
     value === "settings" ||
@@ -200,6 +205,8 @@ export default async function AdminPage({
     analytics,
     settings,
     cargoWeightOptions,
+    seatReviewQueue,
+    overbookedFlights,
   ] = await Promise.all([
       prisma.flight.findMany({
         where: { deletedAt: null },
@@ -308,6 +315,8 @@ export default async function AdminPage({
         : Promise.resolve(emptySystemAnalytics()),
       getSiteSettings(),
       listCargoWeightOptionsAdmin(),
+      loadSeatReviewQueue(),
+      loadOverbookedFlights(),
     ]);
 
   const SAVED_MESSAGES: Record<string, string> = {
@@ -343,8 +352,16 @@ export default async function AdminPage({
     "booking-paid":
       "Bank transfer marked paid. No email was sent — send documents from the Invoices tab.",
     "booking-reactivated":
-      "Booking reopened and seats re-held for 48 hours. Mark paid when the transfer arrives.",
+      "Booking reopened and its seats re-held. Unpaid bookings are held for 48 hours — mark paid when the transfer arrives.",
     "booking-unpaid": "Booking marked unpaid — seat hold restored.",
+    "booking-cancelled":
+      "Booking cancelled. Its seats are still held — review them on the Cancellations tab.",
+    "booking-cancelled-emailed":
+      "Booking cancelled and the customer has been emailed. Its seats are still held — review them on the Cancellations tab.",
+    "seats-returned": "Seats returned to sale. The decision is recorded on the booking.",
+    "seats-not-returned":
+      "Seats kept off sale. The decision is recorded on the booking.",
+    "booking-cancellation-emailed": "Cancellation email sent to the customer.",
     "booking-updated": "Booking saved.",
     "booking-deleted":
       "Booking (and its invoice, if any) deleted — logged in the Deleted tab.",
@@ -493,6 +510,10 @@ export default async function AdminPage({
               paymentMethod: b.paymentMethod,
               source: b.source,
               holdExpiresAt: b.holdExpiresAt?.toISOString() ?? null,
+              cancelledAt: b.cancelledAt?.toISOString() ?? null,
+              cancellationReason: b.cancellationReason,
+              cancellationEmailSentAt:
+                b.cancellationEmailSentAt?.toISOString() ?? null,
               createdAt: b.createdAt.toISOString(),
               invoiceId: b.invoice?.id ?? null,
               invoiceStatus: b.invoice?.status ?? null,
@@ -592,6 +613,8 @@ export default async function AdminPage({
               bookingCount: f._count.bookings + f._count.returnBookings,
               cargoCount: f._count.cargoBookings,
             }))}
+            seatReviewQueue={seatReviewQueue}
+            overbookedFlights={overbookedFlights}
             deletedRecords={deletedRecords.map((row) => ({
               id: row.id,
               entityType: row.entityType,
