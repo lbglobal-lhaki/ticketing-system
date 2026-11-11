@@ -28,6 +28,7 @@ import { prisma } from "@/lib/db";
 import { listCargoWeightOptionsAdmin } from "@/lib/cargo/weightOptions.server";
 import { getSiteSettings } from "@/lib/settings";
 import {
+  countPendingSeatReviews,
   loadOverbookedFlights,
   loadSeatReviewQueue,
 } from "@/lib/booking/cancelBooking";
@@ -207,6 +208,7 @@ export default async function AdminPage({
     cargoWeightOptions,
     seatReviewQueue,
     overbookedFlights,
+    seatReviewCount,
   ] = await Promise.all([
       prisma.flight.findMany({
         where: { deletedAt: null },
@@ -315,8 +317,15 @@ export default async function AdminPage({
         : Promise.resolve(emptySystemAnalytics()),
       getSiteSettings(),
       listCargoWeightOptionsAdmin(),
-      loadSeatReviewQueue(),
-      loadOverbookedFlights(),
+      // Full review data only on its own tab — the pg pool is small (5) and
+      // every extra parallel query on each admin load starves transactions.
+      requestedTab === "cancellations"
+        ? loadSeatReviewQueue()
+        : Promise.resolve([]),
+      requestedTab === "cancellations"
+        ? loadOverbookedFlights()
+        : Promise.resolve([]),
+      countPendingSeatReviews(),
     ]);
 
   const SAVED_MESSAGES: Record<string, string> = {
@@ -615,6 +624,7 @@ export default async function AdminPage({
             }))}
             seatReviewQueue={seatReviewQueue}
             overbookedFlights={overbookedFlights}
+            seatReviewCount={seatReviewCount}
             deletedRecords={deletedRecords.map((row) => ({
               id: row.id,
               entityType: row.entityType,

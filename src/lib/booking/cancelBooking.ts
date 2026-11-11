@@ -22,6 +22,20 @@ export class BookingCancellationError extends Error {}
 
 const LIVE_STATUSES = ["pending_payment", "confirmed"] as const;
 
+/**
+ * Prisma's defaults (2s to get a connection, 5s to run) are too tight for the
+ * small pg pool against Railway, where an admin page load can hold every
+ * connection for several seconds. Match the other booking transactions.
+ */
+const TX_OPTIONS = { maxWait: 20_000, timeout: 60_000 } as const;
+
+/** Pending seat reviews — cheap count for the sidebar badge on every tab. */
+export async function countPendingSeatReviews() {
+  return prisma.booking.count({
+    where: { status: "cancelled", seatReturnStatus: "pending" },
+  });
+}
+
 export type CancelBookingInput = {
   bookingId: string;
   reason: CancellationReasonCode;
@@ -94,7 +108,7 @@ export async function cancelBooking(input: CancelBookingInput) {
       bookingRef: booking.bookingRef,
       seatReviewPending: seatReturnStatusOnCancel(booking.status) === "pending",
     };
-  });
+  }, TX_OPTIONS);
 }
 
 /* ------------------------------------------------------------ seat review */
@@ -475,7 +489,7 @@ export async function decideSeatReturn(input: SeatDecisionInput) {
     }
 
     return { bookingRef: booking.bookingRef, outbound, inbound };
-  });
+  }, TX_OPTIONS);
 }
 
 /* ------------------------------------------------------------------ email */

@@ -13,7 +13,7 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 /** Bump when Prisma models change so hot-reload drops a stale client. */
-const PRISMA_SCHEMA_VERSION = "ticket-type-baggage-v1";
+const PRISMA_SCHEMA_VERSION = "booking-cancellation-v1";
 
 function isTransientDbError(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error);

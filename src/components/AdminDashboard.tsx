@@ -660,6 +660,7 @@ export function AdminDashboard({
   deletedRecords,
   seatReviewQueue,
   overbookedFlights,
+  seatReviewCount,
   analytics,
   settings,
   adminRole = "admin",
@@ -676,6 +677,8 @@ export function AdminDashboard({
   deletedRecords: AdminDeletedRecordRow[];
   seatReviewQueue: SeatReviewRow[];
   overbookedFlights: OverbookedFlight[];
+  /** Pending seat reviews, counted server-side on every tab. */
+  seatReviewCount: number;
   analytics: SystemAnalytics;
   settings: AdminSiteSettings;
   adminRole?: AdminRole;
@@ -985,9 +988,6 @@ export function AdminDashboard({
     [flights, fareTripMode],
   );
   const unpaidInvoiceCount = invoices.filter((i) => i.status === "unpaid").length;
-  const seatReviewCount = seatReviewQueue.filter(
-    (r) => r.seatReturnStatus === "pending",
-  ).length;
 
   const navGroups = useMemo<NavGroup[]>(() => {
     const labelFor = (id: Tab) => {
